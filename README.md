@@ -54,7 +54,7 @@ CI: `.github/workflows/lint.yml` runs all of the above on every push and pull re
 
 ## Versions
 
-Each series in `catalog.json` carries a semver `version` (base_money starts at `0.1.0`). Every row published under one version uses one basket of issuers, listed in the series' `basket`. A basket change is a major version bump plus a git tag, so a consumer can always tell which rows are comparable.
+Each series in `catalog.json` carries a semver `version` (base_money: `0.1.0` for the skeleton, `1.0.0` from its first published row, basket v1). A basket change is a major version bump plus a git tag. One CSV may hold rows computed under different baskets: each row keeps the basket in force when its quarter was first published, unless an appended Revision adds a newly evidenced issuer, which moves the row to the newer basket. The basket is recorded in the roll-up's machine block (`basket_version`, planned (basket_version PR)) and named per quarter in `INDEX.md`, which warns that rows on different baskets are not strictly comparable.
 
 ## License
 
