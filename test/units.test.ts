@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { archiveNet, httpAvailable, httpHead } from "../scripts/lib/archive.ts";
-import { lint } from "../scripts/lib/checks.ts";
-import { parseDecimal, roundHalfEven, sumOfProducts, usdPerUnit } from "../scripts/lib/decimal.ts";
+import { archive2Problem, lint } from "../scripts/lib/checks.ts";
+import { parseDecimal, roundHalfEven, sumOfProducts, usdPerUnit, wholeUsd } from "../scripts/lib/decimal.ts";
+import { chooseBase } from "../scripts/lib/lint-base.ts";
 import { headings, links, slugs } from "../scripts/lib/markdown.ts";
 import { good } from "./fixture.ts";
 
@@ -313,5 +314,164 @@ describe("usdPerUnit (fx_rate from Rate and Quote direction)", () => {
     expect(usdPerUnit(d("1.1000"), "USD per")).toBe("1.1000");
     expect(usdPerUnit(d("1.000000000000000000015"), "USD per")).toBe("1.000000000000000000015");
     expect(usdPerUnit(d("2"), "USD per")).toBe("2");
+  });
+});
+
+// Assay (1): a push to a non-main branch lints against merge-base(HEAD, origin/main), not github.event.before
+// (the branch's previous tip, which flags a branch's own unmerged lines as committed). main keeps event.before.
+describe("chooseBase (LINT_BASE selection)", () => {
+  const MB = "a".repeat(40);
+  const BEFORE = "b".repeat(40);
+  const ZEROS = "0".repeat(40);
+  const calls: string[] = [];
+  const mb = (r: string | null) => () => {
+    calls.push("mergeBase");
+    return r;
+  };
+  const base = (o: Partial<Parameters<typeof chooseBase>[0]>) => chooseBase({ hasHead: true, mergeBase: mb(MB), ...o });
+  test("push to a feature branch: merge-base with origin/main, not event.before", () =>
+    expect(base({ eventName: "push", ref: "refs/heads/data-2026Q2", envBase: BEFORE })).toMatchObject({ base: MB }));
+  test("push that creates a branch (before all zeros) still gets the merge-base", () =>
+    expect(base({ eventName: "push", ref: "refs/heads/x", envBase: ZEROS })).toMatchObject({ base: MB }));
+  test("push of a tag is not main: merge-base", () =>
+    expect(base({ eventName: "push", ref: "refs/tags/v1", envBase: BEFORE })).toMatchObject({ base: MB }));
+  test("push to main keeps event.before and never asks for a merge-base", () => {
+    calls.length = 0;
+    expect(base({ eventName: "push", ref: "refs/heads/main", envBase: BEFORE })).toMatchObject({ base: BEFORE });
+    expect(calls).toEqual([]);
+  });
+  test("push to main with an all-zeros before has no base", () =>
+    expect(base({ eventName: "push", ref: "refs/heads/main", envBase: ZEROS })).toMatchObject({ base: null }));
+  test("a branch merely containing 'main' is not main", () =>
+    expect(base({ eventName: "push", ref: "refs/heads/main-old", envBase: BEFORE })).toMatchObject({ base: MB }));
+  test("push to a branch with no merge-base is an error, never a silent fallback to event.before", () => {
+    const r = base({ eventName: "push", ref: "refs/heads/x", envBase: BEFORE, mergeBase: mb(null) });
+    expect(r).toEqual({ error: expect.stringMatching(/merge-base of HEAD and origin\/main/) });
+  });
+  test("pull_request uses LINT_BASE (the PR base sha) unchanged", () =>
+    expect(base({ eventName: "pull_request", ref: "refs/pull/9/merge", envBase: BEFORE })).toMatchObject({
+      base: BEFORE,
+    }));
+  test("--base overrides everything, even on a branch push", () =>
+    expect(base({ cliBase: "HEAD~1", eventName: "push", ref: "refs/heads/x", envBase: BEFORE })).toMatchObject({
+      base: "HEAD~1",
+    }));
+  test("local run: LINT_BASE, else HEAD, else none", () => {
+    expect(base({ envBase: BEFORE })).toMatchObject({ base: BEFORE });
+    expect(base({})).toMatchObject({ base: "HEAD" });
+    expect(base({ hasHead: false })).toMatchObject({ base: null });
+    expect(base({ envBase: "" })).toMatchObject({ base: "HEAD" });
+  });
+});
+
+// Assay (2): USD is never recorded more precisely than $1. Each component is rounded half-to-even on its own.
+describe("wholeUsd (one entry's USD, rounded half-to-even to $1, exact)", () => {
+  const w = (v: string, fx: string) => wholeUsd(d(v), d(fx));
+  test("ties go to the even dollar, both directions", () =>
+    expect([w("500", "0.001"), w("1500", "0.001"), w("2500", "0.001"), w("3500", "0.001")]).toEqual([0n, 2n, 2n, 4n]));
+  test("not a tie: nearest dollar", () => expect([w("200.25", "1.1"), w("2501", "0.001")]).toEqual([220n, 3n]));
+  test("exact at 20 dp fx and 14-digit values", () =>
+    expect(w("40594501000000", "0.14738176298064877452")).toBe(5982889124700n));
+  // The 2026Q2 shape: 8 components and BCB's reference value, rates as committed on data-2026Q2.
+  test("2026Q2: total_usd is the sum of individually rounded components; coverage 98.79", () => {
+    const comps: [string, string][] = [
+      ["40594501000000", "0.14738176298064877452"],
+      ["5488400000000", "1"],
+      ["3980253000000", "1.1417"],
+      ["559984900000000", "0.00614968329131049751"],
+      ["756193000000", "1.3259"],
+      ["507312000000", "1.23731749566938876516"],
+      ["52563650000000", "0.01056412423410099303"],
+      ["30586100000000", "0.01286109121214498565"],
+    ];
+    const each = comps.map(([v, fx]) => w(v, fx));
+    expect(each).toEqual([
+      5982889124700n,
+      5488400000000n,
+      4544254850100n,
+      3443729782916n,
+      1002636298700n,
+      627706013363n,
+      555288928798n,
+      393370621924n,
+    ]);
+    const total = each.reduce((a, b) => a + b, 0n);
+    expect(total).toBe(22038275620501n);
+    expect(w("1399128000000", "0.19355463079454175941")).toBe(270807703474n);
+  });
+});
+
+// Assay (3): "2 is 1 and 1 is none": a second archive on archive.today, or a dated record of the attempt.
+describe("archive2Problem (Archive URL 2 value)", () => {
+  const ORIG = "https://example.test/FED-H.4.1";
+  const ok = (v: string) => expect(archive2Problem(v, ORIG)).toBeNull();
+  const bad = (v: string, why: RegExp) => expect(archive2Problem(v, ORIG) ?? "").toMatch(why);
+  test("archive.today short ids on each of its hosts pass", () => {
+    for (const h of ["archive.ph", "archive.today", "archive.is"]) ok(`https://${h}/AbC12`);
+  });
+  test("the dated form for the same original passes", () => ok(`https://archive.ph/20261002140500/${ORIG}`));
+  test("the dated form for another original fails", () =>
+    bad("https://archive.ph/20261002140500/https://example.test/other", /not the Original URL/));
+  test("the dated form with an impossible timestamp fails", () =>
+    bad(`https://archive.ph/20261302140500/${ORIG}`, /timestamp/));
+  test("other hosts and self-hosted copies fail", () => {
+    for (const v of [
+      "https://web.archive.org/web/20261002140500/https://example.test/FED-H.4.1",
+      "https://archive.org/details/x",
+      "https://archive.ph.evil.test/AbC12",
+      "https://mirror.example.test/FED-H.4.1.html",
+      "https://www.archive.ph/AbC12",
+    ])
+      bad(v, /archive\.today/);
+  });
+  test("http, a trailing path, an empty id or a query fail", () => {
+    for (const v of [
+      "http://archive.ph/AbC12",
+      "https://archive.ph/AbC12/extra",
+      "https://archive.ph/",
+      "https://archive.ph/AbC12?x=1",
+    ])
+      bad(v, /archive\.today/);
+  });
+  test("a dated attempt with a reason passes", () => ok("attempted 2026-10-02: archive.today returned a CAPTCHA"));
+  test("an attempt needs a real ISO date", () => {
+    for (const v of ["attempted 2026-02-30: blocked", "attempted 2026-1-02: blocked", "attempted: blocked"])
+      bad(v, /YYYY-MM-DD/);
+  });
+  test("an attempt needs a reason", () => {
+    for (const v of ["attempted 2026-10-02:", "attempted 2026-10-02:   ", "attempted 2026-10-02"]) bad(v, /reason/);
+  });
+  test("blank or free text fails", () => {
+    bad("", /archive\.today URL or "attempted/);
+    bad("none", /archive\.today URL or "attempted/);
+  });
+});
+
+describe("httpHead on archive.today (fake fetch, by URL)", () => {
+  const routes = (table: Record<string, [number, string?]>) => {
+    const urls: string[] = [];
+    const f = (async (u: string) => {
+      urls.push(u);
+      const [status, location] = table[u] ?? [599];
+      return new Response(null, { status, headers: location === undefined ? {} : { location } });
+    }) as unknown as typeof fetch;
+    return { f, urls };
+  };
+  const DATED = "https://archive.ph/20261002140500/https://example.test/x";
+  test("a redirect from the dated form to the short id on another archive.today host is followed", async () => {
+    const { f, urls } = routes({ [DATED]: [302, "https://archive.today/AbC12"], "https://archive.today/AbC12": [200] });
+    expect(await httpHead(f, 1000)(DATED)).toEqual({ kind: "ok", status: 200 });
+    expect(urls).toEqual([DATED, "https://archive.today/AbC12"]);
+  });
+  test("a redirect off archive.today is not followed", async () => {
+    const { f, urls } = routes({ [DATED]: [302, "https://example.test/x"] });
+    expect(await httpHead(f, 1000)(DATED)).toMatchObject({ kind: "redirect", reason: "off-snapshot" });
+    expect(urls).toEqual([DATED]);
+  });
+  test("more than 5 hops inside archive.today is a loop", async () => {
+    const a = "https://archive.is/AbC12";
+    const { f, urls } = routes({ [DATED]: [302, a], [a]: [302, DATED] });
+    expect(await httpHead(f, 1000)(DATED)).toMatchObject({ kind: "redirect", reason: "loop" });
+    expect(urls.length).toBe(6);
   });
 });

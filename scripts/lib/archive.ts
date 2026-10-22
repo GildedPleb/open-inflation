@@ -17,12 +17,16 @@ async function bounded<T>(timeoutMs: number, run: (signal: AbortSignal) => Promi
 
 /** A web.archive.org snapshot URL: its 14-digit capture timestamp (a modifier such as `id_` is the same capture). */
 const SNAPSHOT = /^https?:\/\/web\.archive\.org\/web\/(\d{14})(?:[a-z]{2}_)?\//;
+/** archive.today under any of its three hosts. Its captures redirect between them (and between the dated form and the short id). */
+const TODAY = /^https?:\/\/archive\.(?:ph|today|is)\//;
 export const MAX_HOPS = 5;
 
 /**
  * A real HEAD over `fetchImpl`, bounded by `timeoutMs`. Redirects are handled by hand: a hop is followed only when
  * its Location is a snapshot with the recorded timestamp (another scheme, host or modifier of the same capture).
  * A Location with another timestamp is Wayback's nearest capture, so the recorded snapshot does not exist.
+ * An archive.today URL follows a hop only to another archive.today URL (any of its hosts); anything else is
+ * off-snapshot.
  */
 export function httpHead(fetchImpl: typeof fetch, timeoutMs: number): Head {
   return (url) =>
@@ -35,6 +39,12 @@ export function httpHead(fetchImpl: typeof fetch, timeoutMs: number): Head {
         if (res.status < 300 || res.status > 399 || loc === null)
           return res.ok ? { kind: "ok", status: res.status } : { kind: "http", status: res.status };
         const location = new URL(loc, at).href;
+        if (TODAY.test(url)) {
+          if (!TODAY.test(location)) return { kind: "redirect", status: res.status, location, reason: "off-snapshot" };
+          if (hop >= MAX_HOPS) return { kind: "redirect", status: res.status, location, reason: "loop" };
+          at = location;
+          continue;
+        }
         const ts = SNAPSHOT.exec(location)?.[1];
         if (ts === undefined) return { kind: "redirect", status: res.status, location, reason: "off-snapshot" };
         if (ts !== recorded)
@@ -61,7 +71,7 @@ export function httpAvailable(fetchImpl: typeof fetch, timeoutMs: number): Net["
     });
 }
 
-/** Lint's only network use: HEAD on web.archive.org snapshots, and archive.org's availability API. */
+/** Lint's only network use: HEAD on web.archive.org and archive.today captures, and archive.org's availability API. */
 export const archiveNet = (fetchImpl: typeof fetch, timeoutMs: number): Net => ({
   head: httpHead(fetchImpl, timeoutMs),
   available: httpAvailable(fetchImpl, timeoutMs),

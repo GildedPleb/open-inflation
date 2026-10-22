@@ -3,11 +3,16 @@ import type { Files, Snapshot } from "../scripts/lib/types.ts";
 
 const enc = new TextEncoder();
 
+/** The fixture's default Archive URL 2: a dated record of an archive.today attempt (never fetched). */
+export const ARCHIVE2_ATTEMPT = "attempted 2026-10-02: archive.today returned a CAPTCHA (synthetic fixture)";
+
 export const extract = (o: {
   title: string;
   retrieved?: string;
   original?: string;
   archive?: string;
+  /** The Archive URL 2 value; null drops the line. Default: a dated attempt, so no fixture HEADs archive.today. */
+  archive2?: string | null;
   quote?: string;
   /** Extra field lines, e.g. "- Currency: EUR" for an FX extract. */
   fields?: string[];
@@ -20,6 +25,7 @@ export const extract = (o: {
     `- Retrieved: ${retrieved}`,
     `- Original URL: ${original}`,
     `- Archive URL: ${archive}`,
+    ...(o.archive2 === null ? [] : [`- Archive URL 2: ${o.archive2 ?? ARCHIVE2_ATTEMPT}`]),
     ...(o.fields ?? []),
     "- Notes: synthetic fixture",
     "",
@@ -85,39 +91,37 @@ export const BASKET = ["FED", "ECB", "BOJ"];
 /** The fixture catalog's baskets: version 1 only, coverage floor 94%. */
 export const BASKETS = [{ version: 1, issuers: BASKET, floor_pct: "94" }];
 
-/** Synthetic reference value for an excluded issuer: 0.01 USD (USD, so no FX extract is needed; small, so
- * coverage stays above any floor unless a test sets reference_values itself). */
-const REF_VALUE = "0.01";
+/** Synthetic reference value for an excluded issuer: 1 USD (USD, so no FX extract is needed; a whole dollar, as
+ * every USD figure is; small, so coverage stays above any floor unless a test sets reference_values itself). */
+const REF_VALUE = "1";
 
 /** Exact decimal string -> [digits, scale]. Test-side arithmetic, independent of scripts/lib/decimal.ts. */
 const dec = (s: string): [bigint, number] => {
   const [i = "", f = ""] = s.split(".");
   return [BigInt(i + f), f.length];
 };
-/** Sum of local_value x fx_rate pairs as [digits, scale]. */
-const usd = (pairs: [string, string][]): [bigint, number] => {
-  const ps = pairs.map(([v, f]) => {
+/** n / d rounded half-to-even to an integer (n, d >= 0, d > 0). */
+const halfEven = (n: bigint, d: bigint): bigint => {
+  const q = n / d;
+  const twice = 2n * (n % d);
+  return twice > d || (twice === d && q % 2n === 1n) ? q + 1n : q;
+};
+/** Sum of local_value x fx_rate pairs, each rounded half-to-even to a whole dollar first. */
+const usd = (pairs: [string, string][]): bigint =>
+  pairs.reduce((acc, [v, f]) => {
     const [a, x] = dec(v);
     const [b, y] = dec(f);
-    return [a * b, x + y] as [bigint, number];
-  });
-  const scale = Math.max(0, ...ps.map((p) => p[1]));
-  return [ps.reduce((acc, [d, s]) => acc + d * 10n ** BigInt(scale - s), 0n), scale];
-};
-/** coverage = comp / (comp + ref) x 100, rounded once half-to-even to 2 decimals, as a string. */
+    return acc + halfEven(a * b, 10n ** BigInt(x + y));
+  }, 0n);
+/** coverage = comp / (comp + ref) x 100 over the whole-dollar figures, rounded once half-to-even to 2 dp. */
 export const coverageOf = (comp: [string, string][], ref: [string, string][]): string => {
-  const [c, cs] = usd(comp);
-  const [r, rs] = usd(ref);
-  const s = Math.max(cs, rs);
-  const C = c * 10n ** BigInt(s - cs);
-  const R = r * 10n ** BigInt(s - rs);
+  const C = usd(comp);
+  const R = usd(ref);
   const den = C + R;
   if (den === 0n) return "0.00";
-  const num = C * 10000n;
-  let q = num / den;
-  const twice = 2n * (num % den);
-  if (twice > den || (twice === den && q % 2n === 1n)) q += 1n;
-  const t = q.toString().padStart(3, "0");
+  const t = halfEven(C * 10000n, den)
+    .toString()
+    .padStart(3, "0");
   return `${t.slice(0, -2)}.${t.slice(-2)}`;
 };
 const pairsIn = (yaml: string): [string, string][] =>
@@ -157,7 +161,7 @@ export const machineBlock = (o: {
       "  - issuer: FED",
       "    anchor: issuers/FED/2026.md#2026q3",
       "    local_currency: USD",
-      '    local_value: "1000.5"',
+      '    local_value: "1001"',
       '    fx_rate: "1"',
       "  - issuer: ECB",
       "    anchor: issuers/ECB/2026.md#2026q3",
@@ -209,8 +213,8 @@ export const rollup = (block = machineBlock({})): string =>
     "",
     "| Issuer | Local | FX | USD |",
     "| --- | --- | --- | --- |",
-    "| FED | 1000.5 USD | 1 | 1000.5 |",
-    "| ECB | 200.25 EUR | 1.1 | 220.275 |",
+    "| FED | 1001 USD | 1 | 1001 |",
+    "| ECB | 200.25 EUR | 1.1 | 220 |",
     "",
     "## Components",
     "",
