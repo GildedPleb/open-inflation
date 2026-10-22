@@ -1272,6 +1272,15 @@ describe("L9 basket_version", () => {
         ["L9"],
         /basket_version .* positive integer/,
       ));
+  for (const v of ["1.0", "1e0", "0x1", "01", "+1", "!!int 1", "1.0e0"])
+    test(`basket_version written ${v} fails: a plain YAML integer in the source text`, () =>
+      fails(
+        good({ [ROLLUP]: rollup(machineBlock({ basketVersion: v })) }),
+        ["L9"],
+        new RegExp(`basket_version ${v.replace(/[.+!]/g, "\\$&")} must be written as a plain positive integer`),
+      ));
+  test("basket_version 1 with a trailing comment passes", () =>
+    passes(good({ [ROLLUP]: rollup(machineBlock({ basketVersion: "1  # basket v1" })) })));
   test("a new block without basket_version fails once two baskets exist", () =>
     fails(two(machineBlock({})), ["L9"], /basket_version is required once the catalog lists more than one basket/));
   test("a block on basket_version 2 is checked against v2's issuers", () =>
@@ -1426,7 +1435,44 @@ describe("L9 reference_values and coverage_pct", () => {
         '"93.99"',
       ),
       ["L9"],
-      /coverage 93\.99% is below the basket 1 floor 94%/,
+      /coverage 93\.9949% is below the basket 1 floor 94%/,
+    ));
+  test("true floor: unrounded 93.995 (stated 94.00) is below the 94 floor", () =>
+    fails(
+      usdOnly(
+        "93995",
+        [
+          ["ECB", "6005"],
+          ["BOJ", "0"],
+        ],
+        '"94.00"',
+      ),
+      ["L9"],
+      /coverage 93\.995% is below the basket 1 floor 94% \(compared unrounded; coverage_pct 94\.00\)/,
+    ));
+  test("true floor: unrounded 93.9999 (stated 94.00) is below the 94 floor", () =>
+    fails(
+      usdOnly(
+        "939999",
+        [
+          ["ECB", "60001"],
+          ["BOJ", "0"],
+        ],
+        '"94.00"',
+      ),
+      ["L9"],
+      /coverage 93\.9999% is below the basket 1 floor 94%/,
+    ));
+  test("true floor: unrounded 94.0001 passes", () =>
+    passes(
+      usdOnly(
+        "940001",
+        [
+          ["ECB", "59999"],
+          ["BOJ", "0"],
+        ],
+        '"94.00"',
+      ),
     ));
   test("coverage exactly at the floor (94.00) passes", () =>
     passes(
@@ -1616,8 +1662,8 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
     await fails(q1("2026-03-27"), ["L7"], /outside 2026-03-28\.\.2026-03-31/);
   });
 
-  // Assay amendment (c): catalog issuers[].as_of_convention start_of_day allows As of = first day of next quarter.
-  const cbr = (asOf: string, convention = true) =>
+  // Assay: a start_of_day issuer's As of must be exactly the first day of the next quarter (no in-quarter date).
+  const cbr = (asOf: string, convention = true, confirming?: string) =>
     good({
       "catalog.json": withSeries({
         version: "1.0.0",
@@ -1629,16 +1675,48 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
         "CBR",
         "2026Q2",
         extract({ title: "CBR monetary base", fields: [`- As of: ${asOf}`] }),
+        ...(confirming === undefined
+          ? []
+          : [
+              extract({
+                title: "CBR narrow (confirming)",
+                fields: [`- As of: ${confirming}`, "- Adopted: no, confirming"],
+              }),
+            ]),
       ),
       "INDEX.md": index("- [CBR 2026](issuers/CBR/2026.md)"),
     });
   test("CBR (start_of_day) As of 2026-07-01 under Q2 passes", () => passes(cbr("2026-07-01")));
-  test("CBR (start_of_day) As of 2026-06-30 under Q2 passes", () => passes(cbr("2026-06-30")));
+  test("CBR (start_of_day) As of 2026-06-30 (quarter end) under Q2 fails", () =>
+    fails(
+      cbr("2026-06-30"),
+      ["L7"],
+      /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/,
+    ));
+  test("CBR (start_of_day) As of 2026-06 (month form, in quarter) under Q2 fails", () =>
+    fails(cbr("2026-06"), ["L7"], /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/));
   test("CBR (start_of_day) As of 2026-07-02 under Q2 fails", () =>
-    fails(cbr("2026-07-02"), ["L7"], /outside its quarter/));
+    fails(
+      cbr("2026-07-02"),
+      ["L7"],
+      /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/,
+    ));
   test("CBR (start_of_day) As of 2026-07 (month form) under Q2 fails", () =>
-    fails(cbr("2026-07"), ["L7"], /outside its quarter/));
-  test("CBR (start_of_day) As of 2026-04-01 under Q2 passes", () => passes(cbr("2026-04-01")));
+    fails(cbr("2026-07"), ["L7"], /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/));
+  test("CBR (start_of_day) As of 2026-04-01 (the Q1 stock) under Q2 fails", () =>
+    fails(
+      cbr("2026-04-01"),
+      ["L7"],
+      /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/,
+    ));
+  test("a CBR confirming extract at 2026-06-30 fails too (no exception)", () =>
+    fails(
+      cbr("2026-07-01", true, "2026-06-30"),
+      ["L7"],
+      /CBR narrow \(confirming\).*must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/,
+    ));
+  test("a CBR confirming extract at 2026-07-01 passes", () =>
+    passes(cbr("2026-07-01", true, "2026-07-01 (start of day)")));
   test("CBR without the convention at 2026-07-01 fails", () =>
     fails(cbr("2026-07-01", false), ["L7"], /outside its quarter/));
   test("a non-start_of_day issuer at 2026-07-01 under Q2 fails", () =>
