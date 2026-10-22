@@ -2,7 +2,7 @@
 
 The Open Base-Money Evidence Repository ([GildedPleb/open-inflation](https://github.com/GildedPleb/open-inflation)).
 
-Simple time-series CSVs of global base money, where every observation is backed by a human-traversable, append-only Markdown evidence chain. Heavy artifacts stay external (archive.org and archive.today); this repository holds only text, and no source is ever self-hosted.
+Simple time-series CSVs of base money summed over a fixed basket of the largest central banks (the basket is listed in `catalog.json` and defined in `methodology/base_money.md`). It is not all global base money: each quarterly roll-up states the share of the basket it covers. Every observation is backed by a human-traversable, append-only Markdown evidence chain. Heavy artifacts stay external (archive.org and archive.today); this repository holds only text, and no source is ever self-hosted.
 
 Status: Waypoint 1, the skeleton and lint suite. There is no data yet.
 

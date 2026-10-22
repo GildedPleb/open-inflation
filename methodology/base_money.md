@@ -20,6 +20,7 @@ This file contains no observations. Template figures are placeholders. The share
 - [Gaps policy](#gaps-policy)
 - [Extract template](#extract-template)
   - [Third link](#third-link)
+  - [Extract templates](#extract-templates)
 - [Roll-up template](#roll-up-template)
 - [Extract example](#extract-example)
 - [Checklist before a commit](#checklist-before-a-commit)
@@ -187,7 +188,7 @@ A new issuer gets its row here, in the same change that adds its row to [Per-iss
   - Each component's USD value is `local_value` × `fx_rate`, computed in exact decimal arithmetic and rounded half-to-even to a whole U.S. dollar. Each `reference_values` entry's USD value is rounded the same way.
   - `total_usd` is the sum of those whole-dollar component values. That integer is the CSV `value`. L9 recomputes it the same way and fails on any difference.
   - Coverage is computed from the whole-dollar values (see [Coverage](#coverage)).
-  - No USD figure anywhere in the repository is written with a fractional part: extract notes, the roll-up summary table, roll-up prose, the CSV and the machine block all carry whole dollars.
+  - No USD figure anywhere in the repository is written with a fractional part: extract notes, the roll-up summary table, roll-up prose, the CSV and the machine block all carry whole dollars. Lint enforces this only in the machine block (L9: integer `total_usd`, no decimal point in a USD `local_value`) and the CSV (L1: integer values); everywhere else it is a review check.
   - `fx_rate` is a rate, not a dollar figure: it keeps its 20 decimal places (see the [FX rule](#fx-rule)).
 
 ## Quarter inclusion
@@ -252,10 +253,12 @@ The other bullets below are not parsed by lint but are required by this methodol
 
 ### Third link
 
-Backup rule: two is one and one is none. Every extract carries three links: the `- Original URL:`, the Wayback `- Archive URL:` and one `- Archive URL 2:` (archive.today; its forms are in the list above).
+Backup rule: two is one and one is none. Every extract carries three link lines: the `- Original URL:`, the Wayback `- Archive URL:` and one `- Archive URL 2:`, which is an archive.today capture or, when none could be made, the recorded attempt (its forms are in the list above). An attempt is a line, not a link.
 - The archive.today capture must be attempted for every URL read. The attempt is mandatory; a failed attempt, recorded as `attempted <YYYY-MM-DD>: <reason>` with the date of the attempt and the failure as seen, does not fail the extract.
 - Never self-host a copy: no file, screenshot or mirror of a source is committed to this repository or hosted by us anywhere else. Only the source and the two public archives are linked.
-- The rule applies to every extract added after it was written. Committed extracts are never edited to add the line (L4).
+- L7 requires the `- Archive URL 2:` line on every extract, committed or new. No extract on `main` predates the rule: the first data, 2026Q2, carries the line on every extract, so no extract needs an exception.
+
+### Extract templates
 
 Issuer-year file, with one extract (`<...>` marks a placeholder):
 
