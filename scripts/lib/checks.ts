@@ -767,8 +767,9 @@ function placement(ctx: Ctx, emit: Emit) {
   for (const p of [...ctx.files.keys()].sort()) {
     if (p.endsWith("/.gitkeep")) continue;
     if (p.startsWith("issuers/")) {
-      const iss = /^issuers\/([^/]+)\/\d{4}\.md$/.exec(p)?.[1];
-      if (iss === undefined) emit("L12", p, "issuer files live only at issuers/<ISS>/<YYYY>.md");
+      const iss = /^issuers\/([A-Z][A-Z0-9]*)\/\d{4}\.md$/.exec(p)?.[1]; // upper-case issuer ids; FX exactly
+      if (iss === undefined)
+        emit("L12", p, "issuer files live only at issuers/<ISS>/<YYYY>.md (<ISS> an upper-case issuer id, or FX)");
       else if (iss !== FX_FOLDER && basket.size > 0 && !basket.has(iss))
         emit(
           "L12",
