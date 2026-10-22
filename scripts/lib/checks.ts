@@ -1,5 +1,6 @@
 // All integrity checks (L1-L12 in WP1_REQUIREMENTS). Pure over a Snapshot; the only I/O is the injected Net.
 import { posix } from "node:path";
+import { MAX_HOPS } from "./archive.ts";
 import { parseDecimal, roundHalfEven, sumOfProducts } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, slugs } from "./markdown.ts";
 import type { CheckId, Files, Finding, LintOptions, Net, Snapshot } from "./types.ts";
@@ -510,6 +511,16 @@ const RATE_LIMITED = 429;
 async function snapshotProblem(net: Net, url: string, ref: ArchiveRef): Promise<Problem> {
   const r = await net.head(url);
   if (r.kind === "ok") return null;
+  if (r.kind === "redirect")
+    return {
+      dead: false,
+      message:
+        r.reason === "other-capture"
+          ? `snapshot ${ref.ts} does not exist; Wayback redirected (HTTP ${r.status}) to nearest capture ${r.timestamp}`
+          : r.reason === "off-snapshot"
+            ? `HEAD redirected (HTTP ${r.status}) off the snapshot to ${r.location}`
+            : `HEAD redirected more than ${MAX_HOPS} times (last to ${r.location})`,
+    };
   if (r.kind === "http")
     return {
       dead: DEAD.includes(r.status),

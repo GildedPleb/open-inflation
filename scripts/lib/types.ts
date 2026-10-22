@@ -19,9 +19,20 @@ export interface Finding {
 export type HeadResult =
   | { readonly kind: "ok"; readonly status: number }
   | { readonly kind: "http"; readonly status: number }
+  /**
+   * A 3xx that is not the same capture: "other-capture" (another timestamp, e.g. Wayback's nearest capture for a
+   * timestamp it has none at), "off-snapshot" (not a web.archive.org/web/<ts>/ URL), or "loop" (too many hops).
+   */
+  | {
+      readonly kind: "redirect";
+      readonly status: number;
+      readonly location: string;
+      readonly reason: "other-capture" | "off-snapshot" | "loop";
+      readonly timestamp?: string;
+    }
   | { readonly kind: "network"; readonly message: string };
 
-/** HEAD one URL, following redirects. */
+/** HEAD one snapshot URL, following only redirects to the same capture timestamp. */
 export type Head = (url: string) => Promise<HeadResult>;
 
 /** The archive.org availability API's closest snapshot: its timestamp, or null when there is none. */

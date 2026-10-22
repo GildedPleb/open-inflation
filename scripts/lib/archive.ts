@@ -15,12 +15,33 @@ async function bounded<T>(timeoutMs: number, run: (signal: AbortSignal) => Promi
   }
 }
 
-/** A real HEAD over `fetchImpl`, following redirects, bounded by `timeoutMs`. */
+/** A web.archive.org snapshot URL: its 14-digit capture timestamp (a modifier such as `id_` is the same capture). */
+const SNAPSHOT = /^https?:\/\/web\.archive\.org\/web\/(\d{14})(?:[a-z]{2}_)?\//;
+export const MAX_HOPS = 5;
+
+/**
+ * A real HEAD over `fetchImpl`, bounded by `timeoutMs`. Redirects are handled by hand: a hop is followed only when
+ * its Location is a snapshot with the recorded timestamp (another scheme, host or modifier of the same capture).
+ * A Location with another timestamp is Wayback's nearest capture, so the recorded snapshot does not exist.
+ */
 export function httpHead(fetchImpl: typeof fetch, timeoutMs: number): Head {
   return (url) =>
     bounded<HeadResult>(timeoutMs, async (signal) => {
-      const res = await fetchImpl(url, { method: "HEAD", redirect: "follow", signal });
-      return res.ok ? { kind: "ok", status: res.status } : { kind: "http", status: res.status };
+      const recorded = SNAPSHOT.exec(url)?.[1];
+      let at = url;
+      for (let hop = 0; ; hop++) {
+        const res = await fetchImpl(at, { method: "HEAD", redirect: "manual", signal });
+        const loc = res.headers.get("location");
+        if (res.status < 300 || res.status > 399 || loc === null)
+          return res.ok ? { kind: "ok", status: res.status } : { kind: "http", status: res.status };
+        const location = new URL(loc, at).href;
+        const ts = SNAPSHOT.exec(location)?.[1];
+        if (ts === undefined) return { kind: "redirect", status: res.status, location, reason: "off-snapshot" };
+        if (ts !== recorded)
+          return { kind: "redirect", status: res.status, location, reason: "other-capture", timestamp: ts };
+        if (hop >= MAX_HOPS) return { kind: "redirect", status: res.status, location, reason: "loop" };
+        at = location;
+      }
     });
 }
 
