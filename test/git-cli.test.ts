@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { lint } from "../scripts/lib/checks.ts";
 import { loadSnapshot, NotGitCheckout } from "../scripts/lib/git.ts";
+import { extract, fxExtract, goodText, issuerFile } from "./fixture.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 const dec = new TextDecoder();
@@ -281,4 +282,68 @@ describe("CLI", () => {
     expect(u.out).toContain("not implemented (Waypoint 3)");
     expect(b.out).toContain("not implemented (Waypoint 4)");
   });
+});
+
+// The fx_rate check (Rate line, derived fx_rate) and P6-n7 (As of not after Retrieved) through the real CLI, on a
+// committed temp copy of the lint fixture repo. Each case is committed and linted with --base HEAD, so only the
+// committed content is judged (no L4 edit, no new archive URL). Nothing here names the catalog version (P6-m3).
+describe("CLI: fx_rate and As of on a fixture repo", () => {
+  const FXF = "issuers/FX/2026.md";
+  const lintCase = async (patch: Record<string, string>) => {
+    const dir = repo({ ...goodText(), ...patch });
+    git(dir, "init", "-q");
+    git(dir, "add", "-A");
+    git(dir, "commit", "-qm", "case");
+    const { LINT_BASE: _, ...rest } = process.env;
+    const p = Bun.spawn(["bun", join(ROOT, "scripts", "lint.ts"), "--base", "HEAD"], {
+      cwd: dir,
+      env: { ...rest, OBM_NO_NETWORK: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return Promise.all([p.exited, new Response(p.stdout).text()]);
+  };
+  const cases: [string, Record<string, string>, number, RegExp | null][] = [
+    ["the fixture with Rate lines lints clean", {}, 0, null],
+    [
+      "a block fx_rate that differs from the derived rate fails L9",
+      { [FXF]: issuerFile("FX", "2026Q3", fxExtract("EUR", { quote: "1.2", fx: "1.2" })) },
+      1,
+      /^L9 evidence\/base_money\/2026Q3\.md: .*components\[1\] \(ECB\) fx_rate 1\.1 does not equal 1\.2 derived/m,
+    ],
+    [
+      "an FX extract with no Rate fails L7",
+      { [FXF]: issuerFile("FX", "2026Q3", fxExtract("EUR", { rate: null })) },
+      1,
+      /^L7 issuers\/FX\/2026\.md: .*FX extract "FX EUR" has no - Rate:/m,
+    ],
+    [
+      "an As of after Retrieved fails L7",
+      {
+        "issuers/FED/2026.md": issuerFile(
+          "FED",
+          "2026Q3",
+          extract({
+            title: "FED H.4.1",
+            retrieved: "2026-09-29T12:00:00Z",
+            archive: "https://web.archive.org/web/20260929120000/https://example.test/FED-H.4.1",
+            fields: ["- As of: 2026-09"],
+          }),
+        ),
+      },
+      1,
+      /^L7 issuers\/FED\/2026\.md: .*As of 2026-09 \(taken as its last day, 2026-09-30\) is after Retrieved 2026-09-29/m,
+    ],
+  ];
+  const runs = new Map<string, ReturnType<typeof lintCase>>();
+  beforeAll(() => {
+    for (const [name, patch] of cases) runs.set(name, lintCase(patch));
+  });
+  for (const [name, , code, re] of cases)
+    test(`CLI: ${name}`, async () => {
+      const [c, out = ""] = (await runs.get(name)) ?? [];
+      if (re) expect(out).toMatch(re);
+      else expect(out.trim().split("\n").at(-1)).toMatch(/^lint: clean/);
+      expect(c).toBe(code);
+    });
 });

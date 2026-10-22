@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { archiveNet, httpAvailable, httpHead } from "../scripts/lib/archive.ts";
 import { lint } from "../scripts/lib/checks.ts";
-import { parseDecimal, roundHalfEven, sumOfProducts } from "../scripts/lib/decimal.ts";
+import { parseDecimal, roundHalfEven, sumOfProducts, usdPerUnit } from "../scripts/lib/decimal.ts";
 import { headings, links, slugs } from "../scripts/lib/markdown.ts";
 import { good } from "./fixture.ts";
 
@@ -291,5 +291,27 @@ describe("archiveNet: lint's only network use", () => {
     });
     expect(fs).toEqual([]);
     expect([...hosts].sort()).toEqual(["archive.org/wayback/available", "web.archive.org/web/..."]);
+  });
+});
+
+describe("usdPerUnit (fx_rate from Rate and Quote direction)", () => {
+  test("units-per-USD: 1 / Rate, half-to-even, exactly 20 decimal places", () => {
+    expect(usdPerUnit(d("5.1665"), "per USD")).toBe("0.19355463079454175941");
+    expect(usdPerUnit(d("6.7851"), "per USD")).toBe("0.14738176298064877452");
+    expect(usdPerUnit(d("77.7539"), "per USD")).toBe("0.01286109121214498565");
+    expect(usdPerUnit(d("0.8082"), "per USD")).toBe("1.23731749566938876516");
+    expect(usdPerUnit(d("1000"), "per USD")).toBe("0.00100000000000000000");
+    expect(usdPerUnit(d("1"), "per USD")).toBe("1.00000000000000000000");
+  });
+  test("units-per-USD ties: 1/8e18 = 1.25e-19 keeps the even 2; 1/3 rounds down; 2/3 rounds up", () => {
+    expect(usdPerUnit(d("8000000000000000000"), "per USD")).toBe("0.00000000000000000012");
+    expect(usdPerUnit(d("3"), "per USD")).toBe("0.33333333333333333333");
+    expect(usdPerUnit(d("1.5"), "per USD")).toBe("0.66666666666666666667");
+  });
+  test("USD-per-unit: the Rate itself, digit for digit", () => {
+    expect(usdPerUnit(d("1.1417"), "USD per")).toBe("1.1417");
+    expect(usdPerUnit(d("1.1000"), "USD per")).toBe("1.1000");
+    expect(usdPerUnit(d("1.000000000000000000015"), "USD per")).toBe("1.000000000000000000015");
+    expect(usdPerUnit(d("2"), "USD per")).toBe("2");
   });
 });
