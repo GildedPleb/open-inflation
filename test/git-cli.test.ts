@@ -315,7 +315,7 @@ describe("CLI: fx_rate and As of on a fixture repo", () => {
       "an FX extract with no Rate fails L7",
       { [FXF]: issuerFile("FX", "2026Q3", fxExtract("EUR", { rate: null })) },
       1,
-      /^L7 issuers\/FX\/2026\.md: .*FX extract "FX EUR" has no - Rate:/m,
+      /^L7 issuers\/FX\/2026\.md: .*extract "FX EUR" \(line \d+\) has no - Rate: line/m,
     ],
     [
       "an As of after Retrieved fails L7",

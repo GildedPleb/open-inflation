@@ -36,3 +36,23 @@ export function ratioHalfEven(num: bigint, den: bigint): bigint {
   if (twice > den || (twice === den && q % 2n === 1n)) return q + 1n;
   return q;
 }
+
+/** Decimal places of a units-per-USD fx_rate (methodology FX rule: 1 / quote, half-to-even, 20 places). */
+export const FX_DECIMALS = 20;
+
+/** The decimal as written from (digits, scale): trailing zeros kept, so 1.1000 stays 1.1000. */
+export function formatDecimal({ digits, scale }: Decimal): string {
+  if (scale === 0) return digits.toString();
+  const t = digits.toString().padStart(scale + 1, "0");
+  return `${t.slice(0, -scale)}.${t.slice(-scale)}`;
+}
+
+/**
+ * fx_rate (USD per one local unit) from an FX extract's Rate (> 0) and its Quote direction: the Rate itself for a
+ * "USD per <CCY>" quote; for a "<CCY> per USD" quote, 1 / Rate rounded half-to-even to exactly 20 decimal places,
+ * in exact integer arithmetic (1 / (d / 10^s) = 10^s / d).
+ */
+export function usdPerUnit(rate: Decimal, direction: "per USD" | "USD per"): string {
+  if (direction === "USD per") return formatDecimal(rate);
+  return formatDecimal({ digits: ratioHalfEven(pow10(rate.scale + FX_DECIMALS), rate.digits), scale: FX_DECIMALS });
+}

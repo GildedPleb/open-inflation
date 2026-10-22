@@ -846,7 +846,8 @@ describe("L9 aggregation", () => {
       good({
         [FX]: `# FX 2026\n\n## 2026Q3\n\n- Currency: EUR\n\n${extract({ title: "FX note" })}\n\`\`\`\n- Currency: EUR\n\`\`\`\n`,
       }),
-      ["L9"],
+      // The "FX note" extract has no FX fields, so L7 reports it too.
+      ["L9", "L7"],
       /local_currency EUR has no FX extract/,
     ));
   test("no FX file at all fails for a non-USD component", () =>
@@ -1641,8 +1642,7 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
     good({ [path]: `${goodText()[path] ?? issuerFile(iss, "2026Q3")}\n## 2026Q2\n\n${block}`, ...patch });
   const issuer = (asOf: string, title = "FED H.4.1 Q2", extra: string[] = []) =>
     q2(FED, "FED", extract({ title, fields: [`- As of: ${asOf}`, ...extra] }));
-  const fx = (asOf: string) =>
-    q2("issuers/FX/2026.md", "FX", extract({ title: "FX EUR Q2", fields: ["- Currency: EUR", `- As of: ${asOf}`] }));
+  const fx = (asOf: string) => q2("issuers/FX/2026.md", "FX", fxExtract("EUR", { title: "FX EUR Q2", asOf }));
   test("issuer As of 2026-06-30 (quarter end) under Q2 passes", () => passes(issuer("2026-06-30")));
   test("issuer As of 2026-04-01 under Q2 passes", () => passes(issuer("2026-04-01")));
   test("issuer As of with a parenthetical note passes", () => passes(issuer("2026-06-30 (end of period)")));
@@ -1683,7 +1683,7 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
   test("FX window for Q1 ends 03-31 and starts 03-28", async () => {
     const q1 = (asOf: string) =>
       good({
-        "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q1\n\n${extract({ title: "FX EUR Q1", fields: ["- Currency: EUR", `- As of: ${asOf}`] })}`,
+        "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q1\n\n${fxExtract("EUR", { title: "FX EUR Q1", asOf })}`,
       });
     await passes(q1("2026-03-28"));
     await fails(q1("2026-03-27"), ["L7"], /outside 2026-03-28\.\.2026-03-31/);
@@ -1909,9 +1909,12 @@ describe("L7/L9 fx_rate from the adopted FX extract", () => {
     ));
   test("RUB quoted with a decimal comma passes (Rate is the quote with a point)", () =>
     passes(
-      withRef("RUB", "0.01286109121214498565", [
-        fxExtract("RUB", { quote: "77,7539", direction: "RUB per USD", fx: "0.01286109121214498565" }),
-      ]),
+      withRef(
+        "RUB",
+        "0.01286109121214498565",
+        [fxExtract("RUB", { quote: "77,7539", direction: "RUB per USD", fx: "0.01286109121214498565" })],
+        "10",
+      ),
     ));
   test("1 / Rate rounds half-to-even at 20 decimal places: an exact tie keeps the even digit", () =>
     // 1 / 8000000000000000000 = 0.000000000000000000125: the 21st decimal is an exact 5 after an even 2.
@@ -1930,13 +1933,18 @@ describe("L7/L9 fx_rate from the adopted FX extract", () => {
     ));
   test("a USD-per-unit fx_rate is the Rate itself, never rounded, even past 20 decimals", () =>
     passes(
-      withRef("GBP", "1.000000000000000000015", [
-        fxExtract("GBP", {
-          quote: "1.000000000000000000015",
-          direction: "USD per GBP",
-          fx: "1.000000000000000000015",
-        }),
-      ]),
+      withRef(
+        "GBP",
+        "1.000000000000000000015",
+        [
+          fxExtract("GBP", {
+            quote: "1.000000000000000000015",
+            direction: "USD per GBP",
+            fx: "1.000000000000000000015",
+          }),
+        ],
+        "10",
+      ),
     ));
   test("a USD entry needs fx_rate exactly 1", () =>
     fails(
@@ -1947,7 +1955,7 @@ describe("L7/L9 fx_rate from the adopted FX extract", () => {
 
   // The FX extract itself (L7).
   test("a missing Rate fails, and the roll-up cannot be verified", async () => {
-    const fs = await fails(eur({ rate: null }), ["L7", "L9"], /FX extract "FX EUR" has no - Rate:/);
+    const fs = await fails(eur({ rate: null }), ["L7", "L9"], /extract "FX EUR" \(line \d+\) has no - Rate: line/);
     expect(fs.some((f) => f.check === "L9" && /cannot verify fx_rate/.test(f.message))).toBe(true);
   });
   test("a Rate that differs from the Quote as published fails", () =>
@@ -1957,7 +1965,7 @@ describe("L7/L9 fx_rate from the adopted FX extract", () => {
       /Rate 1\.10 is not the Quote as published 1\.1 normalized \(1\.1\)/,
     ));
   test("a Rate with a decimal comma fails (Rate is normalized)", () =>
-    fails(eur({ quote: "1,1", rate: "1,1" }), ["L7", "L9"], /Rate 1,1 must match/));
+    fails(eur({ quote: "1,1", rate: "1,1" }), ["L7", "L9"], /Rate "1,1" must match/));
   test("a grouped quote cannot be normalized: 1,000.5 is not Rate 1000.5", () =>
     fails(
       eur({ quote: "1,000.5", rate: "1000.5", fx: "1000.5" }),
@@ -2043,7 +2051,7 @@ describe("L7 As of not after Retrieved (P6-n7)", () => {
   test("an FX extract As of after Retrieved fails", () =>
     fails(
       good({
-        ["issuers/FX/2026.md"]: issuerFile(
+        "issuers/FX/2026.md": issuerFile(
           "FX",
           "2026Q3",
           fxExtract("EUR", {
