@@ -73,6 +73,25 @@ describe("repository identity", () => {
     expect((await Bun.file(join(ROOT, "package.json")).json()).name).toBe("open-inflation");
     expect(await Bun.file(join(ROOT, "README.md")).text()).toContain("GildedPleb/open-inflation");
   });
+  test("code is MIT; data is CC BY 4.0; README names both and the quote carve-out", async () => {
+    const read = (p: string) => Bun.file(join(ROOT, p)).text();
+    expect((await Bun.file(join(ROOT, "package.json")).json()).license).toBe("MIT");
+    expect(await read("LICENSE")).toMatch(/^MIT License\n\nCopyright \(c\) 2026 Gilded Pleb\n/);
+    const data = await read("LICENSE-DATA");
+    expect(data).toContain("https://creativecommons.org/licenses/by/4.0/legalcode");
+    expect(data).toContain("Attribution 4.0 International");
+    for (const scope of ["base_money.csv", "catalog.json", "evidence/", "issuers/", "methodology/"])
+      expect(data).toContain(scope);
+    const readme = await read("README.md");
+    expect(readme).toMatch(/^## License$/m);
+    expect(readme).toContain("[MIT](LICENSE)");
+    expect(readme).toContain("[CC BY 4.0](LICENSE-DATA)");
+    expect(readme).toMatch(/verbatim central-bank quotes .* each source's own reuse terms/i);
+  });
+  test("LICENSE files are text that lint accepts (L10)", async () => {
+    const fs = await lint(loadSnapshot(ROOT, null), { archive: "off" });
+    expect(fs.filter((f) => f.file.startsWith("LICENSE"))).toEqual([]);
+  });
 });
 
 describe("CLI", () => {

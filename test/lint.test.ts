@@ -584,7 +584,34 @@ describe("L11 catalog.json", () => {
     frequency: "quarterly",
     methodology: "methodology/base_money.md",
     last_updated: "2026-10-02",
+    version: "0.1.0",
+    license: "CC-BY-4.0",
   };
+  const without = (k: keyof typeof entry) => Object.fromEntries(Object.entries(entry).filter(([x]) => x !== k));
+  test("version missing", () =>
+    fails(good({ "catalog.json": catalog([without("version")]) }), ["L11"], /missing "version"/));
+  for (const v of ["0.1", "v0.1.0", "01.0.0", "1.0.0.0", "", "latest"]) {
+    test(`version ${JSON.stringify(v)} is not semver`, () =>
+      fails(
+        good({ "catalog.json": catalog([{ ...entry, version: v }]) }),
+        ["L11"],
+        /version .* is not a semver string/,
+      ));
+  }
+  test("version as a number is not semver", () =>
+    fails(good({ "catalog.json": catalog([{ ...entry, version: 1 }]) }), ["L11"], /version 1 is not a semver string/));
+  test("semver with pre-release and build passes", () =>
+    passes(good({ "catalog.json": catalog([{ ...entry, version: "1.0.0-rc.1+basket.2" }]) })));
+  test("license missing", () =>
+    fails(good({ "catalog.json": catalog([without("license")]) }), ["L11"], /missing "license"/));
+  for (const l of ["MIT", "cc-by-4.0", "CC-BY-4", "", null]) {
+    test(`license ${JSON.stringify(l)} is not a known data license`, () =>
+      fails(
+        good({ "catalog.json": catalog([{ ...entry, license: l }]) }),
+        ["L11"],
+        /license .* is not a known data license \(CC-BY-4.0\)/,
+      ));
+  }
   test("last_updated null passes", () => passes(good({ "catalog.json": catalog([{ ...entry, last_updated: null }]) })));
   test("invalid JSON", () => fails(good({ "catalog.json": "{" }), ["L11"], /JSON/));
   test("missing catalog", () => fails(good({ "catalog.json": null }), ["L11"], /missing/));
