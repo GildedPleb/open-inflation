@@ -73,6 +73,14 @@ describe("L1 CSV contract", () => {
 });
 
 describe("L2 evidence existence", () => {
+  test("two quarters, each row pointing at its own roll-up, passes", () =>
+    passes(
+      good({
+        "evidence/2026Q2_basemoney.md": rollup(machineBlock({ quarter: "2026Q2", asOf: "2026-06-30" })),
+        "INDEX.md": index("- [2026Q2](evidence/2026Q2_basemoney.md)"),
+        ...csv("2026-06-30,1221,evidence/2026Q2_basemoney.md", ROW),
+      }),
+    ));
   test("bare filename is rejected; evidence_id is a relative path", () =>
     fails(good(csv("2026-09-30,1221,2026Q3_basemoney.md")), ["L2"], /evidence\/YYYYQn_basemoney\.md/));
   test("roll-up file does not exist", () =>
@@ -155,6 +163,8 @@ describe("L5 link integrity", () => {
 });
 
 describe("L6 INDEX completeness", () => {
+  test("links with anchors count as linking the file", () =>
+    passes(good({ "INDEX.md": index().replace("(issuers/FX/2026.md)", "(issuers/FX/2026.md#2026q3)") })));
   test("issuer-year file not linked", () =>
     fails(
       good({ "INDEX.md": index().replace("- [FX 2026](issuers/FX/2026.md)\n", "") }),
@@ -446,6 +456,7 @@ describe("L11 catalog.json", () => {
     methodology: "methodology/base_money.md",
     last_updated: "2026-10-02",
   };
+  test("last_updated null passes", () => passes(good({ "catalog.json": catalog([{ ...entry, last_updated: null }]) })));
   test("invalid JSON", () => fails(good({ "catalog.json": "{" }), ["L11"], /JSON/));
   test("missing catalog", () => fails(good({ "catalog.json": null }), ["L11"], /missing/));
   test("series path does not exist", () =>

@@ -3,7 +3,7 @@
 // Network: HEADs only archive URLs added since base; --archive-all sweeps every archive URL.
 import { httpHead } from "./lib/archive.ts";
 import { lint } from "./lib/checks.ts";
-import { loadSnapshot } from "./lib/git.ts";
+import { loadSnapshot, UnknownBase } from "./lib/git.ts";
 
 const USAGE = "usage: bun run lint [--base <ref>] [--archive-all]";
 
@@ -26,7 +26,15 @@ if (!args) {
 const dir = process.cwd();
 const hasHead = Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", "HEAD"]).exitCode === 0;
 const base = args.base ?? (process.env.LINT_BASE || (hasHead ? "HEAD" : null));
-const findings = await lint(loadSnapshot(dir, base), {
+let snapshot: ReturnType<typeof loadSnapshot>;
+try {
+  snapshot = loadSnapshot(dir, base);
+} catch (e) {
+  if (!(e instanceof UnknownBase)) throw e;
+  console.error(`lint: ${e.message}`);
+  process.exit(2);
+}
+const findings = await lint(snapshot, {
   archive: args.all ? "all" : "added",
   head: httpHead(fetch, 15_000),
 });

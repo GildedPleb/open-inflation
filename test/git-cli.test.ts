@@ -64,7 +64,8 @@ describe("git snapshot loader", () => {
 
 describe("CLI", () => {
   const run = (script: string, cwd: string, ...args: string[]) => {
-    const r = Bun.spawnSync(["bun", join(ROOT, "scripts", script), ...args], { cwd });
+    const { LINT_BASE: _, ...env } = process.env;
+    const r = Bun.spawnSync(["bun", join(ROOT, "scripts", script), ...args], { cwd, env });
     return { code: r.exitCode, out: dec.decode(r.stdout) + dec.decode(r.stderr) };
   };
   test("lint: 0 on clean, 1 with findings, 2 on bad usage", () => {
@@ -74,6 +75,8 @@ describe("CLI", () => {
     expect(bad.code).toBe(1);
     expect(bad.out).toMatch(/L1 base_money\.csv: header/);
     expect(run("lint.ts", dir, "--nope").code).toBe(2);
+    const unknown = run("lint.ts", dir, "--base", "no-such-ref");
+    expect([unknown.code, unknown.out.trim()]).toEqual([2, 'lint: unknown base ref "no-such-ref"']);
     expect(run("lint.ts", ROOT).code).toBe(0);
   });
   test("update and backfill are stubs that exit 1", () => {

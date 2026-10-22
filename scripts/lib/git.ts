@@ -11,6 +11,12 @@ function git(dir: string, args: string[], input?: Uint8Array): Uint8Array {
   return r.stdout;
 }
 
+export class UnknownBase extends Error {
+  constructor(readonly ref: string) {
+    super(`unknown base ref "${ref}"`);
+  }
+}
+
 const zsplit = (b: Uint8Array) => new TextDecoder().decode(b).split("\0").filter(Boolean);
 
 /**
@@ -32,7 +38,9 @@ export function loadSnapshot(dir: string, base: string | null): Snapshot {
 }
 
 function readTree(dir: string, ref: string): Files {
-  const sha = new TextDecoder().decode(git(dir, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`])).trim();
+  const r = Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  if (r.exitCode !== 0) throw new UnknownBase(ref);
+  const sha = new TextDecoder().decode(r.stdout).trim();
   const paths = zsplit(git(dir, ["ls-tree", "-r", "-z", "--name-only", sha, "--", ...BASE_PREFIXES]));
   const out = new Map<string, Uint8Array>();
   if (paths.length === 0) return out;
