@@ -915,6 +915,20 @@ describe("L12 placement", () => {
         "INDEX.md": index("- [BOJ 2026](issuers/BOJ/2026.md)"),
       }),
     ));
+  test("issuers/FX/<YYYY>.md passes though FX is not a basket issuer", () =>
+    passes(
+      good({
+        "issuers/FX/2026.md": issuerFile("FX", "2026Q3"),
+        "INDEX.md": index("- [FX 2026](issuers/FX/2026.md)"),
+      }),
+    ));
+  // Assay (a): FX is an exact, case-sensitive folder name, and issuer folders are upper-case ids, even when no
+  // valid catalog basket exists to compare against.
+  for (const p of ["issuers/fx/2026.md", "issuers/Fx/2026.md", "issuers/fed/2026.md", "issuers/FX/2026.MD"])
+    test(`${p} is misplaced even with no valid catalog basket`, async () => {
+      const fs = await lint(good({ "catalog.json": '{"series": []}', [p]: "# x\n" }), OFF);
+      expect(fs.filter((f) => f.check === "L12").map((f) => f.file)).toEqual([p]);
+    });
   test(".gitkeep anywhere under issuers/ and evidence/, and files outside them, pass", () =>
     passes(
       good({
