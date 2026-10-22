@@ -33,7 +33,12 @@ const text = (m: ReadonlyMap<string, Uint8Array> | null, p: string) => {
 
 describe("git snapshot loader", () => {
   test("working tree vs base; deleted and ignored files excluded; untracked included", () => {
-    const dir = repo({ "issuers/A/2026.md": "one\n", "gone.txt": "x\n", ".gitignore": "ignored.txt\n" });
+    const dir = repo({
+      "issuers/A/2026.md": "one\n",
+      "base_money.csv": "date,value,evidence_id\n",
+      "gone.txt": "x\n",
+      ".gitignore": "ignored.txt\n",
+    });
     git(dir, "init", "-q");
     git(dir, "add", ".");
     git(dir, "commit", "-qm", "base");
@@ -42,7 +47,8 @@ describe("git snapshot loader", () => {
     writeFileSync(join(dir, "new.md"), "yes\n");
     unlinkSync(join(dir, "gone.txt"));
     const s = loadSnapshot(dir, "HEAD");
-    expect([...s.files.keys()].sort()).toEqual([".gitignore", "issuers/A/2026.md", "new.md"]);
+    expect([...s.files.keys()].sort()).toEqual([".gitignore", "base_money.csv", "issuers/A/2026.md", "new.md"]);
+    expect([...(s.base?.keys() ?? [])].sort()).toEqual(["base_money.csv", "issuers/A/2026.md"]);
     expect(text(s.files, "issuers/A/2026.md")).toBe("one\ntwo\n");
     expect(text(s.base, "issuers/A/2026.md")).toBe("one\n");
   });

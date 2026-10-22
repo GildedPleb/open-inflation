@@ -130,8 +130,54 @@ describe("L4 append-only (no committed line changes)", () => {
         ...csv("2026-09-30,1002,evidence/base_money/2026Q3.md"),
       }),
     ));
-  test("other files (CSV, INDEX) are not append-only", () =>
+  test("INDEX is not append-only", () =>
     passes(onGood({ "INDEX.md": index().replace("# Index", "# Evidence index") })));
+});
+
+describe("L4 base_money.csv rows", () => {
+  const fedOnly = (local: string, total: string) =>
+    machineBlock({
+      components: [
+        "  - issuer: FED",
+        "    anchor: issuers/FED/2026.md#2026q3",
+        "    local_currency: USD",
+        `    local_value: "${local}"`,
+        '    fx_rate: "1"',
+      ].join("\n"),
+      total,
+    });
+  const revised = (block: string) => `${rollup()}\n## Revision 1\n\n${block}`;
+  const Q3 = (v: string) => `2026-09-30,${v},evidence/base_money/2026Q3.md`;
+  test("a new row passes", () =>
+    passes(
+      onGood({
+        "evidence/base_money/2026Q4.md": rollup(machineBlock({ quarter: "2026Q4", asOf: "2026-12-31" })),
+        "INDEX.md": index("- [2026Q4](evidence/base_money/2026Q4.md)"),
+        ...csv(ROW, "2026-12-31,1221,evidence/base_money/2026Q4.md"),
+      }),
+    ));
+  test("deleting a committed row fails", () =>
+    fails(onGood({ "base_money.csv": CSV_HEADER }), ["L4"], /row for 2026-09-30 was deleted/));
+  test("editing a value without a roll-up revision block fails", () =>
+    fails(onGood(csv(Q3("1222"))), ["L4", "L9"], /1221 -> 1222 without appending a revision block/));
+  test("editing a value with a revision block whose total differs fails", () =>
+    fails(
+      onGood({ [ROLLUP]: revised(fedOnly("1001.5", "1002")), ...csv(Q3("1003")) }),
+      ["L4", "L9"],
+      /revision total_usd 1002/,
+    ));
+  test("editing a value with a matching revision block passes", () =>
+    passes(onGood({ [ROLLUP]: revised(fedOnly("1001.5", "1002")), ...csv(Q3("1002")) })));
+  test("changing a committed row's evidence_id fails", () =>
+    fails(
+      onGood({
+        "evidence/base_money/2026Q4.md": rollup(machineBlock({ quarter: "2026Q4", asOf: "2026-12-31" })),
+        "INDEX.md": index("- [2026Q4](evidence/base_money/2026Q4.md)"),
+        ...csv("2026-09-30,1221,evidence/base_money/2026Q4.md"),
+      }),
+      ["L4", "L2"],
+      /evidence_id changed/,
+    ));
 });
 
 describe("L5 link integrity", () => {
@@ -447,6 +493,41 @@ describe("L9 aggregation", () => {
     fails(good({ "evidence/base_money/notes.md": "# notes\n" }), ["L9", "L6"], /not a roll-up name/));
   test("series folder with no roll-up schema yet", () =>
     fails(good({ "evidence/cpi_u/2026Q3.md": "# cpi\n" }), ["L9", "L6"], /no roll-up schema for series cpi_u/));
+});
+
+describe("L9 adopted_conflicts", () => {
+  const BOJ = "issuers/BOJ/2026.md";
+  const conflict = (entry: string) =>
+    good({
+      [BOJ]: issuerFile("BOJ", "2026Q3", extract({ title: "BOJ primary" }), extract({ title: "IMF secondary" })),
+      "INDEX.md": index("- [BOJ 2026](issuers/BOJ/2026.md)"),
+      [ROLLUP]: rollup(machineBlock({}).replace("adopted_conflicts: []", `adopted_conflicts:\n${entry}`)),
+    });
+  const OK = [
+    "  - adopted_anchor: issuers/BOJ/2026.md#boj-primary",
+    "    rejected_anchors:",
+    "      - issuers/BOJ/2026.md#imf-secondary",
+    '    reason: "primary source preferred"',
+  ].join("\n");
+  test("adopted and rejected anchors with a reason pass", () => passes(conflict(OK)));
+  test("rejected_anchors is required", () =>
+    fails(conflict(OK.replace(/ {4}rejected_anchors:\n.*\n/, "")), ["L9"], /adopted_conflicts\[0\]\.rejected_anchors/));
+  test("rejected_anchors must be non-empty", () =>
+    fails(
+      conflict(OK.replace(/ {4}rejected_anchors:\n.*\n/, "    rejected_anchors: []\n")),
+      ["L9"],
+      /rejected_anchors must be a non-empty list/,
+    ));
+  test("rejected_anchors entries are anchors (strings)", () =>
+    fails(
+      conflict(OK.replace("      - issuers/BOJ/2026.md#imf-secondary", "      - 7")),
+      ["L9"],
+      /rejected_anchors\[0\]/,
+    ));
+  test("each rejected anchor must resolve", () =>
+    fails(conflict(OK.replace("#imf-secondary", "#imf")), ["L5"], /machine block anchor.*#imf/));
+  test("adopted anchor must resolve", () =>
+    fails(conflict(OK.replace("#boj-primary", "#BOJ-primary")), ["L5"], /machine block anchor.*#BOJ-primary/));
 });
 
 describe("L9 benchmarks (optional, never summed)", () => {
