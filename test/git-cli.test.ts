@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -256,15 +256,21 @@ describe("CLI", () => {
       /^L11 catalog\.json: series base_money appends basket version 2 but version 0\.2\.0 does not bump the major/m,
     ],
   ];
+  // The five fixture repos lint in parallel (each case's two lints stay in order), keeping the suite near 1 s.
+  const major = append("1.0.0");
+  const runs = new Map<unknown, ReturnType<typeof basketCase>>();
+  beforeAll(() => {
+    for (const edit of [...cases.map((c) => c[1]), major]) runs.set(edit, basketCase(edit));
+  });
   for (const [name, edit, re] of cases)
     test(`CLI: ${name}, committed or not`, async () => {
-      for (const [code, out] of await basketCase(edit)) {
+      for (const [code, out] of (await runs.get(edit)) ?? []) {
         expect(out).toMatch(re);
         expect(code).toBe(1);
       }
     });
   test("CLI: appending a basket with a major bump lints clean", async () => {
-    for (const [code, out] of await basketCase(append("1.0.0")))
+    for (const [code, out] of (await runs.get(major)) ?? [])
       expect([code, out.trim().split("\n").at(-1)]).toEqual([0, expect.stringMatching(/^lint: clean/)]);
   });
 
