@@ -1305,8 +1305,35 @@ const seriesList = (j: unknown): Record<string, unknown>[] =>
   isObj(j) && Array.isArray(j.series) ? j.series.filter(isObj) : [];
 
 /**
+ * semver.org 2.0.0 precedence (section 11) of two versions: negative when a < b, 0 when equal, positive when a > b;
+ * null when either is not semver. MAJOR.MINOR.PATCH compare numerically; a pre-release is lower than its release;
+ * pre-release identifiers compare left to right (numeric ones numerically and below alphanumeric ones, others in
+ * ASCII order), and a shorter list that is a prefix is lower. Build metadata is ignored.
+ */
+export function compareSemver(a: string, b: string): number | null {
+  const [x, y] = [SEMVER.exec(a), SEMVER.exec(b)];
+  if (!x || !y) return null;
+  for (const k of [1, 2, 3]) {
+    const [p, q] = [BigInt(x[k] ?? "0"), BigInt(y[k] ?? "0")];
+    if (p !== q) return p < q ? -1 : 1;
+  }
+  const [pa, pb] = [x[4], y[4]];
+  if (pa === undefined || pb === undefined) return pa === pb ? 0 : pa === undefined ? 1 : -1;
+  const [ia, ib] = [pa.split("."), pb.split(".")];
+  for (let i = 0; i < Math.min(ia.length, ib.length); i++) {
+    const [p, q] = [ia[i] ?? "", ib[i] ?? ""];
+    if (p === q) continue;
+    const [np, nq] = [/^\d+$/.test(p), /^\d+$/.test(q)];
+    if (np && nq) return BigInt(p) < BigInt(q) ? -1 : 1;
+    if (np !== nq) return np ? -1 : 1;
+    return p < q ? -1 : 1;
+  }
+  return Math.sign(ia.length - ib.length);
+}
+
+/**
  * Basket history against the base: existing baskets are immutable (L4); appending one bumps the series' major
- * version (L11). A base still in the legacy `basket` shape reads as baskets [{version 1, issuers: basket}], so
+ * version (L11); the series version never goes down (L11, P10-n1). A base still in the legacy `basket` shape reads as baskets [{version 1, issuers: basket}], so
  * migrating it to `baskets` keeps its issuers and only adds floor_pct.
  */
 function basketHistory(ctx: Ctx, emit: Emit) {
@@ -1335,6 +1362,15 @@ function basketHistory(ctx: Ctx, emit: Emit) {
           "L4",
           F,
           `basket version ${j + 1} of ${String(s.id)} was changed; baskets are immutable (append a new version with a major version bump)`,
+        );
+    }
+    if (typeof s.version === "string" && typeof b.version === "string") {
+      const order = compareSemver(s.version, b.version);
+      if (order !== null && order < 0)
+        emit(
+          "L11",
+          F,
+          `series ${String(s.id)} version ${s.version} is lower than ${b.version} in the base; the catalog version never goes down (semver precedence)`,
         );
     }
     const major = (v: unknown) => (typeof v === "string" ? SEMVER.exec(v)?.[1] : undefined);

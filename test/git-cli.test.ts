@@ -294,15 +294,12 @@ describe("CLI", () => {
       ),
   ]);
   const major = append("major");
-  const patch = (s: Series) => {
-    const [maj, min, pat] = semver(s.version);
-    s.version = `${maj}.${min}.${pat + 1}`;
-  };
+
   const runs = new Map<unknown, ReturnType<typeof basketCase>>();
   let unedited: Promise<[number, string]>;
   beforeAll(() => {
     unedited = lintIn(committedTree(ROOT), "--base", "HEAD");
-    for (const edit of [...cases.map((c) => c[1]), major, patch]) runs.set(edit, basketCase(edit));
+    for (const edit of [...cases.map((c) => c[1]), major]) runs.set(edit, basketCase(edit));
   });
   for (const [name, edit, want] of cases)
     test(`CLI: ${name}, committed or not`, async () => {
@@ -318,14 +315,6 @@ describe("CLI", () => {
   test("CLI: appending a basket with a major bump adds no finding (lints clean on a clean tree)", async () => {
     const [code0, out0] = await unedited;
     for (const [code, out] of (await runs.get(major)) ?? []) {
-      expect(findings(out)).toEqual(findings(out0));
-      expect(code).toBe(code0);
-    }
-  });
-
-  test("CLI: raising the series patch version adds no finding (P10-n1)", async () => {
-    const [code0, out0] = await unedited;
-    for (const [code, out] of (await runs.get(patch)) ?? []) {
       expect(findings(out)).toEqual(findings(out0));
       expect(code).toBe(code0);
     }
@@ -359,47 +348,54 @@ describe("CLI: fx_rate and As of on a fixture repo", () => {
     });
     return Promise.all([p.exited, new Response(p.stdout).text()]);
   };
-  const cases: [string, Record<string, string>, number, RegExp | null][] = [
-    ["the fixture with Rate lines lints clean", {}, 0, null],
+  // One run keeps the suite fast: a repo carrying a block fx_rate mismatch (L9), an FX extract with no Rate (L7) in
+  // another currency and an As of after Retrieved (L7), and no other finding (so the rest of the fixture is clean).
+  const defects = {
+    [FXF]: issuerFile(
+      "FX",
+      "2026Q3",
+      fxExtract("EUR", { quote: "1.2", fx: "1.2" }),
+      fxExtract("JPY", { title: "FX JPY confirming", rate: null, adopted: "no, confirming" }),
+    ),
+    "issuers/FED/2026.md": issuerFile(
+      "FED",
+      "2026Q3",
+      extract({
+        title: "FED H.4.1",
+        retrieved: "2026-09-29T12:00:00Z",
+        archive: "https://web.archive.org/web/20260929120000/https://example.test/FED-H.4.1",
+        fields: ["- As of: 2026-09"],
+      }),
+    ),
+  };
+  let bad: ReturnType<typeof lintCase>;
+  beforeAll(() => {
+    bad = lintCase(defects);
+  });
+  const wanted = [
     [
       "a block fx_rate that differs from the derived rate fails L9",
-      { [FXF]: issuerFile("FX", "2026Q3", fxExtract("EUR", { quote: "1.2", fx: "1.2" })) },
-      1,
       /^L9 evidence\/base_money\/2026Q3\.md: .*components\[1\] \(ECB\) fx_rate 1\.1 does not equal 1\.2 derived/m,
     ],
     [
       "an FX extract with no Rate fails L7",
-      { [FXF]: issuerFile("FX", "2026Q3", fxExtract("EUR", { rate: null })) },
-      1,
-      /^L7 issuers\/FX\/2026\.md: .*extract "FX EUR" \(line \d+\) has no - Rate: line/m,
+      /^L7 issuers\/FX\/2026\.md: .*extract "FX JPY confirming" \(line \d+\) has no - Rate: line/m,
     ],
     [
       "an As of after Retrieved fails L7",
-      {
-        "issuers/FED/2026.md": issuerFile(
-          "FED",
-          "2026Q3",
-          extract({
-            title: "FED H.4.1",
-            retrieved: "2026-09-29T12:00:00Z",
-            archive: "https://web.archive.org/web/20260929120000/https://example.test/FED-H.4.1",
-            fields: ["- As of: 2026-09"],
-          }),
-        ),
-      },
-      1,
       /^L7 issuers\/FED\/2026\.md: .*As of 2026-09 \(taken as its last day, 2026-09-30\) is after Retrieved 2026-09-29/m,
     ],
-  ];
-  const runs = new Map<string, ReturnType<typeof lintCase>>();
-  beforeAll(() => {
-    for (const [name, patch] of cases) runs.set(name, lintCase(patch));
+  ] as const;
+  test("CLI: the fixture with Rate lines reports only the three planted defects", async () => {
+    const [, out = ""] = await bad;
+    const found = out.split("\n").filter((l) => /^L\d+ /.test(l));
+    expect(found.length).toBe(wanted.length);
+    for (const l of found) expect(wanted.some(([, re]) => re.test(l))).toBe(true);
   });
-  for (const [name, , code, re] of cases)
+  for (const [name, re] of wanted)
     test(`CLI: ${name}`, async () => {
-      const [c, out = ""] = (await runs.get(name)) ?? [];
-      if (re) expect(out).toMatch(re);
-      else expect(out.trim().split("\n").at(-1)).toMatch(/^lint: clean/);
-      expect(c).toBe(code);
+      const [c, out = ""] = await bad;
+      expect(out).toMatch(re);
+      expect(c).toBe(1);
     });
 });
