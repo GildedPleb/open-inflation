@@ -585,18 +585,57 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     if (r?.[1] !== SERIES) continue; // L12 reports misplaced files
     const q = r[2] as string;
     const all = machines(body);
+    const basket = catalogBasket(ctx);
     for (const [i, m] of all.entries()) {
       const current = i === all.length - 1;
       const label =
         all.length === 1 || !m.ok ? "machine block" : `machine block ${i + 1} of ${all.length} (line ${m.line})`;
       if (!m.ok) e(m.error);
-      else blockAggregation(m.data, q, label, current ? rows.find((r) => quarterOf(r.date) === q) : undefined, e);
+      else
+        blockAggregation(m.data, q, label, current ? rows.find((r) => quarterOf(r.date) === q) : undefined, basket, e);
     }
   }
 }
 
+/**
+ * Assay (c): components + exclusions are exactly the catalog basket, each issuer once. Skipped when the
+ * catalog has no basket (L11 reports that). Entries with no issuer are reported by the field checks.
+ */
+function basketCover(comps: unknown[], excl: unknown[], basket: Set<string>): string[] {
+  if (basket.size === 0) return [];
+  const errs: string[] = [];
+  const ids = (key: string, xs: unknown[]) => {
+    const out: string[] = [];
+    for (const [i, x] of xs.entries()) {
+      const iss = isObj(x) ? x.issuer : undefined;
+      if (!nonEmpty(iss)) continue;
+      out.push(iss);
+      if (!basket.has(iss)) errs.push(`${key}[${i}].issuer ${iss} is not in the catalog basket`);
+    }
+    for (const iss of new Set(out)) {
+      const n = out.filter((x) => x === iss).length;
+      if (n > 1) errs.push(`${iss} is listed ${n} times in ${key}`);
+    }
+    return new Set(out);
+  };
+  const c = ids("components", comps);
+  const x = ids("exclusions", excl);
+  for (const iss of c) if (x.has(iss)) errs.push(`${iss} is in both components and exclusions`);
+  for (const iss of basket)
+    if (!c.has(iss) && !x.has(iss))
+      errs.push(`basket issuer ${iss} is neither a component nor excluded (list it under exclusions with a reason)`);
+  return errs;
+}
+
 /** L9 on one machine block of roll-up quarter `q`; `row` is the CSV row to match, given only for the last block. */
-function blockAggregation(d: unknown, q: string, label: string, row: Row | undefined, e: (m: string) => void) {
+function blockAggregation(
+  d: unknown,
+  q: string,
+  label: string,
+  row: Row | undefined,
+  basket: Set<string>,
+  e: (m: string) => void,
+) {
   if (!isObj(d)) {
     e(`${label} is not a mapping`);
     return;
@@ -642,7 +681,8 @@ function blockAggregation(d: unknown, q: string, label: string, row: Row | undef
   };
   for (const k of Object.keys(d)) if (!MACHINE_KEYS.includes(k)) errs.push(`unknown key "${k}"`);
   if (d.cross_checks !== undefined) errs.push(...crossChecks(d.cross_checks));
-  list("exclusions", ["reason"]);
+  list("exclusions", ["issuer", "reason"]);
+  errs.push(...basketCover(comps, Array.isArray(d.exclusions) ? d.exclusions : [], basket));
   list("adopted_conflicts", ["adopted_anchor", "reason"]);
   if (Array.isArray(d.adopted_conflicts))
     for (const [i, c] of d.adopted_conflicts.entries()) {
