@@ -11,6 +11,8 @@ export const CSV_HEADER = "date,value,evidence_id";
 export const MAX_BYTES = 1024 * 1024;
 /** evidence/<series>/YYYYQn.md -> [series, quarter]. */
 const ROLLUP = /^evidence\/([a-z][a-z0-9_]*)\/(\d{4}Q[1-4])\.md$/;
+/** The research log for one roll-up quarter (exact, case-sensitive). */
+const RESEARCH_LOG = /^research\/base_money\/\d{4}Q[1-4]\.md$/;
 const ISSUER_YEAR = /^issuers\/[^/]+\/\d{4}\.md$/;
 const QUARTER_ENDS = ["03-31", "06-30", "09-30", "12-31"];
 const BOM = "\uFEFF";
@@ -121,18 +123,23 @@ function checkTarget(ctx: Ctx, from: string, what: string, target: string, rootR
 
 type Machine = { ok: true; data: unknown; line: number } | { ok: false; error: string };
 
-/** The authoritative machine block: the last ```yaml block (earlier ones are superseded revisions). */
-function machine(body: string): Machine {
+/** Every ```yaml machine block, in order. A roll-up has one or more; each later one is an appended revision. */
+function machines(body: string): Machine[] {
   if (/^---\r?\n/.test(body))
-    return { ok: false, error: "front-matter is not a machine block; use a fenced ```yaml block only" };
-  const block = fencedBlocks(body, ["yaml", "yml"]).at(-1);
-  if (!block) return { ok: false, error: "has no ```yaml machine block" };
-  try {
-    return { ok: true, data: Bun.YAML.parse(block.body), line: block.line };
-  } catch (e) {
-    return { ok: false, error: `machine block (line ${block.line}) is not valid YAML: ${(e as Error).message}` };
-  }
+    return [{ ok: false, error: "front-matter is not a machine block; use a fenced ```yaml block only" }];
+  const blocks = fencedBlocks(body, ["yaml", "yml"]);
+  if (blocks.length === 0) return [{ ok: false, error: "has no ```yaml machine block" }];
+  return blocks.map((block): Machine => {
+    try {
+      return { ok: true, data: Bun.YAML.parse(block.body), line: block.line };
+    } catch (e) {
+      return { ok: false, error: `machine block (line ${block.line}) is not valid YAML: ${(e as Error).message}` };
+    }
+  });
 }
+
+/** The current machine block: the last one (earlier ones are superseded revisions, still validated by L9). */
+const machine = (body: string): Machine => machines(body).at(-1) as Machine;
 
 // ---------- L10 ----------
 
@@ -566,80 +573,85 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     const r = ROLLUP.exec(p);
     if (r?.[1] !== SERIES) continue; // L12 reports misplaced files
     const q = r[2] as string;
-    const m = machine(body);
-    if (!m.ok) {
-      e(m.error);
-      continue;
+    const all = machines(body);
+    for (const [i, m] of all.entries()) {
+      const current = i === all.length - 1;
+      const label =
+        all.length === 1 || !m.ok ? "machine block" : `machine block ${i + 1} of ${all.length} (line ${m.line})`;
+      if (!m.ok) e(m.error);
+      else blockAggregation(m.data, q, label, current ? rows.find((r) => quarterOf(r.date) === q) : undefined, e);
     }
-    const d = m.data;
-    if (!isObj(d)) {
-      e("machine block is not a mapping");
-      continue;
-    }
-    const errs: string[] = [];
-    if (d.quarter !== q) errs.push(`quarter ${show(d.quarter)} differs from filename quarter ${q}`);
-    if (d.as_of !== quarterEnd(q)) errs.push(`as_of ${show(d.as_of)} must be the quarter-end ${quarterEnd(q)}`);
-    if (d.unit !== "USD") errs.push(`unit must be "USD", got ${show(d.unit)}`);
-    const comps = Array.isArray(d.components) ? d.components : [];
-    if (comps.length === 0) errs.push("components must be a non-empty list");
-    const pairs: [NonNullable<ReturnType<typeof parseDecimal>>, NonNullable<ReturnType<typeof parseDecimal>>][] = [];
-    for (const [i, c] of comps.entries()) {
-      if (!isObj(c)) {
-        errs.push(`components[${i}] must be a mapping`);
-        continue;
-      }
-      if (!nonEmpty(c.issuer)) errs.push(`components[${i}].issuer is required`);
-      if (!nonEmpty(c.anchor)) errs.push(`components[${i}].anchor is required`);
-      else if (nonEmpty(c.issuer)) {
-        const want = `issuers/${c.issuer}/${q.slice(0, 4)}.md#${q.toLowerCase()}`;
-        if (c.anchor !== want)
-          errs.push(`components[${i}].anchor ${c.anchor} must be ${want} (the issuer's ${q} section)`);
-      }
-      if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
-        errs.push(`components[${i}].local_currency must be an ISO 4217 code`);
-      const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
-      const fx = typeof c.fx_rate === "string" ? parseDecimal(c.fx_rate) : null;
-      if (!v) errs.push(`components[${i}].local_value must be a decimal string (quoted), got ${show(c.local_value)}`);
-      if (!fx || fx.digits === 0n)
-        errs.push(`components[${i}].fx_rate must be a positive decimal string (quoted), got ${show(c.fx_rate)}`);
-      if (v && fx) pairs.push([v, fx]);
-    }
-    if (comps.some((c) => isObj(c) && c.local_currency !== "USD") && !nonEmpty(d.fx_source_anchor))
-      errs.push("fx_source_anchor is required when any component is not USD");
-    const list = (key: string, need: string[]) => {
-      const v = d[key];
-      if (!Array.isArray(v)) {
-        errs.push(`${key} must be a list`);
-        return;
-      }
-      for (const [i, x] of v.entries())
-        for (const k of need) if (!isObj(x) || !nonEmpty(x[k])) errs.push(`${key}[${i}].${k} is required`);
-    };
-    for (const k of Object.keys(d)) if (!MACHINE_KEYS.includes(k)) errs.push(`unknown key "${k}"`);
-    if (d.cross_checks !== undefined) errs.push(...crossChecks(d.cross_checks));
-    list("exclusions", ["reason"]);
-    list("adopted_conflicts", ["adopted_anchor", "reason"]);
-    if (Array.isArray(d.adopted_conflicts))
-      for (const [i, c] of d.adopted_conflicts.entries()) {
-        const ra = isObj(c) ? c.rejected_anchors : undefined;
-        if (!Array.isArray(ra) || ra.length === 0)
-          errs.push(`adopted_conflicts[${i}].rejected_anchors must be a non-empty list of anchors`);
-        else
-          for (const [j, a] of ra.entries())
-            if (!nonEmpty(a)) errs.push(`adopted_conflicts[${i}].rejected_anchors[${j}] must be an anchor string`);
-      }
-    if (typeof d.total_usd !== "string" || !/^(0|[1-9]\d*)$/.test(d.total_usd))
-      errs.push(`total_usd must be an integer string (quoted), got ${show(d.total_usd)}`);
-    for (const x of errs) e(`machine block: ${x}`);
-    if (errs.length > 0) continue;
-    const total = d.total_usd as string;
-    const got = roundHalfEven(sumOfProducts(pairs));
-    if (got !== BigInt(total))
-      e(`total_usd ${total} but recomputed ${got} (exact sum of local_value x fx_rate, rounded half-to-even)`);
-    const row = rows.find((r) => quarterOf(r.date) === q);
-    if (row && row.value !== total)
-      e(`CSV value ${row.value} (${CSV} line ${row.line}) differs from total_usd ${total}`);
   }
+}
+
+/** L9 on one machine block of roll-up quarter `q`; `row` is the CSV row to match, given only for the last block. */
+function blockAggregation(d: unknown, q: string, label: string, row: Row | undefined, e: (m: string) => void) {
+  if (!isObj(d)) {
+    e(`${label} is not a mapping`);
+    return;
+  }
+  const errs: string[] = [];
+  if (d.quarter !== q) errs.push(`quarter ${show(d.quarter)} differs from filename quarter ${q}`);
+  if (d.as_of !== quarterEnd(q)) errs.push(`as_of ${show(d.as_of)} must be the quarter-end ${quarterEnd(q)}`);
+  if (d.unit !== "USD") errs.push(`unit must be "USD", got ${show(d.unit)}`);
+  const comps = Array.isArray(d.components) ? d.components : [];
+  if (comps.length === 0) errs.push("components must be a non-empty list");
+  const pairs: [NonNullable<ReturnType<typeof parseDecimal>>, NonNullable<ReturnType<typeof parseDecimal>>][] = [];
+  for (const [i, c] of comps.entries()) {
+    if (!isObj(c)) {
+      errs.push(`components[${i}] must be a mapping`);
+      continue;
+    }
+    if (!nonEmpty(c.issuer)) errs.push(`components[${i}].issuer is required`);
+    if (!nonEmpty(c.anchor)) errs.push(`components[${i}].anchor is required`);
+    else if (nonEmpty(c.issuer)) {
+      const want = `issuers/${c.issuer}/${q.slice(0, 4)}.md#${q.toLowerCase()}`;
+      if (c.anchor !== want)
+        errs.push(`components[${i}].anchor ${c.anchor} must be ${want} (the issuer's ${q} section)`);
+    }
+    if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
+      errs.push(`components[${i}].local_currency must be an ISO 4217 code`);
+    const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
+    const fx = typeof c.fx_rate === "string" ? parseDecimal(c.fx_rate) : null;
+    if (!v) errs.push(`components[${i}].local_value must be a decimal string (quoted), got ${show(c.local_value)}`);
+    if (!fx || fx.digits === 0n)
+      errs.push(`components[${i}].fx_rate must be a positive decimal string (quoted), got ${show(c.fx_rate)}`);
+    if (v && fx) pairs.push([v, fx]);
+  }
+  if (comps.some((c) => isObj(c) && c.local_currency !== "USD") && !nonEmpty(d.fx_source_anchor))
+    errs.push("fx_source_anchor is required when any component is not USD");
+  const list = (key: string, need: string[]) => {
+    const v = d[key];
+    if (!Array.isArray(v)) {
+      errs.push(`${key} must be a list`);
+      return;
+    }
+    for (const [i, x] of v.entries())
+      for (const k of need) if (!isObj(x) || !nonEmpty(x[k])) errs.push(`${key}[${i}].${k} is required`);
+  };
+  for (const k of Object.keys(d)) if (!MACHINE_KEYS.includes(k)) errs.push(`unknown key "${k}"`);
+  if (d.cross_checks !== undefined) errs.push(...crossChecks(d.cross_checks));
+  list("exclusions", ["reason"]);
+  list("adopted_conflicts", ["adopted_anchor", "reason"]);
+  if (Array.isArray(d.adopted_conflicts))
+    for (const [i, c] of d.adopted_conflicts.entries()) {
+      const ra = isObj(c) ? c.rejected_anchors : undefined;
+      if (!Array.isArray(ra) || ra.length === 0)
+        errs.push(`adopted_conflicts[${i}].rejected_anchors must be a non-empty list of anchors`);
+      else
+        for (const [j, a] of ra.entries())
+          if (!nonEmpty(a)) errs.push(`adopted_conflicts[${i}].rejected_anchors[${j}] must be an anchor string`);
+    }
+  if (typeof d.total_usd !== "string" || !/^(0|[1-9]\d*)$/.test(d.total_usd))
+    errs.push(`total_usd must be an integer string (quoted), got ${show(d.total_usd)}`);
+  for (const x of errs) e(`${label}: ${x}`);
+  if (errs.length > 0) return;
+  const total = d.total_usd as string;
+  const got = roundHalfEven(sumOfProducts(pairs));
+  const where = label === "machine block" ? "" : `${label}: `;
+  if (got !== BigInt(total))
+    e(`${where}total_usd ${total} but recomputed ${got} (exact sum of local_value x fx_rate, rounded half-to-even)`);
+  if (row && row.value !== total) e(`CSV value ${row.value} (${CSV} line ${row.line}) differs from total_usd ${total}`);
 }
 
 const MACHINE_KEYS = [
@@ -778,5 +790,7 @@ function placement(ctx: Ctx, emit: Emit) {
         );
     } else if (p.startsWith("evidence/") && ROLLUP.exec(p)?.[1] !== SERIES)
       emit("L12", p, `roll-ups live only at evidence/${SERIES}/YYYYQn.md`);
+    else if (p.startsWith("research/") && !RESEARCH_LOG.test(p))
+      emit("L12", p, `research logs live only at research/${SERIES}/YYYYQn.md`);
   }
 }
