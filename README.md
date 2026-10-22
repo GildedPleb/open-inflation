@@ -33,7 +33,7 @@ bun run lint      # integrity checks on this repository
 
 Code checks: `bun run typecheck` and `bun run check` (format and code lint).
 
-CI: the workflow that runs all of the above on every push and pull request is not in the repository yet.
+CI: `.github/workflows/lint.yml` runs all of the above on every push and pull request.
 
 ## What lint enforces
 
