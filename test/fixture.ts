@@ -35,8 +35,47 @@ export const fxExtract = (currency: string): string =>
 export const issuerFile = (iss: string, quarter: string, ...blocks: string[]): string =>
   [`# ${iss} 2026`, "", `## ${quarter}`, "", ...blocks].join("\n");
 
-/** The fixture catalog's basket. */
+/** The fixture catalog's basket (version 1). */
 export const BASKET = ["FED", "ECB", "BOJ"];
+/** The fixture catalog's baskets: version 1 only, coverage floor 93%. */
+export const BASKETS = [{ version: 1, issuers: BASKET, floor_pct: "93" }];
+
+/** Synthetic reference value for an excluded issuer: 10 USD (USD, so no FX extract is needed). */
+const REF_VALUE = "10";
+
+/** Exact decimal string -> [digits, scale]. Test-side arithmetic, independent of scripts/lib/decimal.ts. */
+const dec = (s: string): [bigint, number] => {
+  const [i = "", f = ""] = s.split(".");
+  return [BigInt(i + f), f.length];
+};
+/** Sum of local_value x fx_rate pairs as [digits, scale]. */
+const usd = (pairs: [string, string][]): [bigint, number] => {
+  const ps = pairs.map(([v, f]) => {
+    const [a, x] = dec(v);
+    const [b, y] = dec(f);
+    return [a * b, x + y] as [bigint, number];
+  });
+  const scale = Math.max(0, ...ps.map((p) => p[1]));
+  return [ps.reduce((acc, [d, s]) => acc + d * 10n ** BigInt(scale - s), 0n), scale];
+};
+/** coverage = comp / (comp + ref) x 100, rounded once half-to-even to 2 decimals, as a string. */
+export const coverageOf = (comp: [string, string][], ref: [string, string][]): string => {
+  const [c, cs] = usd(comp);
+  const [r, rs] = usd(ref);
+  const s = Math.max(cs, rs);
+  const C = c * 10n ** BigInt(s - cs);
+  const R = r * 10n ** BigInt(s - rs);
+  const den = C + R;
+  if (den === 0n) return "0.00";
+  const num = C * 10000n;
+  let q = num / den;
+  const twice = 2n * (num % den);
+  if (twice > den || (twice === den && q % 2n === 1n)) q += 1n;
+  const t = q.toString().padStart(3, "0");
+  return `${t.slice(0, -2)}.${t.slice(-2)}`;
+};
+const pairsIn = (yaml: string): [string, string][] =>
+  [...yaml.matchAll(/local_value: "([^"]*)"[\s\S]*?fx_rate: "([^"]*)"/g)].map((m) => [m[1] ?? "0", m[2] ?? "1"]);
 
 /** Exclusions that make components + exclusions equal the basket (Assay c): each missing issuer, with a reason. */
 const defaultExclusions = (components?: string): string => {
@@ -58,35 +97,65 @@ export const machineBlock = (o: {
   crossChecks?: string;
   /** The whole `exclusions` entry; by default every basket issuer that is not a component, with a reason. */
   exclusions?: string;
-}): string =>
-  [
+  /** The whole `reference_values` entry; by default one 10 USD entry per excluded issuer. */
+  referenceValues?: string;
+  /** The coverage_pct value (unquoted text); by default computed from the components and reference values. */
+  coverage?: string;
+  /** A `basket_version: <v>` line when set; omitted by default (one basket: absent means 1). */
+  basketVersion?: string;
+}): string => {
+  const quarter = o.quarter ?? "2026Q3";
+  const components =
+    o.components ??
+    [
+      "  - issuer: FED",
+      "    anchor: issuers/FED/2026.md#2026q3",
+      "    local_currency: USD",
+      '    local_value: "1000.5"',
+      '    fx_rate: "1"',
+      "  - issuer: ECB",
+      "    anchor: issuers/ECB/2026.md#2026q3",
+      "    local_currency: EUR",
+      '    local_value: "200.25"',
+      '    fx_rate: "1.1"',
+    ].join("\n");
+  const exclusions = o.exclusions ?? defaultExclusions(o.components);
+  const excluded = [...new Set([...exclusions.matchAll(/issuer: ([A-Za-z0-9]+)/g)].map((m) => m[1] as string))];
+  const refs =
+    o.referenceValues ??
+    (excluded.length === 0
+      ? "reference_values: []"
+      : [
+          "reference_values:",
+          ...excluded.flatMap((i) => [
+            `  - issuer: ${i}`,
+            `    anchor: issuers/${i}/2026.md#${quarter.toLowerCase()}`,
+            "    local_currency: USD",
+            `    local_value: "${REF_VALUE}"`,
+            '    fx_rate: "1"',
+          ]),
+        ].join("\n"));
+  const coverage = o.coverage ?? `"${coverageOf(pairsIn(components), pairsIn(refs))}"`;
+  return [
     "```yaml",
-    `quarter: ${o.quarter ?? "2026Q3"}`,
+    `quarter: ${quarter}`,
     `as_of: ${o.asOf ?? "2026-09-30"}`,
     "unit: USD",
+    ...(o.basketVersion === undefined ? [] : [`basket_version: ${o.basketVersion}`]),
     "fx_source_anchor: issuers/FX/2026.md#2026q3",
     "components:",
-    o.components ??
-      [
-        "  - issuer: FED",
-        "    anchor: issuers/FED/2026.md#2026q3",
-        "    local_currency: USD",
-        '    local_value: "1000.5"',
-        '    fx_rate: "1"',
-        "  - issuer: ECB",
-        "    anchor: issuers/ECB/2026.md#2026q3",
-        "    local_currency: EUR",
-        '    local_value: "200.25"',
-        '    fx_rate: "1.1"',
-      ].join("\n"),
+    components,
     ...(o.crossChecks ? [o.crossChecks] : []),
-    o.exclusions ?? defaultExclusions(o.components),
+    exclusions,
+    refs,
+    `coverage_pct: ${coverage}`,
     "adopted_conflicts: []",
     ...(o.extra ? [o.extra] : []),
     `total_usd: "${o.total ?? "1221"}"`,
     "```",
     "",
   ].join("\n");
+};
 
 export const rollup = (block = machineBlock({})): string =>
   [
@@ -127,7 +196,7 @@ export const catalog = (series?: unknown): string =>
           last_updated: "2026-10-02",
           version: "0.1.0",
           license: "CC-BY-4.0",
-          basket: BASKET,
+          baskets: BASKETS,
         },
       ],
     },
@@ -147,6 +216,7 @@ export const index = (...extra: string[]): string =>
     "",
     "- [FED 2026](issuers/FED/2026.md)",
     "- [ECB 2026](issuers/ECB/2026.md)",
+    "- [BOJ 2026](issuers/BOJ/2026.md)",
     "- [FX 2026](issuers/FX/2026.md)",
     ...extra,
     "",
@@ -162,6 +232,7 @@ export const goodText = (): Record<string, string> => ({
   "evidence/base_money/2026Q3.md": rollup(),
   "issuers/FED/2026.md": issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
   "issuers/ECB/2026.md": issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement" })),
+  "issuers/BOJ/2026.md": issuerFile("BOJ", "2026Q3", extract({ title: "BOJ monetary base (reference only)" })),
   "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")),
 });
 
@@ -178,7 +249,7 @@ export const skeletonText = (): Record<string, string> => ({
       last_updated: null,
       version: "0.1.0",
       license: "CC-BY-4.0",
-      basket: ["FED", "ECB", "BOJ"],
+      baskets: BASKETS,
     },
   ]),
   "base_money.csv": CSV_HEADER,
