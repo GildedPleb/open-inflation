@@ -586,16 +586,52 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     const q = r[2] as string;
     const all = machines(body);
     const basket = catalogBasket(ctx);
+    const fx = fxCurrencies(ctx, q);
     for (const [i, m] of all.entries()) {
       const current = i === all.length - 1;
       const label =
         all.length === 1 || !m.ok ? "machine block" : `machine block ${i + 1} of ${all.length} (line ${m.line})`;
       if (!m.ok) e(m.error);
       else
-        blockAggregation(m.data, q, label, current ? rows.find((r) => quarterOf(r.date) === q) : undefined, basket, e);
+        blockAggregation(
+          m.data,
+          q,
+          label,
+          current ? rows.find((r) => quarterOf(r.date) === q) : undefined,
+          { basket, fx },
+          e,
+        );
     }
   }
 }
+
+const FX_CURRENCY = /^\s*[-*]\s+Currency:\s*(\S+)\s*$/;
+
+/**
+ * R1-11: the currencies with an FX extract for quarter `q`: a "- Currency: <ISO>" field line inside an ### extract
+ * under "## <q>" in issuers/FX/<YYYY>.md (methodology FX extract format). Fenced lines do not count.
+ */
+function fxCurrencies(ctx: Ctx, q: string): Set<string> {
+  const out = new Set<string>();
+  let inQuarter = false;
+  let inExtract = false;
+  for (const l of lines(ctx.text.get(fxFile(q)) ?? "")) {
+    if (l.fence !== "none") continue;
+    const h = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/.exec(l.text);
+    const level = h?.[1]?.length;
+    if (level !== undefined && level <= 2) {
+      inQuarter = level === 2 && h?.[2] === q;
+      inExtract = false;
+    } else if (level === 3) inExtract = inQuarter;
+    else if (inExtract) {
+      const c = FX_CURRENCY.exec(l.text)?.[1];
+      if (c) out.add(c);
+    }
+  }
+  return out;
+}
+
+const fxFile = (q: string) => `issuers/${FX_FOLDER}/${q.slice(0, 4)}.md`;
 
 /**
  * Assay (c): components + exclusions are exactly the catalog basket, each issuer once. Skipped when the
@@ -633,9 +669,10 @@ function blockAggregation(
   q: string,
   label: string,
   row: Row | undefined,
-  basket: Set<string>,
+  ref: { readonly basket: Set<string>; readonly fx: Set<string> },
   e: (m: string) => void,
 ) {
+  const { basket, fx: fxHave } = ref;
   if (!isObj(d)) {
     e(`${label} is not a mapping`);
     return;
@@ -661,6 +698,10 @@ function blockAggregation(
     }
     if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
       errs.push(`components[${i}].local_currency must be an ISO 4217 code`);
+    else if (c.local_currency !== "USD" && !fxHave.has(c.local_currency))
+      errs.push(
+        `components[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_currency ${c.local_currency} has no FX extract for ${q}: no ### extract with "- Currency: ${c.local_currency}" under ## ${q} in ${fxFile(q)}`,
+      );
     const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
     const fx = typeof c.fx_rate === "string" ? parseDecimal(c.fx_rate) : null;
     if (!v) errs.push(`components[${i}].local_value must be a decimal string (quoted), got ${show(c.local_value)}`);
