@@ -1333,8 +1333,8 @@ export function compareSemver(a: string, b: string): number | null {
 
 /**
  * Basket history against the base: existing baskets are immutable (L4); appending one bumps the series' major
- * version (L11); the series version never goes down (L11, P10-n1). A base still in the legacy `basket` shape reads as baskets [{version 1, issuers: basket}], so
- * migrating it to `baskets` keeps its issuers and only adds floor_pct.
+ * version (L11); the series version never goes down (L11, P10-n1). A base still in the legacy `basket` shape reads
+ * as baskets [{version 1, issuers: basket}], so migrating it to `baskets` keeps its issuers and only adds floor_pct.
  */
 function basketHistory(ctx: Ctx, emit: Emit) {
   const F = "catalog.json";
