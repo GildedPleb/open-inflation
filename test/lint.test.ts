@@ -482,6 +482,40 @@ describe("L8 archive resolution (fake network)", () => {
     fails(onGood({ [FED]: noted }), ["L8"], /rate-limited/, fake(DOWN, { kind: "http", status: 429 }).opts));
   test("a Re-archive note never excuses a network error", () =>
     fails(onGood({ [FED]: noted }), ["L8"], /network error/, fake(DOWN).opts));
+  const NEAR = `https://web.archive.org/web/20261002140501/${ORIG}`;
+  test("HEAD redirected to another capture fails: the snapshot does not exist", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /snapshot 20261002140500 does not exist; Wayback redirected \(HTTP 302\) to nearest capture 20261002140501/,
+      fake({ kind: "redirect", status: 302, location: NEAR, reason: "other-capture", timestamp: "20261002140501" })
+        .opts,
+    ));
+  test("a near-miss redirect does not use the fallback, and a Re-archive note does not excuse it", async () => {
+    const f = fake({
+      kind: "redirect",
+      status: 302,
+      location: NEAR,
+      reason: "other-capture",
+      timestamp: "20261002140501",
+    });
+    await fails(onGood({ [FED]: noted }), ["L8"], /nearest capture/, f.opts);
+    expect(f.avail).toEqual([]);
+  });
+  test("HEAD redirected off the snapshot fails and names the Location", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /HEAD redirected \(HTTP 301\) off the snapshot to https:\/\/example\.test\/x/,
+      fake({ kind: "redirect", status: 301, location: "https://example.test/x", reason: "off-snapshot" }).opts,
+    ));
+  test("a redirect loop fails", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /redirected more than 5 times/,
+      fake({ kind: "redirect", status: 302, location: NEW, reason: "loop" }).opts,
+    ));
   test("a Re-archive note does not excuse a timestamp mismatch", () =>
     fails(onGood({ [FED]: noted }), ["L8"], /closest snapshot/, fake(DOWN, { kind: "ok", timestamp: "1" }).opts));
   // m5: only URLs that pass L7 reach the network.
