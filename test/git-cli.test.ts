@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { lint } from "../scripts/lib/checks.ts";
-import { loadSnapshot } from "../scripts/lib/git.ts";
+import { loadSnapshot, NotGitCheckout } from "../scripts/lib/git.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 const dec = new TextDecoder();
@@ -63,8 +63,12 @@ describe("git snapshot loader", () => {
     git(dir, "init", "-q");
     expect(() => loadSnapshot(dir, "no-such-ref")).toThrow(/no-such-ref/);
   });
+  test("outside a git checkout: a dedicated error, not a git stack trace", () => {
+    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
+    expect(() => loadSnapshot(dir, null)).toThrow(NotGitCheckout);
+  });
   test("this repository's committed skeleton lints clean", async () => {
-    expect(await lint(loadSnapshot(ROOT, null), { archive: "off" })).toEqual([]);
+    expect(await lint(loadSnapshot(ROOT, null), { archive: "off", now: Date.now() })).toEqual([]);
   });
 });
 
@@ -72,6 +76,32 @@ describe("repository identity", () => {
   test("package name and README name the repo GildedPleb/open-inflation", async () => {
     expect((await Bun.file(join(ROOT, "package.json")).json()).name).toBe("open-inflation");
     expect(await Bun.file(join(ROOT, "README.md")).text()).toContain("GildedPleb/open-inflation");
+  });
+  test("code is MIT; data is CC BY 4.0; README names both and the quote carve-out", async () => {
+    const read = (p: string) => Bun.file(join(ROOT, p)).text();
+    expect((await Bun.file(join(ROOT, "package.json")).json()).license).toBe("MIT");
+    expect(await read("LICENSE")).toMatch(/^MIT License\n\nCopyright \(c\) 2026 Gilded Pleb\n/);
+    const data = await read("LICENSE-DATA");
+    expect(data).toContain("https://creativecommons.org/licenses/by/4.0/legalcode");
+    expect(data).toContain("Attribution 4.0 International");
+    for (const scope of ["base_money.csv", "catalog.json", "evidence/", "issuers/", "methodology/"])
+      expect(data).toContain(scope);
+    const readme = await read("README.md");
+    expect(readme).toMatch(/^## License$/m);
+    expect(readme).toContain("[MIT](LICENSE)");
+    expect(readme).toContain("[CC BY 4.0](LICENSE-DATA)");
+    expect(readme).toMatch(/verbatim central-bank quotes .* each source's own reuse terms/i);
+  });
+  test("README: git is a requirement, the rule table covers L1-L12, the network claim names both endpoints", async () => {
+    const readme = await Bun.file(join(ROOT, "README.md")).text();
+    expect(readme).toMatch(/^Requires Bun 1\.4 and git\b/m);
+    for (let i = 1; i <= 12; i++) expect(readme).toMatch(new RegExp(`^\\| L${i} +\\|`, "m"));
+    expect(readme).toContain("https://web.archive.org/web/");
+    expect(readme).toContain("https://archive.org/wayback/available");
+  });
+  test("LICENSE files are text that lint accepts (L10)", async () => {
+    const fs = await lint(loadSnapshot(ROOT, null), { archive: "off", now: Date.now() });
+    expect(fs.filter((f) => f.file.startsWith("LICENSE"))).toEqual([]);
   });
 });
 
@@ -91,6 +121,11 @@ describe("CLI", () => {
     const unknown = run("lint.ts", dir, "--base", "no-such-ref");
     expect([unknown.code, unknown.out.trim()]).toEqual([2, 'lint: unknown base ref "no-such-ref"']);
     expect(run("lint.ts", ROOT).code).toBe(0);
+  });
+  test("lint outside a git checkout prints one line and exits 2", () => {
+    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
+    const r = run("lint.ts", dir);
+    expect([r.code, r.out.trim()]).toEqual([2, "lint: not a git checkout; clone the repo (git is required)"]);
   });
   test("update and backfill are stubs that exit 1", () => {
     const u = run("update.ts", ROOT);

@@ -21,7 +21,7 @@ Status: Waypoint 1, the skeleton and lint suite. There is no data yet.
 
 ## Run it
 
-Requires [Bun](https://bun.sh) 1.4.
+Requires Bun 1.4 and git ([Bun](https://bun.sh); lint reads the tree and its base commit through git, so work in a clone).
 
 ```sh
 bun install
@@ -29,24 +29,35 @@ bun test          # offline unit tests with fixtures; about 1 second; the merge 
 bun run lint      # integrity checks on this repository
 ```
 
-`bun run lint` compares the working tree with a base commit: `$LINT_BASE` if set, otherwise `HEAD`. Pass `--base <ref>` to choose another. Its only network use is one HEAD request per archive.org URL that the diff adds; links already committed are never re-checked. Research itself is not tested: `bun test` covers the software only.
+`bun run lint` compares the working tree with a base commit: `$LINT_BASE` if set, otherwise `HEAD`. Pass `--base <ref>` to choose another. Its only network use is for archive URLs that the diff adds, and only ones that pass L7: one HEAD request to the snapshot at `https://web.archive.org/web/<timestamp>/<url>`, and, if web.archive.org is unreachable, one request to `https://archive.org/wayback/available` to confirm that exact snapshot timestamp. At most 4 requests run at once, each with a 15 s timeout. Links already committed are never re-checked. Offline, lint exits 1 when the diff adds an archive URL; that is intended. `bun install` may use the network; `bun test` never does. Research itself is not tested: `bun test` covers the software only.
 
 Code checks: `bun run typecheck` and `bun run check` (format and code lint).
 
-CI (`.github/workflows/lint.yml`) runs all of the above on every push and pull request.
+CI: the workflow that runs all of the above on every push and pull request is not in the repository yet.
 
 ## What lint enforces
 
-| Check | Rule                                                                                                                                                                                                                |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| L1    | CSV header is exactly `date,value,evidence_id`; quarter-end ISO dates, strictly ascending; non-negative integer values                                                                                              |
-| L2    | Every `evidence_id` is `evidence/base_money/YYYYQn.md`, exists, and matches the row's quarter                                                                                                                       |
-| L3    | No committed heading in `issuers/` or `evidence/` is renamed or removed                                                                                                                                             |
-| L4    | Committed lines in `issuers/` and `evidence/` are never changed or deleted. Committed CSV rows are never deleted; a value changes only if the same diff appends a revision block to that roll-up with the new total |
-| L5    | Every relative link and anchor in `INDEX.md`, the roll-ups and their machine blocks resolves; anchors are GitHub's lowercase slugs (`## 2026Q3` is `#2026q3`)                                                       |
-| L6    | `INDEX.md` links every roll-up and every issuer-year file                                                                                                                                                           |
-| L7    | Every extract has Retrieved (UTC), Original URL, an archive.org URL for that page taken within 24h, and a verbatim quote                                                                                            |
-| L8    | Newly added archive URLs answer a HEAD request, or the same commit adds a `Re-archive:` note                                                                                                                        |
-| L9    | Each roll-up's machine block recomputes exactly (decimal, half-to-even) to its `total_usd` and the CSV value; optional `cross_checks` name another published aggregate (name and url only, never a figure)          |
-| L10   | Every file is UTF-8 text and at most 1 MB                                                                                                                                                                           |
-| L11   | `catalog.json` matches its schema and points at files that exist                                                                                                                                                    |
+| Check | Rule                                                                                                                                                                                                                                                                                                                            |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L1    | `base_money.csv` is UTF-8 with no byte-order mark, LF line endings and a final newline; header exactly `date,value,evidence_id`; quarter-end ISO dates, strictly ascending; non-negative integer USD values                                                                                                                     |
+| L2    | Every `evidence_id` is `evidence/base_money/YYYYQn.md`, exists, and matches the row's quarter                                                                                                                                                                                                                                   |
+| L3    | No committed heading in `issuers/` or `evidence/` is renamed or removed                                                                                                                                                                                                                                                         |
+| L4    | Committed lines in `issuers/` and `evidence/` are never changed or deleted. Committed CSV rows are never deleted; a value changes only if the same diff appends a revision block to that roll-up with the new total                                                                                                             |
+| L5    | Every relative link and anchor in `INDEX.md`, the roll-ups and their machine blocks resolves; anchors are GitHub's lowercase slugs (`## 2026Q3` is `#2026q3`); an issuer-year file has at most one `## YYYYQn` heading per quarter                                                                                              |
+| L6    | `INDEX.md` links every roll-up and every issuer-year file                                                                                                                                                                                                                                                                       |
+| L7    | Every extract has `- Retrieved:` (UTC, not later than now plus 10 minutes), `- Original URL:`, `- Archive URL:` (a web.archive.org snapshot of that page taken within 24h) and a verbatim quote; a field written in another form fails as the wrong form                                                                        |
+| L8    | Each newly added archive URL answers a HEAD request; if web.archive.org is unreachable, archive.org's availability API must return exactly the recorded snapshot timestamp. A network error fails. A `Re-archive:` note in the same commit excuses only a confirmed dead snapshot (HTTP 404 or 410)                             |
+| L9    | Each roll-up has one fenced `yaml` machine block (no front-matter) that recomputes exactly (decimal, half-to-even) to its `total_usd` and the CSV value; each component anchor is `issuers/<its issuer>/<year>.md#<quarter slug>`; optional `cross_checks` name another published aggregate (name and url only, never a figure) |
+| L10   | Every file is UTF-8 text with no byte-order mark and at most 1 MB                                                                                                                                                                                                                                                               |
+| L11   | `catalog.json` matches its schema (each series has a semver `version`, a known data `license` and a `basket` of issuer ids) and points at files that exist                                                                                                                                                                      |
+| L12   | Issuer files live only at `issuers/<ISS>/<YYYY>.md` with `<ISS>` in the catalog basket (`issuers/FX/` holds FX-rate sources); roll-ups only at `evidence/base_money/YYYYQn.md`; any other `.md` or `.txt` under those folders fails                                                                                             |
+
+## Versions
+
+Each series in `catalog.json` carries a semver `version` (base_money starts at `0.1.0`). Every row published under one version uses one basket of issuers, listed in the series' `basket`. A basket change is a major version bump plus a git tag, so a consumer can always tell which rows are comparable.
+
+## License
+
+- Code (`scripts/`, `test/` and the project configuration): [MIT](LICENSE).
+- Data (`base_money.csv`, `catalog.json`, `evidence/`, `issuers/`, `methodology/`): [CC BY 4.0](LICENSE-DATA). Each series in `catalog.json` also names its data license (`"license": "CC-BY-4.0"`).
+- Verbatim central-bank quotes in the evidence stay under each source's own reuse terms.

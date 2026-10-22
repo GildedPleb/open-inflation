@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { lint } from "../scripts/lib/checks.ts";
-import type { CheckId, Finding, Head, HeadResult, LintOptions, Snapshot } from "../scripts/lib/types.ts";
+import type { AvailResult, CheckId, Finding, HeadResult, LintOptions, Net, Snapshot } from "../scripts/lib/types.ts";
 import {
   CSV_HEADER,
   catalog,
@@ -16,7 +16,9 @@ import {
   skeletonText,
 } from "./fixture.ts";
 
-const OFF: LintOptions = { archive: "off" };
+/** The injected clock: every test sees the same "now". */
+const NOW = Date.parse("2026-10-22T16:00:00Z");
+const OFF: LintOptions = { archive: "off", now: NOW };
 const ROW = "2026-09-30,1221,evidence/base_money/2026Q3.md";
 const FED = "issuers/FED/2026.md";
 const ROLLUP = "evidence/base_money/2026Q3.md";
@@ -68,15 +70,36 @@ describe("L1 CSV contract", () => {
   test("trailing blank line", () => fails(good({ "base_money.csv": `${CSV_HEADER}${ROW}\n\n` }), ["L1"], /blank/));
   test("CRLF line endings", () => fails(good({ "base_money.csv": `${CSV_HEADER}${ROW}\r\n` }), ["L1"], /CR/));
   test("missing file", () => fails(good({ "base_money.csv": null }), ["L1", "L11"], /missing/));
-  test("header without final newline passes", () =>
-    passes({ files: files(skeletonText(), { "base_money.csv": "date,value,evidence_id" }), base: null }));
+  test("header without final newline fails", () =>
+    fails(
+      { files: files(skeletonText(), { "base_money.csv": "date,value,evidence_id" }), base: null },
+      ["L1"],
+      /final newline/,
+    ));
+  test("last row without final newline fails", () =>
+    fails(good({ "base_money.csv": `${CSV_HEADER}${ROW}` }), ["L1"], /final newline/));
+  test("UTF-8 byte-order mark before the header fails", () =>
+    fails(good({ "base_money.csv": `\uFEFF${CSV_HEADER}${ROW}\n` }), ["L1"], /byte-order mark/));
+  test("BOM on the header-only skeleton fails", () =>
+    fails(
+      { files: files(skeletonText(), { "base_money.csv": `\uFEFF${CSV_HEADER}` }), base: null },
+      ["L1"],
+      /byte-order mark/,
+    ));
 });
 
 describe("L2 evidence existence", () => {
   test("two quarters, each row pointing at its own roll-up, passes", () =>
     passes(
       good({
-        "evidence/base_money/2026Q2.md": rollup(machineBlock({ quarter: "2026Q2", asOf: "2026-06-30" })),
+        "evidence/base_money/2026Q2.md": rollup(
+          machineBlock({ quarter: "2026Q2", asOf: "2026-06-30" }).replaceAll(
+            /(issuers\/(?:FED|ECB)\/2026\.md)#2026q3/g,
+            "$1#2026q2",
+          ),
+        ),
+        [FED]: `${fedText}\n## 2026Q2\n`,
+        "issuers/ECB/2026.md": `${goodText()["issuers/ECB/2026.md"]}\n## 2026Q2\n`,
         "INDEX.md": index("- [2026Q2](evidence/base_money/2026Q2.md)"),
         ...csv("2026-06-30,1221,evidence/base_money/2026Q2.md", ROW),
       }),
@@ -148,14 +171,35 @@ describe("L4 base_money.csv rows", () => {
     });
   const revised = (block: string) => `${rollup()}\n## Revision 1\n\n${block}`;
   const Q3 = (v: string) => `2026-09-30,${v},evidence/base_money/2026Q3.md`;
+  // L9: Q4 components must anchor the 2026Q4 section of each issuer's 2026 file.
+  const q4Block = machineBlock({ quarter: "2026Q4", asOf: "2026-12-31" }).replaceAll(
+    /(issuers\/(?:FED|ECB)\/2026\.md)#2026q3/g,
+    "$1#2026q4",
+  );
+  const q4Headings = {
+    [FED]: `${fedText}\n## 2026Q4\n`,
+    "issuers/ECB/2026.md": `${goodText()["issuers/ECB/2026.md"]}\n## 2026Q4\n`,
+  };
   test("a new row passes", () =>
     passes(
       onGood({
-        "evidence/base_money/2026Q4.md": rollup(machineBlock({ quarter: "2026Q4", asOf: "2026-12-31" })),
+        ...q4Headings,
+        "evidence/base_money/2026Q4.md": rollup(q4Block),
         "INDEX.md": index("- [2026Q4](evidence/base_money/2026Q4.md)"),
         ...csv(ROW, "2026-12-31,1221,evidence/base_money/2026Q4.md"),
       }),
     ));
+  // m2: a CSV that L1 rejects reports only the L1 reason, never a spurious "row deleted".
+  test("broken header on a committed CSV is L1 only", () =>
+    fails(onGood({ "base_money.csv": `Date,value,evidence_id\n${ROW}\n` }), ["L1"], /header/));
+  test("BOM on a committed CSV is L1 only", () =>
+    fails(onGood({ "base_money.csv": `\uFEFF${CSV_HEADER}${ROW}\n` }), ["L1"], /byte-order mark/));
+  test("CRLF on a committed CSV is L1 only", () =>
+    fails(onGood({ "base_money.csv": `${CSV_HEADER}${ROW}\r\n` }), ["L1"], /CR/));
+  test("missing final newline on a committed CSV is L1 only", () =>
+    fails(onGood({ "base_money.csv": `${CSV_HEADER}${ROW}` }), ["L1"], /final newline/));
+  test("a committed row that is now malformed is L1 only", () =>
+    fails(onGood(csv(Q3("12x21"))), ["L1"], /non-negative integer/));
   test("deleting a committed row fails", () =>
     fails(onGood({ "base_money.csv": CSV_HEADER }), ["L4"], /row for 2026-09-30 was deleted/));
   test("editing a value without a roll-up revision block fails", () =>
@@ -171,7 +215,8 @@ describe("L4 base_money.csv rows", () => {
   test("changing a committed row's evidence_id fails", () =>
     fails(
       onGood({
-        "evidence/base_money/2026Q4.md": rollup(machineBlock({ quarter: "2026Q4", asOf: "2026-12-31" })),
+        ...q4Headings,
+        "evidence/base_money/2026Q4.md": rollup(q4Block),
         "INDEX.md": index("- [2026Q4](evidence/base_money/2026Q4.md)"),
         ...csv("2026-09-30,1221,evidence/base_money/2026Q4.md"),
       }),
@@ -202,7 +247,7 @@ describe("L5 link integrity", () => {
           machineBlock({}).replace("anchor: issuers/FED/2026.md#2026q3", "anchor: issuers/FED/2026.md#2026Q3"),
         ),
       }),
-      ["L5"],
+      ["L5", "L9"],
       /machine block.*#2026Q3/,
     ));
   test("machine-block fx anchor must resolve", () =>
@@ -333,39 +378,42 @@ describe("L7 extract schema", () => {
     ));
 });
 
-describe("L8 archive resolution (fake HEAD)", () => {
-  const NEW = "https://web.archive.org/web/20261002140500/https://example.test/FED-new";
+describe("L8 archive resolution (fake network)", () => {
+  const ORIG = "https://example.test/FED-new";
+  const TS = "20261002140500";
+  const NEW = `https://web.archive.org/web/${TS}/${ORIG}`;
   const added = fedText + extract({ title: "FED new" });
-  const fake = (r: HeadResult) => {
-    const calls: string[] = [];
-    const head: Head = async (u) => {
-      calls.push(u);
-      return r;
+  const noted = `${added}- Re-archive: ${NEW} (snapshot missing; recaptured)\n`;
+  const DOWN: HeadResult = { kind: "network", message: "ECONNREFUSED" };
+  const fake = (r: HeadResult, a: AvailResult = { kind: "network", message: "ETIMEDOUT" }) => {
+    const heads: string[] = [];
+    const avail: string[] = [];
+    const net: Net = {
+      head: async (u) => {
+        heads.push(u);
+        return r;
+      },
+      available: async (o, t) => {
+        avail.push(`${o} ${t}`);
+        return a;
+      },
     };
-    return { calls, head };
+    const opts: LintOptions = { ...OFF, archive: "added", net };
+    return { heads, avail, opts };
   };
-  test("only archive URLs added since base are HEADed; ok passes", async () => {
+  test("only archive URLs added since base are HEADed; ok passes without the fallback", async () => {
     const f = fake({ kind: "ok", status: 200 });
-    await passes(onGood({ [FED]: added }), { archive: "added", head: f.head });
-    expect(f.calls).toEqual([NEW]);
+    await passes(onGood({ [FED]: added }), f.opts);
+    expect([f.heads, f.avail]).toEqual([[NEW], []]);
   });
   test("404 fails and names the status", () =>
-    fails(onGood({ [FED]: added }), ["L8"], /HTTP 404/, {
-      archive: "added",
-      head: fake({ kind: "http", status: 404 }).head,
-    }));
-  test("network error is reported distinctly from a 404", async () => {
-    const fs = await fails(onGood({ [FED]: added }), ["L8"], /network error: ECONNRESET/, {
-      archive: "added",
-      head: fake({ kind: "network", message: "ECONNRESET" }).head,
-    });
-    expect(fs.some((f) => /HTTP/.test(f.message))).toBe(false);
-  });
-  test("failure passes when the same diff adds a re-archive note", () =>
-    passes(onGood({ [FED]: `${added}- Re-archive: ${NEW} (snapshot missing; recaptured)\n` }), {
-      archive: "added",
-      head: fake({ kind: "http", status: 404 }).head,
-    }));
+    fails(onGood({ [FED]: added }), ["L8"], /HTTP 404/, fake({ kind: "http", status: 404 }).opts));
+  for (const status of [404, 410])
+    test(`HTTP ${status} passes when the same diff adds a Re-archive note`, () =>
+      passes(onGood({ [FED]: noted }), fake({ kind: "http", status }).opts));
+  for (const status of [403, 500, 503])
+    test(`HTTP ${status} is not a dead snapshot: a Re-archive note does not excuse it`, () =>
+      fails(onGood({ [FED]: noted }), ["L8"], new RegExp(`HTTP ${status}`), fake({ kind: "http", status }).opts));
   test("a re-archive note already in base does not excuse a new failure", () => {
     const withNote = `${fedText}- Re-archive: ${NEW}\n`;
     return fails(
@@ -375,13 +423,75 @@ describe("L8 archive resolution (fake HEAD)", () => {
       },
       ["L8"],
       /HTTP 404/,
-      { archive: "added", head: fake({ kind: "http", status: 404 }).head },
+      fake({ kind: "http", status: 404 }).opts,
     );
+  });
+  test("web.archive.org unreachable: archive.org availability at the exact timestamp passes", async () => {
+    const f = fake(DOWN, { kind: "ok", timestamp: TS });
+    await passes(onGood({ [FED]: added }), f.opts);
+    expect([f.heads, f.avail]).toEqual([[NEW], [`${ORIG} ${TS}`]]);
+  });
+  test("availability returns a different snapshot: fails, names both timestamps", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /closest snapshot 20261002140501, not the recorded 20261002140500/,
+      fake(DOWN, { kind: "ok", timestamp: "20261002140501" }).opts,
+    ));
+  test("availability has no snapshot: fails", () =>
+    fails(onGood({ [FED]: added }), ["L8"], /no snapshot/, fake(DOWN, { kind: "ok", timestamp: null }).opts));
+  test("both endpoints unreachable is a network error and fails", () =>
+    fails(onGood({ [FED]: added }), ["L8"], /network error: .*ECONNREFUSED.*ETIMEDOUT/, fake(DOWN).opts));
+  test("a Re-archive note never excuses a network error", () =>
+    fails(onGood({ [FED]: noted }), ["L8"], /network error/, fake(DOWN).opts));
+  test("a Re-archive note does not excuse a timestamp mismatch", () =>
+    fails(onGood({ [FED]: noted }), ["L8"], /closest snapshot/, fake(DOWN, { kind: "ok", timestamp: "1" }).opts));
+  // m5: only URLs that pass L7 reach the network.
+  for (const [name, archive] of [
+    ["blank", ""],
+    ["another host", `https://archive.ph/${TS}/${ORIG}`],
+    ["13-digit timestamp", `https://web.archive.org/web/2026100214050/${ORIG}`],
+    ["another original", `https://web.archive.org/web/${TS}/https://example.test/other`],
+    ["http scheme", `http://web.archive.org/web/${TS}/${ORIG}`],
+  ] as const)
+    test(`an archive URL that fails L7 (${name}) is never fetched`, async () => {
+      const f = fake({ kind: "ok", status: 200 });
+      await fails(onGood({ [FED]: fedText + extract({ title: "FED new", archive }) }), ["L7"], /Archive URL/, f.opts);
+      expect([f.heads, f.avail]).toEqual([[], []]);
+    });
+  test("an extract that fails L7 for another reason is not fetched", async () => {
+    const f = fake({ kind: "ok", status: 200 });
+    const noQuote = extract({ title: "FED new" }).replace(/> .*\n/, "");
+    await fails(onGood({ [FED]: fedText + noQuote }), ["L7"], /verbatim quote/, f.opts);
+    expect(f.heads).toEqual([]);
+  });
+  test("HEADs run 4 at a time; findings keep file order", async () => {
+    let inFlight = 0;
+    let max = 0;
+    const heads: string[] = [];
+    const net: Net = {
+      head: async (u) => {
+        heads.push(u);
+        max = Math.max(max, ++inFlight);
+        await Bun.sleep(1);
+        inFlight--;
+        return { kind: "http", status: 404 };
+      },
+      available: async () => ({ kind: "ok", timestamp: null }),
+    };
+    const titles = Array.from({ length: 9 }, (_, i) => `FED n${i}`);
+    const fs = await lint(onGood({ [FED]: fedText + titles.map((title) => extract({ title })).join("") }), {
+      ...OFF,
+      archive: "added",
+      net,
+    });
+    expect([heads.length, max]).toEqual([9, 4]);
+    expect(fs.map((x) => /FED-n\d/.exec(x.message)?.[0])).toEqual(titles.map((t) => t.replace(" ", "-")));
   });
   test("no base: every archive URL is new", async () => {
     const f = fake({ kind: "ok", status: 200 });
-    await passes(good(), { archive: "added", head: f.head });
-    expect(f.calls.length).toBe(3);
+    await passes(good(), f.opts);
+    expect(f.heads.length).toBe(3);
   });
   test("an archive URL is HEADed once: citing a committed URL again is not re-checked", async () => {
     const f = fake({ kind: "http", status: 404 });
@@ -391,18 +501,18 @@ describe("L8 archive resolution (fake HEAD)", () => {
         "### FED H.4.1",
         "### FED H.4.1 again",
       );
-    await passes(onGood({ [FED]: again }), { archive: "added", head: f.head });
-    expect(f.calls).toEqual([]);
+    await passes(onGood({ [FED]: again }), f.opts);
+    expect(f.heads).toEqual([]);
   });
   test("unchanged repo HEADs nothing (no re-sweep of old links)", async () => {
     const f = fake({ kind: "http", status: 404 });
-    await passes(onGood({}), { archive: "added", head: f.head });
-    expect(f.calls).toEqual([]);
+    await passes(onGood({}), f.opts);
+    expect(f.heads).toEqual([]);
   });
-  test("archive off never calls HEAD", async () => {
+  test("archive off never touches the network", async () => {
     const f = fake({ kind: "ok", status: 200 });
-    await passes(onGood({ [FED]: added }), { archive: "off", head: f.head });
-    expect(f.calls).toEqual([]);
+    await passes(onGood({ [FED]: added }), { ...f.opts, archive: "off" });
+    expect([f.heads, f.avail]).toEqual([[], []]);
   });
 });
 
@@ -488,11 +598,15 @@ describe("L9 aggregation", () => {
   test("fx_rate must be positive", () =>
     fails(good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1.1"', 'fx_rate: "0"')) }), ["L9"], /fx_rate/));
   test("evidence file outside a series folder", () =>
-    fails(good({ "evidence/notes.md": "# notes\n" }), ["L9", "L6"], /evidence\/<series>\/YYYYQn\.md/));
+    fails(good({ "evidence/notes.md": "# notes\n" }), ["L12", "L6"], /evidence\/base_money\/YYYYQn\.md/));
   test("file in the series folder that is not a quarter", () =>
-    fails(good({ "evidence/base_money/notes.md": "# notes\n" }), ["L9", "L6"], /not a roll-up name/));
+    fails(good({ "evidence/base_money/notes.md": "# notes\n" }), ["L12", "L6"], /evidence\/base_money\/YYYYQn\.md/));
   test("series folder with no roll-up schema yet", () =>
-    fails(good({ "evidence/cpi_u/2026Q3.md": "# cpi\n" }), ["L9", "L6"], /no roll-up schema for series cpi_u/));
+    fails(good({ "evidence/cpi_u/2026Q3.md": "# cpi\n" }), ["L12", "L6"], /evidence\/base_money\/YYYYQn\.md/));
+  test("front-matter is not a machine block (fenced YAML only)", () =>
+    fails(good({ [ROLLUP]: `---\nquarter: 2026Q3\n---\n${rollup()}` }), ["L9"], /front-matter/));
+  test("front-matter alone is not a machine block", () =>
+    fails(good({ [ROLLUP]: '---\nquarter: 2026Q3\ntotal_usd: "1221"\n---\n# 2026Q3\n' }), ["L9"], /front-matter/));
 });
 
 describe("L9 adopted_conflicts", () => {
@@ -584,7 +698,35 @@ describe("L11 catalog.json", () => {
     frequency: "quarterly",
     methodology: "methodology/base_money.md",
     last_updated: "2026-10-02",
+    version: "0.1.0",
+    license: "CC-BY-4.0",
+    basket: ["FED", "ECB", "BOJ"],
   };
+  const without = (k: keyof typeof entry) => Object.fromEntries(Object.entries(entry).filter(([x]) => x !== k));
+  test("version missing", () =>
+    fails(good({ "catalog.json": catalog([without("version")]) }), ["L11"], /missing "version"/));
+  for (const v of ["0.1", "v0.1.0", "01.0.0", "1.0.0.0", "", "latest"]) {
+    test(`version ${JSON.stringify(v)} is not semver`, () =>
+      fails(
+        good({ "catalog.json": catalog([{ ...entry, version: v }]) }),
+        ["L11"],
+        /version .* is not a semver string/,
+      ));
+  }
+  test("version as a number is not semver", () =>
+    fails(good({ "catalog.json": catalog([{ ...entry, version: 1 }]) }), ["L11"], /version 1 is not a semver string/));
+  test("semver with pre-release and build passes", () =>
+    passes(good({ "catalog.json": catalog([{ ...entry, version: "1.0.0-rc.1+basket.2" }]) })));
+  test("license missing", () =>
+    fails(good({ "catalog.json": catalog([without("license")]) }), ["L11"], /missing "license"/));
+  for (const l of ["MIT", "cc-by-4.0", "CC-BY-4", "", null]) {
+    test(`license ${JSON.stringify(l)} is not a known data license`, () =>
+      fails(
+        good({ "catalog.json": catalog([{ ...entry, license: l }]) }),
+        ["L11"],
+        /license .* is not a known data license \(CC-BY-4.0\)/,
+      ));
+  }
   test("last_updated null passes", () => passes(good({ "catalog.json": catalog([{ ...entry, last_updated: null }]) })));
   test("invalid JSON", () => fails(good({ "catalog.json": "{" }), ["L11"], /JSON/));
   test("missing catalog", () => fails(good({ "catalog.json": null }), ["L11"], /missing/));
@@ -605,4 +747,119 @@ describe("L11 catalog.json", () => {
   test("unknown key", () => fails(good({ "catalog.json": catalog([{ ...entry, colour: "red" }]) }), ["L11"], /colour/));
   test("duplicate id", () => fails(good({ "catalog.json": catalog([entry, entry]) }), ["L11"], /duplicate/));
   test("series must be an array", () => fails(good({ "catalog.json": '{"series": {}}' }), ["L11"], /series/));
+});
+
+describe("L5 duplicate quarter headings", () => {
+  test("a second ## YYYYQn in one issuer-year file fails", () =>
+    fails(good({ [FED]: `${fedText}\n## 2026Q3\n` }), ["L5"], /duplicate heading "## 2026Q3"/));
+  test("the same quarter in two issuer files passes", () => passes(good()));
+  test("a repeated ### extract title is not a quarter heading", () =>
+    passes(good({ [FED]: fedText + extract({ title: "FED H.4.1", quote: "again" }) })));
+});
+
+describe("L7 field form and clock", () => {
+  const block = extract({ title: "FED H.4.1" });
+  for (const [name, from, to] of [
+    ["plain line", "- Retrieved:", "Retrieved:"],
+    ["bold label", "- Retrieved:", "- **Retrieved:**"],
+    ["bold label, colon outside", "- Retrieved:", "- **Retrieved**:"],
+    ["bold Archive URL", "- Archive URL:", "**Archive URL:**"],
+  ] as const)
+    test(`a field in the wrong form (${name}) says so and shows the expected form`, async () => {
+      const label = from.slice(2, -1);
+      const fs = await fails(
+        good(fed(block.replace(from, to))),
+        ["L7"],
+        new RegExp(`${label} is in the wrong form .*expected "- ${label}: <value>"`),
+      );
+      expect(fs.some((f) => /has no /.test(f.message))).toBe(false);
+    });
+  test("Retrieved more than 10 minutes after now fails", () =>
+    fails(good(), ["L7"], /Retrieved 2026-10-02T14:03:00Z is in the future/, {
+      ...OFF,
+      now: Date.parse("2026-10-02T13:52:59Z"),
+    }));
+  test("Retrieved within 10 minutes of now passes (clock skew)", () =>
+    passes(good(), { ...OFF, now: Date.parse("2026-10-02T13:53:00Z") }));
+});
+
+describe("L9 component anchors", () => {
+  const anchored = (anchor: string, patch: Record<string, string> = {}) =>
+    good({
+      ...patch,
+      [ROLLUP]: rollup(machineBlock({}).replace("anchor: issuers/FED/2026.md#2026q3", `anchor: ${anchor}`)),
+    });
+  test("anchor in another issuer's file fails", () =>
+    fails(
+      anchored("issuers/ECB/2026.md#2026q3"),
+      ["L9"],
+      /components\[0\]\.anchor issuers\/ECB\/2026\.md#2026q3 must be issuers\/FED\/2026\.md#2026q3/,
+    ));
+  test("anchor at another quarter's heading fails", () =>
+    fails(
+      anchored("issuers/FED/2026.md#2026q2", { [FED]: `${fedText}\n## 2026Q2\n` }),
+      ["L9"],
+      /must be issuers\/FED\/2026\.md#2026q3/,
+    ));
+  test("anchor at an extract heading instead of the quarter fails", () =>
+    fails(anchored("issuers/FED/2026.md#fed-h41"), ["L9"], /must be issuers\/FED\/2026\.md#2026q3/));
+  test("anchor in another year's file fails", () =>
+    fails(anchored("issuers/FED/2025.md#2026q3"), ["L9", "L5"], /must be issuers\/FED\/2026\.md#2026q3/));
+});
+
+describe("L10 byte-order marks", () => {
+  test("BOM on a Markdown file fails", () =>
+    fails(good({ "methodology/base_money.md": "\uFEFF# Methodology\n" }), ["L10"], /byte-order mark/));
+  test("BOM on INDEX.md fails", () => fails(good({ "INDEX.md": `\uFEFF${index()}` }), ["L10"], /byte-order mark/));
+});
+
+describe("L11 catalog basket", () => {
+  const entry = JSON.parse(catalog()).series[0];
+  const { basket: _, ...noBasket } = entry;
+  test("basket missing", () => fails(good({ "catalog.json": catalog([noBasket]) }), ["L11"], /missing "basket"/));
+  for (const b of [[], ["fed"], ["FED", "FED"], "FED", [1]])
+    test(`basket ${JSON.stringify(b)} is not a non-empty list of unique issuer ids`, async () => {
+      const fs = await lint(good({ "catalog.json": catalog([{ ...entry, basket: b }]) }), OFF);
+      expect(
+        fs.some((f) => f.check === "L11" && /basket .* is not a non-empty list of unique issuer ids/.test(f.message)),
+      ).toBe(true);
+    });
+});
+
+describe("L12 placement", () => {
+  for (const p of [
+    "issuers/FED.md",
+    "issuers/FED/26.md",
+    "issuers/FED/2026/q3.md",
+    "issuers/FED/2026.txt",
+    "issuers/fed/2026.md",
+    "issuers/XYZ/2026.md",
+    "evidence/notes.md",
+    "evidence/notes.txt",
+    "evidence/base_money/notes.md",
+    "evidence/base_money/2026Q3.txt",
+    "evidence/base_money/2026q3.md",
+    "evidence/base_money/2026Q5.md",
+    "evidence/base_money/2026/2026Q3.md",
+    "evidence/cpi_u/2026Q3.md",
+  ])
+    test(`${p} is misplaced`, async () => {
+      const fs = await lint(good({ [p]: "# x\n" }), OFF);
+      expect(fs.filter((f) => f.check === "L12").map((f) => f.file)).toEqual([p]);
+    });
+  test("an issuer not in the catalog basket is named", () =>
+    fails(
+      good({ "issuers/XYZ/2026.md": "# x\n", "INDEX.md": index("- [XYZ](issuers/XYZ/2026.md)") }),
+      ["L12"],
+      /XYZ is not in the catalog basket/,
+    ));
+  test("a basket issuer's year file passes", () =>
+    passes(
+      good({
+        "issuers/BOJ/2026.md": issuerFile("BOJ", "2026Q3"),
+        "INDEX.md": index("- [BOJ 2026](issuers/BOJ/2026.md)"),
+      }),
+    ));
+  test("non-text files (.gitkeep) and files outside issuers/ and evidence/ are not placement-checked", () =>
+    passes(good({ "issuers/.gitkeep": "", "evidence/base_money/.gitkeep": "", "notes.md": "# n\n" })));
 });

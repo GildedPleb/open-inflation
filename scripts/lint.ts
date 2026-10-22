@@ -1,9 +1,9 @@
 // bun run lint [--base <ref>]
 // Checks the working tree against a base commit (default: $LINT_BASE, else HEAD if it exists).
-// Network: HEADs only archive URLs the diff adds, once. Committed links are never re-swept.
-import { httpHead } from "./lib/archive.ts";
+// Network: only archive URLs the diff adds that pass L7, once each: HEAD on web.archive.org, else archive.org availability. Committed links are never re-swept.
+import { archiveNet } from "./lib/archive.ts";
 import { lint } from "./lib/checks.ts";
-import { loadSnapshot, UnknownBase } from "./lib/git.ts";
+import { isGitCheckout, loadSnapshot, NotGitCheckout, UnknownBase } from "./lib/git.ts";
 
 const USAGE = "usage: bun run lint [--base <ref>]";
 
@@ -23,7 +23,8 @@ if (!args) {
   process.exit(2);
 }
 const dir = process.cwd();
-const hasHead = Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", "HEAD"]).exitCode === 0;
+const hasHead =
+  isGitCheckout(dir) && Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", "HEAD"]).exitCode === 0;
 const requested = args.base ?? (process.env.LINT_BASE || (hasHead ? "HEAD" : null));
 // CI passes github.event.before, which is all zeros for a new branch: no base, every file is new.
 const base = requested && /^0+$/.test(requested) ? null : requested;
@@ -31,13 +32,14 @@ let snapshot: ReturnType<typeof loadSnapshot>;
 try {
   snapshot = loadSnapshot(dir, base);
 } catch (e) {
-  if (!(e instanceof UnknownBase)) throw e;
+  if (!(e instanceof UnknownBase || e instanceof NotGitCheckout)) throw e;
   console.error(`lint: ${e.message}`);
   process.exit(2);
 }
 const findings = await lint(snapshot, {
   archive: "added",
-  head: httpHead(fetch, 15_000),
+  net: archiveNet(fetch, 15_000),
+  now: Date.now(),
 });
 for (const f of findings) console.log(`${f.check} ${f.file}: ${f.message}`);
 console.log(findings.length === 0 ? `lint: clean (base ${base ?? "none"})` : `lint: ${findings.length} finding(s)`);
