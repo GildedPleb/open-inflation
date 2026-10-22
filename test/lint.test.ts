@@ -478,6 +478,8 @@ describe("L8 archive resolution (fake network)", () => {
     await lint(onGood({}), { ...f.opts, progress: (l) => quiet.push(l) });
     expect(quiet).toEqual([]);
   });
+  test("a Re-archive note never excuses an availability HTTP error (429)", () =>
+    fails(onGood({ [FED]: noted }), ["L8"], /rate-limited/, fake(DOWN, { kind: "http", status: 429 }).opts));
   test("a Re-archive note never excuses a network error", () =>
     fails(onGood({ [FED]: noted }), ["L8"], /network error/, fake(DOWN).opts));
   test("a Re-archive note does not excuse a timestamp mismatch", () =>
