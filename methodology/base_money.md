@@ -161,7 +161,7 @@ A new issuer gets its row here, in the same change that adds its row to [Per-iss
 ## Quarter inclusion
 
 - A quarter enters `base_money.csv` when its evidenced issuers reach the [coverage floor](#coverage). Each evidenced issuer needs a compliant extract under that quarter's heading in `issuers/<ISS>/<YYYY>.md`, and the FX extracts must exist under `issuers/FX/<YYYY>.md`. The roll-up `evidence/base_money/<YYYY>Qn.md` lists the evidenced issuers as components.
-- **Exclusions.** Every basket issuer not evidenced for the quarter is listed under `exclusions`, with the issuer id and the reason (missing, blocked, convention unconfirmed, RBI not yet final, and so on). A missing issuer's figure is never estimated, interpolated or carried forward from another quarter.
+- **Exclusions.** Every basket issuer not evidenced for the quarter is listed under `exclusions` as `{issuer: <ISS>, reason: <text>}`. Both fields are required, and the issuer must be in the catalog basket. Typical reasons are missing, blocked, convention unconfirmed, or RBI not yet final. Each basket issuer appears exactly once across `components` and `exclusions`, never in both. A missing issuer's figure is never estimated, interpolated or carried forward from another quarter.
 - **Coverage and warning.** A roll-up with any exclusion states its coverage share and carries this warning in plain words: "This total leaves out <issuers>. The CSV value is lower by the amount of the missing issuers, so growth rates into and out of this quarter are distorted and should not be read as changes in base money." `INDEX.md` gets a Coverage note for that quarter (see [Roll-up template](#roll-up-template)).
 - A quarter below the floor has no roll-up and no CSV row (see [Gaps policy](#gaps-policy)).
 - If an excluded issuer's figure later becomes available, it is added as a revision: a new extract, a `## Revision` block in the roll-up with the new total, and the CSV value changed in the same commit. The new machine block drops that exclusion entry; the earlier block stays in place as the prior vintage.
@@ -270,11 +270,11 @@ One roll-up per quarter, only at `evidence/base_money/<YYYY>Q<n>.md`. It has no 
 | `fx_source_anchor`  | yes when any component is not USD | `issuers/FX/<YYYY>.md#<yyyy>q<n>`                                                                                                                                                                                                                                                                                   |
 | `components`        | yes, non-empty                    | list of the evidenced issuers; each item has exactly `issuer` (basket id), `anchor` (`issuers/<issuer>/<YYYY>.md#<yyyy>q<n>`, the quarter heading of that issuer's file, as lint requires), `local_currency` (ISO code), `local_value` (quoted exact decimal) and `fx_rate` (quoted positive decimal, USD per unit) |
 | `cross_checks`      | no                                | list of `{name, url}` only: another published aggregate, never a figure                                                                                                                                                                                                                                             |
-| `exclusions`        | yes                               | list with one item per basket issuer not evidenced this quarter: `issuer` (basket id) and `reason`. `[]` when every basket issuer is evidenced                                                                                                                                                                      |
+| `exclusions`        | yes                               | list of `{issuer: <ISS>, reason: <text>}`, one item per basket issuer not evidenced this quarter. Both fields are required, and `issuer` must be in the catalog basket. `[]` when every basket issuer is evidenced                                                                                                  |
 | `adopted_conflicts` | yes                               | list; each item has `adopted_anchor`, `rejected_anchors` (non-empty list of anchors) and `reason`. Anchors may point at a `###` extract, for example `issuers/RBI/<YYYY>.md#<extract-title-slug>`                                                                                                                   |
 | `total_usd`         | yes                               | quoted integer: Σ `local_value` × `fx_rate` over the components, rounded half-to-even; equal to the CSV `value`                                                                                                                                                                                                     |
 
-Components and exclusions together list every basket issuer exactly once. The coverage share and the warning are prose: the machine block has no key for them.
+Each basket issuer appears exactly once across `components` and `exclusions`, never in both; Forge's lint enforces this and the exclusions shape. The coverage share and the warning are prose: the machine block has no key for them.
 
 Anchors are GitHub's lowercase slugs: `## 2026Q2` is `#2026q2`, and a `###` extract title gives its own slug. Machine-block anchors are root-relative and point at the quarter heading. The Markdown links in the body are relative to the roll-up (`../../issuers/...`) and point at the **exact `###` extract adopted** (its title slug). Every link must resolve (lint L5), and `INDEX.md` must link the roll-up and every issuer-year file (lint L6). Quote `local_value`, `fx_rate` and `total_usd` as strings so YAML does not turn them into floats.
 
@@ -382,9 +382,7 @@ components:
 cross_checks:
   - name: <aggregate and release name>
     url: <release URL>
-exclusions:
-  - issuer: BCB
-    reason: SGS 20306 convention unconfirmed from a BCB primary page
+exclusions: [{issuer: BCB, reason: SGS 20306 convention unconfirmed from a BCB primary page}]
 adopted_conflicts: []
 total_usd: "<total_usd>"
 ```
@@ -455,7 +453,7 @@ An example FED extract under `## 2026Q2` of `issuers/FED/2026.md`. The quote, he
 - Every extract follows the [Extract template](#extract-template), with an archive snapshot taken at retrieval time. Its printed figure occurs verbatim in the quote, and printed figure × multiplier equals its local value.
 - Every alternative definition named in [Per-issuer definitions](#per-issuer-definitions) is extracted and labelled `- Adopted: no`.
 - The FX file has one extract per currency per quarter.
-- The roll-up follows the [Roll-up template](#roll-up-template). Every basket issuer appears exactly once, in `components` or in `exclusions` with a reason. The coverage share is at or above the floor and stated, with the warning when anything is excluded. Every `yaml` block in the roll-up is valid on its own, nothing committed was edited, and the last block's `total_usd` equals the CSV value.
+- The roll-up follows the [Roll-up template](#roll-up-template). Every basket issuer appears exactly once, in `components` or in `exclusions` as `{issuer, reason}`, never in both. The coverage share is at or above the floor and stated, with the warning when anything is excluded. Every `yaml` block in the roll-up is valid on its own, nothing committed was edited, and the last block's `total_usd` equals the CSV value.
 - `INDEX.md` links the roll-up and every issuer-year file, and records any gap and any Coverage note.
 - `bun test` and `bun run lint` are clean.
 - Sources considered and rejected are logged in the roll-up's Conflicts section or in the quarter's research log at `research/base_money/<YYYY>Q<n>.md` (research standard 8). `research/` is outside the folders lint L12 restricts.
