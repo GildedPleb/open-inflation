@@ -33,7 +33,7 @@ bun run lint      # integrity checks on this repository
 
 Code checks: `bun run typecheck` and `bun run check` (format and code lint).
 
-CI (`.github/workflows/lint.yml`) runs all of the above on every push and pull request.
+CI: the workflow that runs all of the above on every push and pull request is not in the repository yet.
 
 ## What lint enforces
 
@@ -49,4 +49,14 @@ CI (`.github/workflows/lint.yml`) runs all of the above on every push and pull r
 | L8    | Newly added archive URLs answer a HEAD request, or the same commit adds a `Re-archive:` note                                                                                                                        |
 | L9    | Each roll-up's machine block recomputes exactly (decimal, half-to-even) to its `total_usd` and the CSV value; optional `cross_checks` name another published aggregate (name and url only, never a figure)          |
 | L10   | Every file is UTF-8 text and at most 1 MB                                                                                                                                                                           |
-| L11   | `catalog.json` matches its schema and points at files that exist                                                                                                                                                    |
+| L11   | `catalog.json` matches its schema (each series has a semver `version` and a known data `license`) and points at files that exist                                                                                    |
+
+## Versions
+
+Each series in `catalog.json` carries a semver `version` (base_money starts at `0.1.0`). Every row published under one version uses one basket of issuers. A basket change is a major version bump plus a git tag, so a consumer can always tell which rows are comparable.
+
+## License
+
+- Code (`scripts/`, `test/` and the project configuration): [MIT](LICENSE).
+- Data (`base_money.csv`, `catalog.json`, `evidence/`, `issuers/`, `methodology/`): [CC BY 4.0](LICENSE-DATA). Each series in `catalog.json` also names its data license (`"license": "CC-BY-4.0"`).
+- Verbatim central-bank quotes in the evidence stay under each source's own reuse terms.

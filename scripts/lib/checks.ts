@@ -583,7 +583,12 @@ function crossChecks(v: unknown): string[] {
 
 // ---------- L11 ----------
 
-const SERIES_KEYS = ["id", "path", "unit", "frequency", "methodology", "last_updated"];
+const SERIES_KEYS = ["id", "path", "unit", "frequency", "methodology", "last_updated", "version", "license"];
+/** SPDX ids lint accepts for a series' data. Extend deliberately. */
+const DATA_LICENSES = ["CC-BY-4.0"];
+/** semver.org 2.0.0 grammar. */
+const SEMVER =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 
 function catalog(ctx: Ctx, emit: Emit) {
   const F = "catalog.json";
@@ -618,5 +623,9 @@ function catalog(ctx: Ctx, emit: Emit) {
     if (s.frequency !== "quarterly") e(`series[${i}].frequency must be "quarterly"`);
     if (s.last_updated !== null && !(typeof s.last_updated === "string" && isIsoDate(s.last_updated)))
       e(`series[${i}].last_updated must be YYYY-MM-DD or null`);
+    if ("version" in s && !(typeof s.version === "string" && SEMVER.test(s.version)))
+      e(`series[${i}].version ${show(s.version)} is not a semver string (MAJOR.MINOR.PATCH)`);
+    if ("license" in s && !(typeof s.license === "string" && DATA_LICENSES.includes(s.license)))
+      e(`series[${i}].license ${show(s.license)} is not a known data license (${DATA_LICENSES.join(", ")})`);
   }
 }
