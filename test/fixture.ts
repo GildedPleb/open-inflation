@@ -9,6 +9,8 @@ export const extract = (o: {
   original?: string;
   archive?: string;
   quote?: string;
+  /** Extra field lines, e.g. "- Currency: EUR" for an FX extract. */
+  fields?: string[];
 }): string => {
   const original = o.original ?? `https://example.test/${o.title.replaceAll(" ", "-")}`;
   const retrieved = o.retrieved ?? "2026-10-02T14:03:00Z";
@@ -18,6 +20,7 @@ export const extract = (o: {
     `- Retrieved: ${retrieved}`,
     `- Original URL: ${original}`,
     `- Archive URL: ${archive}`,
+    ...(o.fields ?? []),
     "- Notes: synthetic fixture",
     "",
     `> ${o.quote ?? "Monetary base (synthetic): 1"}`,
@@ -25,8 +28,26 @@ export const extract = (o: {
   ].join("\n");
 };
 
+/** An FX extract for one currency (methodology FX extract format: "- Currency: <ISO>"). */
+export const fxExtract = (currency: string): string =>
+  extract({ title: `FX ${currency}`, fields: [`- Currency: ${currency}`], quote: `${currency} (synthetic): 1` });
+
 export const issuerFile = (iss: string, quarter: string, ...blocks: string[]): string =>
   [`# ${iss} 2026`, "", `## ${quarter}`, "", ...blocks].join("\n");
+
+/** The fixture catalog's basket. */
+export const BASKET = ["FED", "ECB", "BOJ"];
+
+/** Exclusions that make components + exclusions equal the basket (Assay c): each missing issuer, with a reason. */
+const defaultExclusions = (components?: string): string => {
+  const present = new Set([...(components ?? "issuer: FED\nissuer: ECB").matchAll(/issuer: (\S+)/g)].map((m) => m[1]));
+  const missing = BASKET.filter((i) => !present.has(i));
+  return missing.length === 0
+    ? "exclusions: []"
+    : ["exclusions:", ...missing.flatMap((i) => [`  - issuer: ${i}`, '    reason: "not evidenced this quarter"'])].join(
+        "\n",
+      );
+};
 
 export const machineBlock = (o: {
   quarter?: string;
@@ -35,6 +56,8 @@ export const machineBlock = (o: {
   total?: string;
   extra?: string;
   crossChecks?: string;
+  /** The whole `exclusions` entry; by default every basket issuer that is not a component, with a reason. */
+  exclusions?: string;
 }): string =>
   [
     "```yaml",
@@ -57,7 +80,7 @@ export const machineBlock = (o: {
         '    fx_rate: "1.1"',
       ].join("\n"),
     ...(o.crossChecks ? [o.crossChecks] : []),
-    "exclusions: []",
+    o.exclusions ?? defaultExclusions(o.components),
     "adopted_conflicts: []",
     ...(o.extra ? [o.extra] : []),
     `total_usd: "${o.total ?? "1221"}"`,
@@ -104,7 +127,7 @@ export const catalog = (series?: unknown): string =>
           last_updated: "2026-10-02",
           version: "0.1.0",
           license: "CC-BY-4.0",
-          basket: ["FED", "ECB", "BOJ"],
+          basket: BASKET,
         },
       ],
     },
@@ -139,7 +162,7 @@ export const goodText = (): Record<string, string> => ({
   "evidence/base_money/2026Q3.md": rollup(),
   "issuers/FED/2026.md": issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
   "issuers/ECB/2026.md": issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement" })),
-  "issuers/FX/2026.md": issuerFile("FX", "2026Q3", extract({ title: "EURUSD reference rate" })),
+  "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")),
 });
 
 /** The empty skeleton: no data rows, no extracts. */

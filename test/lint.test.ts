@@ -6,6 +6,7 @@ import {
   catalog,
   extract,
   files,
+  fxExtract,
   good,
   goodText,
   index,
@@ -100,6 +101,7 @@ describe("L2 evidence existence", () => {
         ),
         [FED]: `${fedText}\n## 2026Q2\n`,
         "issuers/ECB/2026.md": `${goodText()["issuers/ECB/2026.md"]}\n## 2026Q2\n`,
+        "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q2\n\n${fxExtract("EUR")}`,
         "INDEX.md": index("- [2026Q2](evidence/base_money/2026Q2.md)"),
         ...csv("2026-06-30,1221,evidence/base_money/2026Q2.md", ROW),
       }),
@@ -179,6 +181,7 @@ describe("L4 base_money.csv rows", () => {
   const q4Headings = {
     [FED]: `${fedText}\n## 2026Q4\n`,
     "issuers/ECB/2026.md": `${goodText()["issuers/ECB/2026.md"]}\n## 2026Q4\n`,
+    "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q4\n\n${fxExtract("EUR")}`,
   };
   test("a new row passes", () =>
     passes(
@@ -306,6 +309,32 @@ describe("L7 extract schema", () => {
       ),
       ["L7"],
       /Original URL/,
+    ));
+  // Assay: Wayback rewrites "/" inside a query string as %2F, so the Original URL is compared with the archived
+  // one after percent-decoding each component (path segment, query key and value), not as raw strings.
+  const BCB = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.20306/dados?formato=json&dataInicial=01/01/2026";
+  const bcb = (archived: string, original = BCB) =>
+    good(
+      fed(extract({ title: "FED H.4.1", original, archive: `https://web.archive.org/web/20261002140500/${archived}` })),
+    );
+  test("archive URL with the query's / written as %2F (Wayback's form) passes", () =>
+    passes(bcb(BCB.replaceAll("01/01/2026", "01%2F01%2F2026"))));
+  test("archive URL identical to the Original URL passes", () => passes(bcb(BCB)));
+  test("archive URL for a different date fails even when encoded", () =>
+    fails(bcb(BCB.replace("01/01/2026", "01%2F02%2F2026")), ["L7"], /not the Original URL/));
+  test("archive URL for a different series fails", () =>
+    fails(bcb(BCB.replace("sgs.20306", "sgs.20307")), ["L7"], /not the Original URL/));
+  test("an encoded & inside a query value is not a separator", () =>
+    fails(bcb("https://example.test/q?a=b%26c=d", "https://example.test/q?a=b&c=d"), ["L7"], /not the Original URL/));
+  test("an encoded / in a path segment is not a path separator", () =>
+    fails(bcb("https://example.test/a%2Fb", "https://example.test/a/b"), ["L7"], /not the Original URL/));
+  test("a malformed percent-escape in the archive URL fails cleanly", () =>
+    fails(bcb(BCB.replace("01/01/2026", "01%2G01%2F2026")), ["L7"], /Archive URL .* malformed percent-escape/));
+  test("a malformed percent-escape in the Original URL fails cleanly", () =>
+    fails(
+      bcb("https://example.test/a%", "https://example.test/a%"),
+      ["L7"],
+      /Original URL .* malformed percent-escape/,
     ));
   test("13-digit snapshot timestamp", () =>
     fails(
@@ -442,8 +471,103 @@ describe("L8 archive resolution (fake network)", () => {
     fails(onGood({ [FED]: added }), ["L8"], /no snapshot/, fake(DOWN, { kind: "ok", timestamp: null }).opts));
   test("both endpoints unreachable is a network error and fails", () =>
     fails(onGood({ [FED]: added }), ["L8"], /network error: .*ECONNREFUSED.*ETIMEDOUT/, fake(DOWN).opts));
+  test("archive.org availability HTTP 429 says rate-limited, retry later (not 'retry online')", async () => {
+    const fs = await lint(onGood({ [FED]: added }), fake(DOWN, { kind: "http", status: 429 }).opts);
+    expect(fs.map((f) => f.check)).toEqual(["L8"]);
+    expect(fs[0]?.message).toMatch(/HTTP 429 \(rate-limited; no verdict on the snapshot; retry later\)/);
+    expect(fs[0]?.message).not.toMatch(/retry online/);
+  });
+  test("archive.org availability HTTP 503 is no verdict; retry later", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /availability: HTTP 503 \(no verdict on the snapshot; retry later\)/,
+      fake(DOWN, { kind: "http", status: 503 }).opts,
+    ));
+  test("web.archive.org HEAD HTTP 429 says rate-limited, retry later", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /HTTP 429 \(rate-limited; retry later\)/,
+      fake({ kind: "http", status: 429 }).opts,
+    ));
+  test("offline network errors still say retry online", () =>
+    fails(onGood({ [FED]: added }), ["L8"], /retry online/, fake(DOWN).opts));
+  test("progress: one stderr line per checked URL, counted; none without new URLs", async () => {
+    const lines: string[] = [];
+    const f = fake({ kind: "http", status: 404 });
+    const second = extract({ title: "FED newer" }); // archive URL .../FED-newer
+    await lint(onGood({ [FED]: added + second }), { ...f.opts, progress: (l) => lines.push(l) });
+    expect(lines).toEqual([
+      "L8 checking 2 new archive URLs",
+      `L8 [1/2] fail ${NEW}`,
+      `L8 [2/2] fail ${NEW.replace("FED-new", "FED-newer")}`,
+    ]);
+    const quiet: string[] = [];
+    await lint(onGood({}), { ...f.opts, progress: (l) => quiet.push(l) });
+    expect(quiet).toEqual([]);
+  });
+  // Probe M2: the progress line says why a URL passed: the HEAD status and snapshot timestamp, the availability
+  // timestamp, or the Re-archive note that excused a dead snapshot.
+  const progressOf = async (files: Record<string, string>, f: ReturnType<typeof fake>) => {
+    const lines: string[] = [];
+    await lint(onGood(files), { ...f.opts, progress: (l) => lines.push(l) });
+    return lines.slice(1);
+  };
+  test("progress: ok shows the HEAD status and the snapshot timestamp", async () =>
+    expect(await progressOf({ [FED]: added }, fake({ kind: "ok", status: 200 }))).toEqual([
+      `L8 [1/1] ok (HTTP 200, ${TS}) ${NEW}`,
+    ]));
+  test("progress: ok by the availability fallback names it and the timestamp", async () =>
+    expect(await progressOf({ [FED]: added }, fake(DOWN, { kind: "ok", timestamp: TS }))).toEqual([
+      `L8 [1/1] ok (archive.org availability, ${TS}) ${NEW}`,
+    ]));
+  test("progress: a dead snapshot excused by a Re-archive note says so", async () => {
+    for (const status of [404, 410])
+      expect(await progressOf({ [FED]: noted }, fake({ kind: "http", status }))).toEqual([
+        `L8 [1/1] excused (HTTP ${status}, Re-archive note) ${NEW}`,
+      ]);
+  });
+  test("progress: a note that cannot excuse the failure still logs fail", async () =>
+    expect(await progressOf({ [FED]: noted }, fake({ kind: "http", status: 500 }))).toEqual([`L8 [1/1] fail ${NEW}`]));
+  test("a Re-archive note never excuses an availability HTTP error (429)", () =>
+    fails(onGood({ [FED]: noted }), ["L8"], /rate-limited/, fake(DOWN, { kind: "http", status: 429 }).opts));
   test("a Re-archive note never excuses a network error", () =>
     fails(onGood({ [FED]: noted }), ["L8"], /network error/, fake(DOWN).opts));
+  const NEAR = `https://web.archive.org/web/20261002140501/${ORIG}`;
+  test("HEAD redirected to another capture fails: the snapshot does not exist", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /snapshot 20261002140500 does not exist; Wayback redirected \(HTTP 302\) to nearest capture 20261002140501/,
+      fake({ kind: "redirect", status: 302, location: NEAR, reason: "other-capture", timestamp: "20261002140501" })
+        .opts,
+    ));
+  test("a near-miss redirect does not use the fallback, and a Re-archive note does not excuse it", async () => {
+    const f = fake({
+      kind: "redirect",
+      status: 302,
+      location: NEAR,
+      reason: "other-capture",
+      timestamp: "20261002140501",
+    });
+    await fails(onGood({ [FED]: noted }), ["L8"], /nearest capture/, f.opts);
+    expect(f.avail).toEqual([]);
+  });
+  test("HEAD redirected off the snapshot fails and names the Location", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /HEAD redirected \(HTTP 301\) off the snapshot to https:\/\/example\.test\/x/,
+      fake({ kind: "redirect", status: 301, location: "https://example.test/x", reason: "off-snapshot" }).opts,
+    ));
+  test("a redirect loop fails", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /redirected more than 5 times/,
+      fake({ kind: "redirect", status: 302, location: NEW, reason: "loop" }).opts,
+    ));
   test("a Re-archive note does not excuse a timestamp mismatch", () =>
     fails(onGood({ [FED]: noted }), ["L8"], /closest snapshot/, fake(DOWN, { kind: "ok", timestamp: "1" }).opts));
   // m5: only URLs that pass L7 reach the network.
@@ -544,6 +668,42 @@ describe("L9 aggregation", () => {
     ));
   test("CSV value differs from total_usd", () =>
     fails(good(csv("2026-09-30,1222,evidence/base_money/2026Q3.md")), ["L9"], /CSV value 1222/));
+  // Assay (b, revised): a roll-up has one or more machine blocks; L9 validates every block on its own, and only
+  // the last (current) block's total_usd must equal the CSV value.
+  const fedOnly = (local: string, total: string) =>
+    machineBlock({
+      components: [
+        "  - issuer: FED",
+        "    anchor: issuers/FED/2026.md#2026q3",
+        "    local_currency: USD",
+        `    local_value: "${local}"`,
+        '    fx_rate: "1"',
+      ].join("\n"),
+      total,
+    });
+  const withRevision = (first: string, last: string, value: string) =>
+    good({
+      [ROLLUP]: `${rollup(first)}\n## Revision 1\n\n${last}`,
+      ...csv(`2026-09-30,${value},evidence/base_money/2026Q3.md`),
+    });
+  test("several valid blocks pass; the CSV value is the last block's total", () =>
+    passes(withRevision(machineBlock({}), fedOnly("1001.5", "1002"), "1002")));
+  test("an earlier block with a wrong total fails", () =>
+    fails(withRevision(machineBlock({ total: "1220" }), fedOnly("1001.5", "1002"), "1002"), ["L9"], /recomputed 1221/));
+  test("an earlier block that is invalid in any other way fails", () =>
+    fails(
+      withRevision(machineBlock({ quarter: "2026Q2" }), fedOnly("1001.5", "1002"), "1002"),
+      ["L9"],
+      /quarter "2026Q2" differs/,
+    ));
+  test("an earlier unparseable block fails", () =>
+    fails(withRevision("```yaml\nquarter: [\n```\n", fedOnly("1001.5", "1002"), "1002"), ["L9"], /YAML/));
+  test("a CSV value that matches an earlier block but not the last one fails", () =>
+    fails(
+      withRevision(machineBlock({}), fedOnly("1001.5", "1002"), "1221"),
+      ["L9"],
+      /CSV value 1221 .* differs from total_usd 1002/,
+    ));
   test("rounds half to even (2.5 -> 2)", () => passes(one("2.5", "2")));
   test("half-up is wrong (2.5 -> 3 fails)", () => fails(one("2.5", "3"), ["L9"], /recomputed 2/));
   test("exact beyond float precision", () => passes(one("123456789012345678.5", "123456789012345678")));
@@ -565,19 +725,72 @@ describe("L9 aggregation", () => {
     fails(good({ [ROLLUP]: rollup(machineBlock({}).replace("unit: USD", "unit: EUR")) }), ["L9"], /unit/));
   test("no components", () =>
     fails(good({ [ROLLUP]: rollup(machineBlock({ components: "  []" })) }), ["L9"], /components/));
+  // Assay (c): exclusions are {issuer, reason}; components + exclusions are the basket, each issuer exactly once.
+  const excl = (exclusions: string, o: Parameters<typeof machineBlock>[0] = {}) =>
+    good({ [ROLLUP]: rollup(machineBlock({ ...o, exclusions })) });
   test("exclusion needs a reason", () =>
+    fails(excl("exclusions:\n  - issuer: BOJ"), ["L9"], /exclusions\[0\]\.reason is required/));
+  test("exclusion needs an issuer", () =>
+    fails(excl('exclusions:\n  - reason: "not final"'), ["L9"], /exclusions\[0\]\.issuer is required/));
+  test("stated exclusion with issuer and reason passes", () =>
+    passes(excl('exclusions:\n  - issuer: BOJ\n    reason: "no primary source"')));
+  test("the methodology template's flow form passes", () =>
+    passes(excl("exclusions: [{issuer: BOJ, reason: SGS 20306 convention unconfirmed from a BOJ primary page}]")));
+  test("an excluded issuer must be in the catalog basket", () =>
     fails(
-      good({ [ROLLUP]: rollup(machineBlock({}).replace("exclusions: []", "exclusions:\n  - issuer: PBOC")) }),
+      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: PBOC\n    reason: "x"'),
       ["L9"],
-      /exclusions\[0\].reason/,
+      /exclusions\[1\]\.issuer PBOC is not in the catalog basket/,
     ));
-  test("stated exclusion with reason passes", () =>
-    passes(
-      good({
-        [ROLLUP]: rollup(
-          machineBlock({}).replace("exclusions: []", 'exclusions:\n  - issuer: PBOC\n    reason: "no primary source"'),
-        ),
+  test("an issuer excluded twice fails", () =>
+    fails(
+      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: BOJ\n    reason: "y"'),
+      ["L9"],
+      /BOJ is listed 2 times in exclusions/,
+    ));
+  test("an issuer in both components and exclusions fails", () =>
+    fails(
+      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: FED\n    reason: "y"'),
+      ["L9"],
+      /FED is in both components and exclusions/,
+    ));
+  test("a basket issuer in neither components nor exclusions fails", () =>
+    fails(excl("exclusions: []"), ["L9"], /basket issuer BOJ is neither a component nor excluded/));
+  test("an issuer listed twice in components fails", () =>
+    fails(
+      excl('exclusions:\n  - issuer: ECB\n    reason: "x"\n  - issuer: BOJ\n    reason: "y"', {
+        components: [
+          "  - issuer: FED",
+          "    anchor: issuers/FED/2026.md#2026q3",
+          "    local_currency: USD",
+          '    local_value: "610.5"',
+          '    fx_rate: "1"',
+          "  - issuer: FED",
+          "    anchor: issuers/FED/2026.md#2026q3",
+          "    local_currency: USD",
+          '    local_value: "610.5"',
+          '    fx_rate: "1"',
+        ].join("\n"),
       }),
+      ["L9"],
+      /FED is listed 2 times in components/,
+    ));
+  test("a component issuer must be in the catalog basket", () =>
+    fails(
+      good({
+        "catalog.json": catalog([{ ...JSON.parse(catalog()).series[0], basket: ["FED", "BOJ"] }]),
+        [ROLLUP]: rollup(machineBlock({ exclusions: 'exclusions:\n  - issuer: BOJ\n    reason: "x"' })),
+      }),
+      ["L9", "L12"],
+      /components\[1\]\.issuer ECB is not in the catalog basket/,
+    ));
+  test("an earlier block that breaks the exclusion rules fails too", () =>
+    fails(
+      good({
+        [ROLLUP]: `${rollup(machineBlock({ exclusions: "exclusions: []" }))}\n## Revision 1\n\n${machineBlock({})}`,
+      }),
+      ["L9"],
+      /machine block 1 of 2 .*basket issuer BOJ is neither a component nor excluded/,
     ));
   test("adopted conflict needs adopted_anchor", () =>
     fails(
@@ -594,6 +807,60 @@ describe("L9 aggregation", () => {
       good({ [ROLLUP]: rollup(machineBlock({}).replace("fx_source_anchor: issuers/FX/2026.md#2026q3\n", "")) }),
       ["L9"],
       /fx_source_anchor/,
+    ));
+  // R1-11 (methodology FX rule): every non-USD currency a component uses in a quarter has an FX extract for that
+  // quarter, "- Currency: <ISO>", under "## <quarter>" in issuers/FX/<YYYY>.md.
+  const FX = "issuers/FX/2026.md";
+  const FED_ONLY = [
+    "  - issuer: FED",
+    "    anchor: issuers/FED/2026.md#2026q3",
+    "    local_currency: USD",
+    '    local_value: "1000.5"',
+    '    fx_rate: "1"',
+  ].join("\n");
+  const ECB_JPY =
+    machineBlock({})
+      .split("components:\n")[1]
+      ?.split("\nexclusions")[0]
+      ?.replace("local_currency: EUR", "local_currency: JPY") ?? "";
+  test("a component currency with an FX extract for the quarter passes", () => passes(good({})));
+  test("a component currency with no FX extract fails", () =>
+    fails(
+      good({ [FX]: issuerFile("FX", "2026Q3", fxExtract("JPY")) }),
+      ["L9"],
+      /components\[1\] \(ECB\) local_currency EUR has no FX extract .*"- Currency: EUR".*## 2026Q3.*issuers\/FX\/2026\.md/,
+    ));
+  test("an FX extract under another quarter does not count", () =>
+    fails(
+      good({ [FX]: `${issuerFile("FX", "2026Q2", fxExtract("EUR"))}\n## 2026Q3\n\n${fxExtract("JPY")}` }),
+      ["L9"],
+      /local_currency EUR has no FX extract/,
+    ));
+  test("a Currency line outside an extract or inside a code fence does not count", () =>
+    fails(
+      good({
+        [FX]: `# FX 2026\n\n## 2026Q3\n\n- Currency: EUR\n\n${extract({ title: "FX note" })}\n\`\`\`\n- Currency: EUR\n\`\`\`\n`,
+      }),
+      ["L9"],
+      /local_currency EUR has no FX extract/,
+    ));
+  test("no FX file at all fails for a non-USD component", () =>
+    fails(good({ [FX]: null }), ["L9", "L5"], /local_currency EUR has no FX extract/));
+  test("a USD-only quarter needs no FX extract", () =>
+    passes(
+      good({
+        [FX]: issuerFile("FX", "2026Q3"),
+        "base_money.csv": `${CSV_HEADER}2026-09-30,1000,evidence/base_money/2026Q3.md\n`,
+        [ROLLUP]: rollup(machineBlock({ components: FED_ONLY, total: "1000" }).replace(/fx_source_anchor: .*\n/, "")),
+      }),
+    ));
+  test("an earlier block whose currency has no FX extract fails too", () =>
+    fails(
+      good({
+        [ROLLUP]: `${rollup(machineBlock({ components: ECB_JPY, total: "1221" }))}\n## Revision 1\n\n${machineBlock({})}`,
+      }),
+      ["L9"],
+      /machine block 1 of 2 .*local_currency JPY has no FX extract/,
     ));
   test("fx_rate must be positive", () =>
     fails(good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1.1"', 'fx_rate: "0"')) }), ["L9"], /fx_rate/));
@@ -813,6 +1080,14 @@ describe("L10 byte-order marks", () => {
   test("BOM on INDEX.md fails", () => fails(good({ "INDEX.md": `\uFEFF${index()}` }), ["L10"], /byte-order mark/));
 });
 
+describe("L11 catalog lists the base_money series (F2)", () => {
+  const entry = JSON.parse(catalog()).series[0];
+  test("empty series list fails", () =>
+    fails(good({ "catalog.json": '{"series": []}' }), ["L11"], /series has no "base_money" entry/));
+  test("a catalog without the base_money series fails", () =>
+    fails(good({ "catalog.json": catalog([{ ...entry, id: "cpi_u" }]) }), ["L11"], /series has no "base_money" entry/));
+});
+
 describe("L11 catalog basket", () => {
   const entry = JSON.parse(catalog()).series[0];
   const { basket: _, ...noBasket } = entry;
@@ -842,6 +1117,15 @@ describe("L12 placement", () => {
     "evidence/base_money/2026Q5.md",
     "evidence/base_money/2026/2026Q3.md",
     "evidence/cpi_u/2026Q3.md",
+    // F1: any other file under issuers/ or evidence/, whatever its extension.
+    "issuers/FED/2025.MD",
+    "issuers/FED/2025.markdown",
+    "issuers/FED/notes",
+    "issuers/FED/data.csv",
+    "issuers/FED/2026.md.bak",
+    "evidence/base_money/2026Q4.json",
+    "evidence/base_money/2026Q3.MD",
+    "evidence/README",
   ])
     test(`${p} is misplaced`, async () => {
       const fs = await lint(good({ [p]: "# x\n" }), OFF);
@@ -860,6 +1144,64 @@ describe("L12 placement", () => {
         "INDEX.md": index("- [BOJ 2026](issuers/BOJ/2026.md)"),
       }),
     ));
-  test("non-text files (.gitkeep) and files outside issuers/ and evidence/ are not placement-checked", () =>
-    passes(good({ "issuers/.gitkeep": "", "evidence/base_money/.gitkeep": "", "notes.md": "# n\n" })));
+  test("issuers/FX/<YYYY>.md passes though FX is not a basket issuer", () =>
+    passes(
+      good({
+        "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")),
+        "INDEX.md": index("- [FX 2026](issuers/FX/2026.md)"),
+      }),
+    ));
+  // Assay (a): FX is an exact, case-sensitive folder name, and issuer folders are upper-case ids, even when no
+  // valid catalog basket exists to compare against.
+  for (const p of ["issuers/fx/2026.md", "issuers/Fx/2026.md", "issuers/fed/2026.md", "issuers/FX/2026.MD"])
+    test(`${p} is misplaced even with no valid catalog basket`, async () => {
+      const fs = await lint(good({ "catalog.json": '{"series": []}', [p]: "# x\n" }), OFF);
+      expect(fs.filter((f) => f.check === "L12").map((f) => f.file)).toEqual([p]);
+    });
+  // Assay: research/base_money/<YYYY>Q<n>.md is the research log; the pattern is exact and case-sensitive.
+  test("research/base_money/<YYYY>Q<n>.md (the research log) passes", () =>
+    passes(good({ "research/base_money/2026Q3.md": "# 2026Q3 research log\n" })));
+  for (const p of [
+    "research/notes.md",
+    "research/base_money/notes.md",
+    "research/base_money/2026q3.md",
+    "research/base_money/2026Q3.MD",
+    "research/base_money/2026Q5.md",
+    "research/base_money/2026Q3.txt",
+    "research/base_money/2026/2026Q3.md",
+    "research/Base_Money/2026Q3.md",
+    "research/cpi_u/2026Q3.md",
+    "research/README",
+  ])
+    test(`${p} is misplaced`, async () => {
+      const fs = await lint(good({ [p]: "# x\n" }), OFF);
+      expect(fs.filter((f) => f.check === "L12").map((f) => f.file)).toEqual([p]);
+    });
+  test("issuers/FX/<YYYY>.md passes with research logs alongside", () =>
+    passes(
+      good({
+        "issuers/FX/2025.md": issuerFile("FX", "2025Q4"),
+        "research/base_money/2025Q4.md": "# 2025Q4 research log\n",
+        "INDEX.md": index("- [FX 2025](issuers/FX/2025.md)"),
+      }),
+    ));
+  test(".gitkeep anywhere under issuers/, evidence/ and research/, and files outside them, pass", () =>
+    passes(
+      good({
+        "issuers/.gitkeep": "",
+        "issuers/FED/.gitkeep": "",
+        "evidence/base_money/.gitkeep": "",
+        "research/.gitkeep": "",
+        "research/base_money/.gitkeep": "",
+        "notes.md": "# n\n",
+      }),
+    ));
+  test("a broken extract in a .MD file is not unchecked: L12 rejects the file", async () => {
+    const fs = await lint(good({ "issuers/FED/2025.MD": "# FED\n\n## 2025Q3\n\n### x\n- Retrieved: soon\n" }), OFF);
+    expect(fs.some((f) => f.check === "L12" && f.file === "issuers/FED/2025.MD")).toBe(true);
+  });
+  test("an empty catalog series list does not leave issuer folders unchecked (F2: L11 fails)", async () => {
+    const fs = await lint(good({ "catalog.json": '{"series": []}' }), OFF);
+    expect(fs.some((f) => f.check === "L11")).toBe(true);
+  });
 });
