@@ -68,6 +68,13 @@ describe("git snapshot loader", () => {
   });
 });
 
+describe("repository identity", () => {
+  test("package name and README name the repo GildedPleb/open-inflation", async () => {
+    expect((await Bun.file(join(ROOT, "package.json")).json()).name).toBe("open-inflation");
+    expect(await Bun.file(join(ROOT, "README.md")).text()).toContain("GildedPleb/open-inflation");
+  });
+});
+
 describe("CLI", () => {
   const run = (script: string, cwd: string, ...args: string[]) => {
     const { LINT_BASE: _, ...env } = process.env;

@@ -530,31 +530,40 @@ describe("L9 adopted_conflicts", () => {
     fails(conflict(OK.replace("#boj-primary", "#BOJ-primary")), ["L5"], /machine block anchor.*#BOJ-primary/));
 });
 
-describe("L9 benchmarks (optional, never summed)", () => {
-  const BENCH = "issuers/BENCH/2026.md";
-  const bench = (list: string, patch: Record<string, string> = {}) =>
-    good({
-      [BENCH]: issuerFile("BENCH", "2026Q3", extract({ title: "Published aggregate" })),
-      "INDEX.md": index("- [BENCH 2026](issuers/BENCH/2026.md)"),
-      [ROLLUP]: rollup(machineBlock({ benchmarks: list, ...patch })),
-    });
-  const ONE = [
-    "benchmarks:",
-    '  - name: "Published global base-money aggregate (synthetic)"',
-    "    anchor: issuers/BENCH/2026.md#2026q3",
-    '    value_usd: "99999999"',
-  ].join("\n");
-  test("a benchmark is recorded and does not change total_usd", () => passes(bench(ONE)));
-  test("empty list passes", () => passes(bench("benchmarks: []")));
-  test("benchmark value is never summed into total_usd", () =>
-    fails(bench(ONE, { total: String(1221 + 99999999) }), ["L9"], /recomputed 1221/));
-  test("must be a list", () => fails(bench("benchmarks: {}"), ["L9"], /benchmarks must be a list/));
-  test("needs a name", () => fails(bench(ONE.replace(/ {2}- name.*\n/, "  -\n")), ["L9"], /benchmarks\[0\]\.name/));
-  test("needs an anchor", () => fails(bench(ONE.replace(/ {4}anchor.*\n/, "")), ["L9"], /benchmarks\[0\]\.anchor/));
-  test("value_usd must be a quoted decimal", () =>
-    fails(bench(ONE.replace('"99999999"', "99999999")), ["L9"], /benchmarks\[0\]\.value_usd/));
-  test("benchmark anchor must resolve", () =>
-    fails(bench(ONE.replace("BENCH/2026.md#2026q3", "BENCH/2026.md#2026Q3")), ["L5"], /machine block anchor.*#2026Q3/));
+describe("L9 cross_checks (optional; name and url only, never a figure)", () => {
+  const cc = (list: string) => good({ [ROLLUP]: rollup(machineBlock({ crossChecks: list })) });
+  const entry = (...extra: string[]) =>
+    [
+      "cross_checks:",
+      '  - name: "Another published aggregate"',
+      '    url: "https://example.test/aggregate"',
+      ...extra,
+    ].join("\n");
+  test("a valid entry passes", () => passes(cc(entry())));
+  test("empty list passes", () => passes(cc("cross_checks: []")));
+  test("value_usd is rejected and named as a numeric field", () =>
+    fails(cc(entry('    value_usd: "99999999"')), ["L9"], /cross_checks\[0\] has numeric field "value_usd"/));
+  test("any numeric field is rejected and named", () =>
+    fails(cc(entry("    total: 123")), ["L9"], /cross_checks\[0\] has numeric field "total"/));
+  test("a numeric field nested in an object is still a figure", () =>
+    fails(cc(entry("    detail:", "      usd: 5")), ["L9"], /cross_checks\[0\] has numeric field "detail"/));
+  test("missing url", () =>
+    fails(cc('cross_checks:\n  - name: "Another published aggregate"'), ["L9"], /cross_checks\[0\]\.url/));
+  test("non-http url", () =>
+    fails(cc(entry().replace("https://example.test/aggregate", "ftp://example.test/aggregate")), ["L9"], /http\(s\)/));
+  test("bare host is not a url", () =>
+    fails(cc(entry().replace("https://example.test/aggregate", "example.test/aggregate")), ["L9"], /http\(s\)/));
+  test("missing name", () =>
+    fails(cc('cross_checks:\n  - url: "https://example.test/a"'), ["L9"], /cross_checks\[0\]\.name/));
+  test("an extra non-numeric field is rejected", () =>
+    fails(
+      cc(entry('    anchor: "issuers/FED/2026.md#2026q3"')),
+      ["L9"],
+      /cross_checks\[0\] has field "anchor"; only name and url/,
+    ));
+  test("must be a list", () => fails(cc("cross_checks: {}"), ["L9"], /cross_checks must be a list/));
+  test("a figure cannot ride in under another machine-block key", () =>
+    fails(cc('published_totals:\n  - name: "x"\n    value_usd: "1"'), ["L9"], /unknown key "published_totals"/));
 });
 
 describe("L10 no binaries", () => {

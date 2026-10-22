@@ -34,7 +34,7 @@ export const machineBlock = (o: {
   components?: string;
   total?: string;
   extra?: string;
-  benchmarks?: string;
+  crossChecks?: string;
 }): string =>
   [
     "```yaml",
@@ -56,7 +56,7 @@ export const machineBlock = (o: {
         '    local_value: "200.25"',
         '    fx_rate: "1.1"',
       ].join("\n"),
-    ...(o.benchmarks ? [o.benchmarks] : []),
+    ...(o.crossChecks ? [o.crossChecks] : []),
     "exclusions: []",
     "adopted_conflicts: []",
     ...(o.extra ? [o.extra] : []),
