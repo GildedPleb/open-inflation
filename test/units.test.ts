@@ -119,6 +119,24 @@ describe("httpHead redirects (fake fetch, by URL)", () => {
     }) as unknown as typeof fetch;
     return { f, urls };
   };
+  // Assay: L8 HEADs the archive URL exactly as written (Wayback's %2F form), and the redirect check compares only
+  // the capture timestamps, so a Location that re-encodes the original is followed, not called another capture.
+  const ENC_ORIG = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.20306/dados?formato=json&dataInicial=01%2F01%2F2026";
+  const ENC = `https://web.archive.org/web/${TS}/${ENC_ORIG}`;
+  test("HEAD requests the archive URL as written, %2F kept", async () => {
+    const { f, urls } = routes({ [ENC]: [200] });
+    expect(await httpHead(f, 1000)(ENC)).toEqual({ kind: "ok", status: 200 });
+    expect(urls).toEqual([ENC]);
+  });
+  test("a same-timestamp redirect to the decoded form is followed; another timestamp is still a near-miss", async () => {
+    const decoded = ENC.replaceAll("%2F", "/");
+    const same = routes({ [ENC]: [302, decoded], [decoded]: [200] });
+    expect(await httpHead(same.f, 1000)(ENC)).toEqual({ kind: "ok", status: 200 });
+    expect(same.urls).toEqual([ENC, decoded]);
+    const other = `https://web.archive.org/web/20250107055932/${ENC_ORIG}`;
+    const near = routes({ [ENC]: [302, other] });
+    expect(await httpHead(near.f, 1000)(ENC)).toMatchObject({ reason: "other-capture", timestamp: "20250107055932" });
+  });
   test("3xx to a different capture timestamp: not ok, names both timestamps, not followed", async () => {
     const other = `https://web.archive.org/web/20250107055932/${ORIG}`;
     const { f, urls } = routes({ [SNAP]: [302, other], [other]: [200] });

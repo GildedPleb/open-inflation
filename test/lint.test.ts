@@ -310,6 +310,32 @@ describe("L7 extract schema", () => {
       ["L7"],
       /Original URL/,
     ));
+  // Assay: Wayback rewrites "/" inside a query string as %2F, so the Original URL is compared with the archived
+  // one after percent-decoding each component (path segment, query key and value), not as raw strings.
+  const BCB = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.20306/dados?formato=json&dataInicial=01/01/2026";
+  const bcb = (archived: string, original = BCB) =>
+    good(
+      fed(extract({ title: "FED H.4.1", original, archive: `https://web.archive.org/web/20261002140500/${archived}` })),
+    );
+  test("archive URL with the query's / written as %2F (Wayback's form) passes", () =>
+    passes(bcb(BCB.replaceAll("01/01/2026", "01%2F01%2F2026"))));
+  test("archive URL identical to the Original URL passes", () => passes(bcb(BCB)));
+  test("archive URL for a different date fails even when encoded", () =>
+    fails(bcb(BCB.replace("01/01/2026", "01%2F02%2F2026")), ["L7"], /not the Original URL/));
+  test("archive URL for a different series fails", () =>
+    fails(bcb(BCB.replace("sgs.20306", "sgs.20307")), ["L7"], /not the Original URL/));
+  test("an encoded & inside a query value is not a separator", () =>
+    fails(bcb("https://example.test/q?a=b%26c=d", "https://example.test/q?a=b&c=d"), ["L7"], /not the Original URL/));
+  test("an encoded / in a path segment is not a path separator", () =>
+    fails(bcb("https://example.test/a%2Fb", "https://example.test/a/b"), ["L7"], /not the Original URL/));
+  test("a malformed percent-escape in the archive URL fails cleanly", () =>
+    fails(bcb(BCB.replace("01/01/2026", "01%2G01%2F2026")), ["L7"], /Archive URL .* malformed percent-escape/));
+  test("a malformed percent-escape in the Original URL fails cleanly", () =>
+    fails(
+      bcb("https://example.test/a%", "https://example.test/a%"),
+      ["L7"],
+      /Original URL .* malformed percent-escape/,
+    ));
   test("13-digit snapshot timestamp", () =>
     fails(
       good(
