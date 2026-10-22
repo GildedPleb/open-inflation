@@ -1,0 +1,12 @@
+{
+  "series": [
+    {
+      "id": "base_money",
+      "path": "base_money.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "methodology/base_money.md",
+      "last_updated": null
+    }
+  ]
+}
