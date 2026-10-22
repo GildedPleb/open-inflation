@@ -6,6 +6,7 @@ import {
   catalog,
   extract,
   files,
+  fxExtract,
   good,
   goodText,
   index,
@@ -100,6 +101,7 @@ describe("L2 evidence existence", () => {
         ),
         [FED]: `${fedText}\n## 2026Q2\n`,
         "issuers/ECB/2026.md": `${goodText()["issuers/ECB/2026.md"]}\n## 2026Q2\n`,
+        "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q2\n\n${fxExtract("EUR")}`,
         "INDEX.md": index("- [2026Q2](evidence/base_money/2026Q2.md)"),
         ...csv("2026-06-30,1221,evidence/base_money/2026Q2.md", ROW),
       }),
@@ -179,6 +181,7 @@ describe("L4 base_money.csv rows", () => {
   const q4Headings = {
     [FED]: `${fedText}\n## 2026Q4\n`,
     "issuers/ECB/2026.md": `${goodText()["issuers/ECB/2026.md"]}\n## 2026Q4\n`,
+    "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q4\n\n${fxExtract("EUR")}`,
   };
   test("a new row passes", () =>
     passes(
@@ -756,6 +759,60 @@ describe("L9 aggregation", () => {
       ["L9"],
       /fx_source_anchor/,
     ));
+  // R1-11 (methodology FX rule): every non-USD currency a component uses in a quarter has an FX extract for that
+  // quarter, "- Currency: <ISO>", under "## <quarter>" in issuers/FX/<YYYY>.md.
+  const FX = "issuers/FX/2026.md";
+  const FED_ONLY = [
+    "  - issuer: FED",
+    "    anchor: issuers/FED/2026.md#2026q3",
+    "    local_currency: USD",
+    '    local_value: "1000.5"',
+    '    fx_rate: "1"',
+  ].join("\n");
+  const ECB_JPY =
+    machineBlock({})
+      .split("components:\n")[1]
+      ?.split("\nexclusions")[0]
+      ?.replace("local_currency: EUR", "local_currency: JPY") ?? "";
+  test("a component currency with an FX extract for the quarter passes", () => passes(good({})));
+  test("a component currency with no FX extract fails", () =>
+    fails(
+      good({ [FX]: issuerFile("FX", "2026Q3", fxExtract("JPY")) }),
+      ["L9"],
+      /components\[1\] \(ECB\) local_currency EUR has no FX extract .*"- Currency: EUR".*## 2026Q3.*issuers\/FX\/2026\.md/,
+    ));
+  test("an FX extract under another quarter does not count", () =>
+    fails(
+      good({ [FX]: `${issuerFile("FX", "2026Q2", fxExtract("EUR"))}\n## 2026Q3\n\n${fxExtract("JPY")}` }),
+      ["L9"],
+      /local_currency EUR has no FX extract/,
+    ));
+  test("a Currency line outside an extract or inside a code fence does not count", () =>
+    fails(
+      good({
+        [FX]: `# FX 2026\n\n## 2026Q3\n\n- Currency: EUR\n\n${extract({ title: "FX note" })}\n\`\`\`\n- Currency: EUR\n\`\`\`\n`,
+      }),
+      ["L9"],
+      /local_currency EUR has no FX extract/,
+    ));
+  test("no FX file at all fails for a non-USD component", () =>
+    fails(good({ [FX]: null }), ["L9", "L5"], /local_currency EUR has no FX extract/));
+  test("a USD-only quarter needs no FX extract", () =>
+    passes(
+      good({
+        [FX]: issuerFile("FX", "2026Q3"),
+        "base_money.csv": `${CSV_HEADER}2026-09-30,1000,evidence/base_money/2026Q3.md\n`,
+        [ROLLUP]: rollup(machineBlock({ components: FED_ONLY, total: "1000" }).replace(/fx_source_anchor: .*\n/, "")),
+      }),
+    ));
+  test("an earlier block whose currency has no FX extract fails too", () =>
+    fails(
+      good({
+        [ROLLUP]: `${rollup(machineBlock({ components: ECB_JPY, total: "1221" }))}\n## Revision 1\n\n${machineBlock({})}`,
+      }),
+      ["L9"],
+      /machine block 1 of 2 .*local_currency JPY has no FX extract/,
+    ));
   test("fx_rate must be positive", () =>
     fails(good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1.1"', 'fx_rate: "0"')) }), ["L9"], /fx_rate/));
   test("evidence file outside a series folder", () =>
@@ -1041,7 +1098,7 @@ describe("L12 placement", () => {
   test("issuers/FX/<YYYY>.md passes though FX is not a basket issuer", () =>
     passes(
       good({
-        "issuers/FX/2026.md": issuerFile("FX", "2026Q3"),
+        "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")),
         "INDEX.md": index("- [FX 2026](issuers/FX/2026.md)"),
       }),
     ));

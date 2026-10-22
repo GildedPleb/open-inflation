@@ -9,6 +9,8 @@ export const extract = (o: {
   original?: string;
   archive?: string;
   quote?: string;
+  /** Extra field lines, e.g. "- Currency: EUR" for an FX extract. */
+  fields?: string[];
 }): string => {
   const original = o.original ?? `https://example.test/${o.title.replaceAll(" ", "-")}`;
   const retrieved = o.retrieved ?? "2026-10-02T14:03:00Z";
@@ -18,12 +20,17 @@ export const extract = (o: {
     `- Retrieved: ${retrieved}`,
     `- Original URL: ${original}`,
     `- Archive URL: ${archive}`,
+    ...(o.fields ?? []),
     "- Notes: synthetic fixture",
     "",
     `> ${o.quote ?? "Monetary base (synthetic): 1"}`,
     "",
   ].join("\n");
 };
+
+/** An FX extract for one currency (methodology FX extract format: "- Currency: <ISO>"). */
+export const fxExtract = (currency: string): string =>
+  extract({ title: `FX ${currency}`, fields: [`- Currency: ${currency}`], quote: `${currency} (synthetic): 1` });
 
 export const issuerFile = (iss: string, quarter: string, ...blocks: string[]): string =>
   [`# ${iss} 2026`, "", `## ${quarter}`, "", ...blocks].join("\n");
@@ -155,7 +162,7 @@ export const goodText = (): Record<string, string> => ({
   "evidence/base_money/2026Q3.md": rollup(),
   "issuers/FED/2026.md": issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
   "issuers/ECB/2026.md": issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement" })),
-  "issuers/FX/2026.md": issuerFile("FX", "2026Q3", extract({ title: "EURUSD reference rate" })),
+  "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")),
 });
 
 /** The empty skeleton: no data rows, no extracts. */
