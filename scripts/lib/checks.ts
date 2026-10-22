@@ -1,7 +1,7 @@
 // All integrity checks (L1-L12 in WP1_REQUIREMENTS). Pure over a Snapshot; the only I/O is the injected Net.
 import { posix } from "node:path";
 import { MAX_HOPS } from "./archive.ts";
-import { parseDecimal, roundHalfEven, sumOfProducts } from "./decimal.ts";
+import { type Decimal, parseDecimal, ratioHalfEven, roundHalfEven, sumOfProducts } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, slugs } from "./markdown.ts";
 import type { CheckId, Files, Finding, LintOptions, Net, Snapshot } from "./types.ts";
 
@@ -81,8 +81,11 @@ const quarterEnd = (q: string) => `${q.slice(0, 4)}-${QUARTER_ENDS[Number(q.slic
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 const show = (v: unknown) => JSON.stringify(v) ?? String(v);
-const isIsoDate = (s: string) =>
-  /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(s);
+const isIsoDate = (s: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const t = Date.parse(`${s}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().startsWith(s);
+};
 
 /** Resolve a link target to a repo path (and fragment), or null for external links. */
 function resolveLink(
@@ -306,6 +309,9 @@ function linkIntegrity(ctx: Ctx, emit: Emit) {
     const anchors = [
       m.data.fx_source_anchor,
       ...(Array.isArray(m.data.components) ? m.data.components : []).map((c) => (isObj(c) ? c.anchor : undefined)),
+      ...(Array.isArray(m.data.reference_values) ? m.data.reference_values : []).map((c) =>
+        isObj(c) ? c.anchor : undefined,
+      ),
       ...(Array.isArray(m.data.adopted_conflicts) ? m.data.adopted_conflicts : []).flatMap((c) =>
         isObj(c) && Array.isArray(c.rejected_anchors) ? c.rejected_anchors : [],
       ),
@@ -364,20 +370,35 @@ interface Extract {
   readonly fields: Map<Field, string[]>;
   readonly wrongForm: Map<Field, number>;
   quote: boolean;
+  /** The `## YYYYQn` heading this extract sits under, or null. */
+  readonly quarter: string | null;
+  /** Each `- As of:` value. */
+  readonly asOf: string[];
 }
+const AS_OF_LINE = /^\s*[-*]\s+As of:\s*(.*?)\s*$/;
 
 /** Extract blocks (### sections) of one issuer file, plus field lines found outside any block. */
 function extracts(body: string): { blocks: Extract[]; stray: number[] } {
   const blocks: Extract[] = [];
   const stray: number[] = [];
   let cur: Extract | null = null;
+  let quarter: string | null = null;
   for (const l of lines(body)) {
     if (l.fence === "none") {
       const h = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/.exec(l.text);
       if (h?.[1]) {
+        if (h[1].length <= 2) quarter = h[1].length === 2 && /^\d{4}Q[1-4]$/.test(h[2] ?? "") ? (h[2] as string) : null;
         cur =
           h[1].length === 3
-            ? { title: h[2] ?? "", line: l.line, fields: new Map(), wrongForm: new Map(), quote: false }
+            ? {
+                title: h[2] ?? "",
+                line: l.line,
+                fields: new Map(),
+                wrongForm: new Map(),
+                quote: false,
+                quarter,
+                asOf: [],
+              }
             : h[1].length < 3
               ? null
               : cur;
@@ -390,6 +411,7 @@ function extracts(body: string): { blocks: Extract[]; stray: number[] } {
         if (!cur) stray.push(l.line);
         else cur.fields.set(f[1] as Field, [...(cur.fields.get(f[1] as Field) ?? []), f[2] ?? ""]);
       } else if (near && cur) cur.wrongForm.set(near[1] as Field, l.line);
+      else if (cur && AS_OF_LINE.test(l.text)) cur.asOf.push(AS_OF_LINE.exec(l.text)?.[1] ?? "");
       else if (cur && /^\s*>\s*\S/.test(l.text)) cur.quote = true;
     } else if (cur && l.fence === "body" && l.text.trim() !== "") cur.quote = true;
   }
@@ -489,12 +511,56 @@ const issuerTexts = (texts: Texts | null) =>
     .sort(([a], [b]) => a.localeCompare(b));
 
 function extractSchema(ctx: Ctx, emit: Emit) {
+  const startOfDay = catalogModel(ctx.text.get("catalog.json")).startOfDay;
   for (const [p, body] of issuerTexts(ctx.text)) {
     const { blocks, stray } = extracts(body);
+    const iss = /^issuers\/([^/]+)\//.exec(p)?.[1] ?? "";
     for (const line of stray) emit("L7", p, `line ${line}: extract field outside an ### extract block`);
-    for (const b of blocks)
-      for (const m of blockProblems(b, ctx.now)) emit("L7", p, `extract "${b.title}" (line ${b.line}) ${m}`);
+    for (const b of blocks) {
+      const at = `extract "${b.title}" (line ${b.line})`;
+      for (const m of blockProblems(b, ctx.now)) emit("L7", p, `${at} ${m}`);
+      // P2-m1: As of (the observation date) lies inside the extract's quarter heading. Separate from blockProblems,
+      // so it never changes which URLs L8 fetches.
+      if (b.quarter === null) continue;
+      for (const v of b.asOf) {
+        const m = asOfProblem(v, b.quarter, iss === FX_FOLDER, startOfDay.has(iss));
+        if (m) emit("L7", p, `${at} ${m}`);
+      }
+    }
   }
+}
+
+/** YYYY-MM-DD or YYYY-MM, optionally one parenthetical note to the end of the line (Assay). Only the date counts. */
+const AS_OF = /^(\d{4})-(\d{2})(?:-(\d{2}))?(?:\s+\(.*\))?\s*$/;
+const QUARTER_STARTS = ["01-01", "04-01", "07-01", "10-01"];
+const quarterStart = (q: string) => `${q.slice(0, 4)}-${QUARTER_STARTS[Number(q.slice(5)) - 1]}`;
+const FX_WINDOW_DAYS = 3;
+const addDays = (date: string, n: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
+
+/**
+ * P2-m1 (Assay): an issuer, reference-only or confirming extract's As of is inside its quarter, inclusive, by day
+ * or by month (YYYY-MM is in the quarter if its month is). A start_of_day issuer (catalog issuers[]) may also use
+ * the next quarter's first day. An FX extract needs a full date from quarter-end minus 3 days to quarter-end.
+ */
+function asOfProblem(v: string, q: string, fx: boolean, startOfDay: boolean): string | null {
+  const m = AS_OF.exec(v);
+  const [y, mo, d] = [m?.[1] ?? "", m?.[2] ?? "", m?.[3]];
+  const date = d === undefined ? `${y}-${mo}` : `${y}-${mo}-${d}`;
+  if (!m || !isIsoDate(d === undefined ? `${date}-01` : date))
+    return `As of ${show(v)} must be YYYY-MM-DD or YYYY-MM (a real date), optionally followed by one (note)`;
+  const [start, end] = [quarterStart(q), quarterEnd(q)];
+  if (fx) {
+    const from = addDays(end, -FX_WINDOW_DAYS);
+    if (d === undefined) return `FX As of ${show(v)} must be a full YYYY-MM-DD from ${from} to the quarter-end ${end}`;
+    if (date < from || date > end)
+      return `FX As of ${date} is outside ${from}..${end} (quarter-end minus ${FX_WINDOW_DAYS} days to quarter-end)`;
+    return null;
+  }
+  if (quarterOf(d === undefined ? `${date}-01` : date) === q) return null;
+  const next = addDays(end, 1);
+  if (startOfDay && date === next) return null;
+  return `As of ${date} is outside its quarter heading ${q} (${start}..${end}${startOfDay ? `, or ${next} for a start_of_day issuer` : ""})`;
 }
 
 interface ArchiveRef {
@@ -625,8 +691,11 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     if (r?.[1] !== SERIES) continue; // L12 reports misplaced files
     const q = r[2] as string;
     const all = machines(body);
-    const basket = catalogBasket(ctx);
+    const { baskets } = catalogModel(ctx.text.get("catalog.json"));
     const fx = fxCurrencies(ctx, q);
+    // Blocks already committed on the base keep their implied basket version 1; later ones are new.
+    const was = ctx.base?.get(p);
+    const committed = was === undefined ? 0 : machines(was).filter((m) => m.ok).length;
     for (const [i, m] of all.entries()) {
       const current = i === all.length - 1;
       const label =
@@ -638,7 +707,7 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
           q,
           label,
           current ? rows.find((r) => quarterOf(r.date) === q) : undefined,
-          { basket, fx },
+          { baskets, fx, isNew: i >= committed },
           e,
         );
     }
@@ -677,7 +746,7 @@ const fxFile = (q: string) => `issuers/${FX_FOLDER}/${q.slice(0, 4)}.md`;
  * Assay (c): components + exclusions are exactly the catalog basket, each issuer once. Skipped when the
  * catalog has no basket (L11 reports that). Entries with no issuer are reported by the field checks.
  */
-function basketCover(comps: unknown[], excl: unknown[], basket: Set<string>): string[] {
+function basketCover(comps: unknown[], excl: unknown[], basket: ReadonlySet<string>): string[] {
   if (basket.size === 0) return [];
   const errs: string[] = [];
   const ids = (key: string, xs: unknown[]) => {
@@ -703,16 +772,74 @@ function basketCover(comps: unknown[], excl: unknown[], basket: Set<string>): st
   return errs;
 }
 
+type Pair = readonly [Decimal, Decimal];
+
+/**
+ * One components or reference_values entry: {issuer, anchor, local_currency, local_value, fx_rate}, the anchor at
+ * the issuer's quarter heading, a non-USD currency backed by an FX extract. Returns its USD pair when valid.
+ */
+function valueEntry(key: string, i: number, c: unknown, q: string, fxHave: Set<string>, errs: string[]): Pair | null {
+  if (!isObj(c)) {
+    errs.push(`${key}[${i}] must be a mapping`);
+    return null;
+  }
+  if (!nonEmpty(c.issuer)) errs.push(`${key}[${i}].issuer is required`);
+  if (!nonEmpty(c.anchor)) errs.push(`${key}[${i}].anchor is required`);
+  else if (nonEmpty(c.issuer)) {
+    const want = `issuers/${c.issuer}/${q.slice(0, 4)}.md#${q.toLowerCase()}`;
+    if (c.anchor !== want) errs.push(`${key}[${i}].anchor ${c.anchor} must be ${want} (the issuer's ${q} section)`);
+  }
+  if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
+    errs.push(`${key}[${i}].local_currency must be an ISO 4217 code`);
+  else if (c.local_currency !== "USD" && !fxHave.has(c.local_currency))
+    errs.push(
+      `${key}[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_currency ${c.local_currency} has no FX extract for ${q}: no ### extract with "- Currency: ${c.local_currency}" under ## ${q} in ${fxFile(q)}`,
+    );
+  const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
+  const fx = typeof c.fx_rate === "string" ? parseDecimal(c.fx_rate) : null;
+  if (!v) errs.push(`${key}[${i}].local_value must be a decimal string (quoted), got ${show(c.local_value)}`);
+  if (!fx || fx.digits === 0n)
+    errs.push(`${key}[${i}].fx_rate must be a positive decimal string (quoted), got ${show(c.fx_rate)}`);
+  return v && fx ? [v, fx] : null;
+}
+
+/** reference_values name exactly the excluded issuers, each once. */
+function referenceCover(refs: unknown[], excl: unknown[]): string[] {
+  const errs: string[] = [];
+  const excluded = new Set(excl.flatMap((x) => (isObj(x) && nonEmpty(x.issuer) ? [x.issuer] : [])));
+  const named: string[] = [];
+  for (const [i, r] of refs.entries()) {
+    const iss = isObj(r) ? r.issuer : undefined;
+    if (!nonEmpty(iss)) continue;
+    named.push(iss);
+    if (!excluded.has(iss))
+      errs.push(`reference_values[${i}].issuer ${iss} is not excluded (reference values are for exclusions only)`);
+  }
+  for (const iss of new Set(named)) {
+    const n = named.filter((x) => x === iss).length;
+    if (n > 1) errs.push(`${iss} is listed ${n} times in reference_values`);
+  }
+  for (const iss of excluded)
+    if (!named.includes(iss)) errs.push(`excluded issuer ${iss} has no reference_values entry (its reference value)`);
+  return errs;
+}
+
+const COVERAGE = /^\d+\.\d{2}$/;
+const hundredths = (h: bigint) => {
+  const t = h.toString().padStart(3, "0");
+  return `${t.slice(0, -2)}.${t.slice(-2)}`;
+};
+
 /** L9 on one machine block of roll-up quarter `q`; `row` is the CSV row to match, given only for the last block. */
 function blockAggregation(
   d: unknown,
   q: string,
   label: string,
   row: Row | undefined,
-  ref: { readonly basket: Set<string>; readonly fx: Set<string> },
+  ref: { readonly baskets: ReadonlyMap<number, Basket>; readonly fx: Set<string>; readonly isNew: boolean },
   e: (m: string) => void,
 ) {
-  const { basket, fx: fxHave } = ref;
+  const { baskets, fx: fxHave } = ref;
   if (!isObj(d)) {
     e(`${label} is not a mapping`);
     return;
@@ -721,36 +848,40 @@ function blockAggregation(
   if (d.quarter !== q) errs.push(`quarter ${show(d.quarter)} differs from filename quarter ${q}`);
   if (d.as_of !== quarterEnd(q)) errs.push(`as_of ${show(d.as_of)} must be the quarter-end ${quarterEnd(q)}`);
   if (d.unit !== "USD") errs.push(`unit must be "USD", got ${show(d.unit)}`);
+  // basket_version: optional (absent = 1) while the catalog lists one basket; required on new blocks after that.
+  let version = 1;
+  if ("basket_version" in d) {
+    const bv = d.basket_version;
+    if (typeof bv !== "number" || !Number.isInteger(bv) || bv < 1) {
+      errs.push(`basket_version ${show(bv)} must be a positive integer (unquoted)`);
+      version = 0;
+    } else version = bv;
+  } else if (ref.isNew && baskets.size > 1)
+    errs.push(
+      "basket_version is required once the catalog lists more than one basket (blocks committed earlier stay version 1)",
+    );
+  const basket = baskets.get(version);
+  if (version > 0 && baskets.size > 0 && !basket)
+    errs.push(`basket_version ${version} is not a catalog basket version (1..${baskets.size})`);
   const comps = Array.isArray(d.components) ? d.components : [];
   if (comps.length === 0) errs.push("components must be a non-empty list");
-  const pairs: [NonNullable<ReturnType<typeof parseDecimal>>, NonNullable<ReturnType<typeof parseDecimal>>][] = [];
+  const pairs: Pair[] = [];
   for (const [i, c] of comps.entries()) {
-    if (!isObj(c)) {
-      errs.push(`components[${i}] must be a mapping`);
-      continue;
-    }
-    if (!nonEmpty(c.issuer)) errs.push(`components[${i}].issuer is required`);
-    if (!nonEmpty(c.anchor)) errs.push(`components[${i}].anchor is required`);
-    else if (nonEmpty(c.issuer)) {
-      const want = `issuers/${c.issuer}/${q.slice(0, 4)}.md#${q.toLowerCase()}`;
-      if (c.anchor !== want)
-        errs.push(`components[${i}].anchor ${c.anchor} must be ${want} (the issuer's ${q} section)`);
-    }
-    if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
-      errs.push(`components[${i}].local_currency must be an ISO 4217 code`);
-    else if (c.local_currency !== "USD" && !fxHave.has(c.local_currency))
-      errs.push(
-        `components[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_currency ${c.local_currency} has no FX extract for ${q}: no ### extract with "- Currency: ${c.local_currency}" under ## ${q} in ${fxFile(q)}`,
-      );
-    const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
-    const fx = typeof c.fx_rate === "string" ? parseDecimal(c.fx_rate) : null;
-    if (!v) errs.push(`components[${i}].local_value must be a decimal string (quoted), got ${show(c.local_value)}`);
-    if (!fx || fx.digits === 0n)
-      errs.push(`components[${i}].fx_rate must be a positive decimal string (quoted), got ${show(c.fx_rate)}`);
-    if (v && fx) pairs.push([v, fx]);
+    const pair = valueEntry("components", i, c, q, fxHave, errs);
+    if (pair) pairs.push(pair);
   }
-  if (comps.some((c) => isObj(c) && c.local_currency !== "USD") && !nonEmpty(d.fx_source_anchor))
-    errs.push("fx_source_anchor is required when any component is not USD");
+  const refs = Array.isArray(d.reference_values) ? d.reference_values : [];
+  if (!Array.isArray(d.reference_values))
+    errs.push(
+      "reference_values must be a list (one {issuer, anchor, local_currency, local_value, fx_rate} per exclusion)",
+    );
+  const refPairs: Pair[] = [];
+  for (const [i, c] of refs.entries()) {
+    const pair = valueEntry("reference_values", i, c, q, fxHave, errs);
+    if (pair) refPairs.push(pair);
+  }
+  if ([...comps, ...refs].some((c) => isObj(c) && c.local_currency !== "USD") && !nonEmpty(d.fx_source_anchor))
+    errs.push("fx_source_anchor is required when any component or reference value is not USD");
   const list = (key: string, need: string[]) => {
     const v = d[key];
     if (!Array.isArray(v)) {
@@ -763,7 +894,12 @@ function blockAggregation(
   for (const k of Object.keys(d)) if (!MACHINE_KEYS.includes(k)) errs.push(`unknown key "${k}"`);
   if (d.cross_checks !== undefined) errs.push(...crossChecks(d.cross_checks));
   list("exclusions", ["issuer", "reason"]);
-  errs.push(...basketCover(comps, Array.isArray(d.exclusions) ? d.exclusions : [], basket));
+  const excl = Array.isArray(d.exclusions) ? d.exclusions : [];
+  errs.push(...basketCover(comps, excl, basket?.issuers ?? new Set()));
+  errs.push(...referenceCover(refs, excl));
+  if (!("coverage_pct" in d)) errs.push('coverage_pct is required (e.g. "98.79")');
+  else if (typeof d.coverage_pct !== "string" || !COVERAGE.test(d.coverage_pct))
+    errs.push(`coverage_pct must be a string with exactly 2 decimals (e.g. "98.79"), got ${show(d.coverage_pct)}`);
   list("adopted_conflicts", ["adopted_anchor", "reason"]);
   if (Array.isArray(d.adopted_conflicts))
     for (const [i, c] of d.adopted_conflicts.entries()) {
@@ -779,10 +915,30 @@ function blockAggregation(
   for (const x of errs) e(`${label}: ${x}`);
   if (errs.length > 0) return;
   const total = d.total_usd as string;
-  const got = roundHalfEven(sumOfProducts(pairs));
+  const compUsd = sumOfProducts(pairs);
+  const got = roundHalfEven(compUsd);
   const where = label === "machine block" ? "" : `${label}: `;
   if (got !== BigInt(total))
     e(`${where}total_usd ${total} but recomputed ${got} (exact sum of local_value x fx_rate, rounded half-to-even)`);
+  // coverage = comp / (comp + ref) x 100, exact, rounded once half-to-even to 2 decimals.
+  const refUsd = sumOfProducts(refPairs);
+  const scale = Math.max(compUsd.scale, refUsd.scale);
+  const comp = compUsd.digits * 10n ** BigInt(scale - compUsd.scale);
+  const den = comp + refUsd.digits * 10n ** BigInt(scale - refUsd.scale);
+  if (den === 0n) {
+    e(`${where}coverage is undefined: components and reference_values sum to 0 USD`);
+  } else {
+    const coverage = ratioHalfEven(comp * 10000n, den);
+    const stated = d.coverage_pct as string;
+    if (BigInt(stated.replace(".", "")) !== coverage)
+      e(
+        `${where}coverage_pct "${stated}" but recomputed ${hundredths(coverage)} (components USD / (components + reference_values USD) x 100, rounded once half-to-even)`,
+      );
+    if (basket?.floor !== undefined && coverage < basket.floor)
+      e(
+        `${where}coverage ${hundredths(coverage)}% is below the basket ${version} floor ${basket.floorText}% (an exclusion this large needs a new basket)`,
+      );
+  }
   if (row && row.value !== total) e(`CSV value ${row.value} (${CSV} line ${row.line}) differs from total_usd ${total}`);
 }
 
@@ -790,10 +946,13 @@ const MACHINE_KEYS = [
   "quarter",
   "as_of",
   "unit",
+  "basket_version",
   "fx_source_anchor",
   "components",
   "cross_checks",
   "exclusions",
+  "reference_values",
+  "coverage_pct",
   "adopted_conflicts",
   "total_usd",
 ];
@@ -833,7 +992,13 @@ function crossChecks(v: unknown): string[] {
 
 // ---------- L11 ----------
 
-const SERIES_KEYS = ["id", "path", "unit", "frequency", "methodology", "last_updated", "version", "license", "basket"];
+const SERIES_KEYS = ["id", "path", "unit", "frequency", "methodology", "last_updated", "version", "license", "baskets"];
+const OPTIONAL_SERIES_KEYS = ["issuers"];
+const BASKET_KEYS = ["version", "issuers", "floor_pct"];
+const ISSUER_KEYS = ["id", "as_of_convention"];
+const AS_OF_CONVENTIONS = ["start_of_day"];
+/** A coverage floor: a percentage from 0 to 100 with at most 2 decimals, as a string. */
+const FLOOR = /^(0|[1-9]\d{0,2})(\.\d{1,2})?$/;
 const ISSUER_ID = /^[A-Z][A-Z0-9]*$/;
 /** SPDX ids lint accepts for a series' data. Extend deliberately. */
 const DATA_LICENSES = ["CC-BY-4.0"];
@@ -863,7 +1028,8 @@ function catalog(ctx: Ctx, emit: Emit) {
       e(`series[${i}] must be an object`);
       continue;
     }
-    for (const k of Object.keys(s)) if (!SERIES_KEYS.includes(k)) e(`series[${i}] has unknown key "${k}"`);
+    for (const k of Object.keys(s))
+      if (!SERIES_KEYS.includes(k) && !OPTIONAL_SERIES_KEYS.includes(k)) e(`series[${i}] has unknown key "${k}"`);
     for (const k of SERIES_KEYS) if (!(k in s)) e(`series[${i}] is missing "${k}"`);
     if (typeof s.id !== "string" || !/^[a-z][a-z0-9_]*$/.test(s.id)) e(`series[${i}].id must be snake_case`);
     if (ids.has(s.id)) e(`series[${i}] has duplicate id ${show(s.id)}`);
@@ -879,9 +1045,161 @@ function catalog(ctx: Ctx, emit: Emit) {
       e(`series[${i}].version ${show(s.version)} is not a semver string (MAJOR.MINOR.PATCH)`);
     if ("license" in s && !(typeof s.license === "string" && DATA_LICENSES.includes(s.license)))
       e(`series[${i}].license ${show(s.license)} is not a known data license (${DATA_LICENSES.join(", ")})`);
-    if ("basket" in s && !isBasket(s.basket))
-      e(`series[${i}].basket ${show(s.basket)} is not a non-empty list of unique issuer ids (e.g. ["FED", "ECB"])`);
+    if ("baskets" in s) for (const m of basketsProblems(s.baskets)) e(`series[${i}].${m}`);
+    if ("issuers" in s) for (const m of issuersProblems(s.issuers, seriesBaskets(s))) e(`series[${i}].${m}`);
   }
+  basketHistory(ctx, emit);
+}
+
+function basketsProblems(v: unknown): string[] {
+  if (!Array.isArray(v) || v.length === 0) return ["baskets must be a non-empty list of {version, issuers, floor_pct}"];
+  const errs: string[] = [];
+  for (const [j, b] of v.entries()) {
+    const at = `baskets[${j}]`;
+    if (!isObj(b)) {
+      errs.push(`${at} must be an object {version, issuers, floor_pct}`);
+      continue;
+    }
+    for (const k of Object.keys(b)) if (!BASKET_KEYS.includes(k)) errs.push(`${at} has unknown key "${k}"`);
+    if (b.version !== j + 1)
+      errs.push(`${at}.version must be ${j + 1} (versions run 1..n in order), got ${show(b.version)}`);
+    if (!isBasket(b.issuers))
+      errs.push(`${at}.issuers ${show(b.issuers)} is not a non-empty list of unique upper-case issuer ids`);
+    if (floorOf(b.floor_pct) === undefined)
+      errs.push(`${at}.floor_pct ${show(b.floor_pct)} must be a decimal string from "0" to "100" (at most 2 decimals)`);
+  }
+  return errs;
+}
+
+/** floor_pct in hundredths of a percent, or undefined when it is not a valid floor. */
+function floorOf(v: unknown): bigint | undefined {
+  if (typeof v !== "string" || !FLOOR.test(v)) return undefined;
+  const d = parseDecimal(v);
+  if (!d) return undefined;
+  const h = d.digits * 10n ** BigInt(2 - d.scale);
+  return h <= 10000n ? h : undefined;
+}
+
+function issuersProblems(v: unknown, baskets: ReadonlyMap<number, Basket>): string[] {
+  if (!Array.isArray(v)) return ["issuers must be a list of {id, as_of_convention?}"];
+  const union = new Set([...baskets.values()].flatMap((b) => [...b.issuers]));
+  const errs: string[] = [];
+  const ids: string[] = [];
+  for (const [j, x] of v.entries()) {
+    const at = `issuers[${j}]`;
+    if (!isObj(x)) {
+      errs.push(`${at} must be an object {id, as_of_convention?}`);
+      continue;
+    }
+    for (const k of Object.keys(x)) if (!ISSUER_KEYS.includes(k)) errs.push(`${at} has unknown key "${k}"`);
+    if (typeof x.id !== "string" || !ISSUER_ID.test(x.id)) errs.push(`${at}.id ${show(x.id)} must be an issuer id`);
+    else {
+      ids.push(x.id);
+      if (union.size > 0 && !union.has(x.id)) errs.push(`${at}.id ${x.id} is not in any basket`);
+    }
+    if ("as_of_convention" in x && !AS_OF_CONVENTIONS.includes(x.as_of_convention as string))
+      errs.push(`${at}.as_of_convention ${show(x.as_of_convention)} is not one of ${AS_OF_CONVENTIONS.join(", ")}`);
+  }
+  for (const id of new Set(ids)) {
+    const n = ids.filter((x) => x === id).length;
+    if (n > 1) errs.push(`issuer ${id} is listed ${n} times in issuers`);
+  }
+  return errs;
+}
+
+/** Canonical JSON (sorted keys), to compare basket entries whatever their key order. */
+const canon = (v: unknown): string =>
+  Array.isArray(v)
+    ? `[${v.map(canon).join(",")}]`
+    : isObj(v)
+      ? `{${Object.keys(v)
+          .sort()
+          .map((k) => `${JSON.stringify(k)}:${canon(v[k])}`)
+          .join(",")}}`
+      : show(v);
+
+const parseJson = (t: string | undefined): unknown => {
+  try {
+    return t === undefined ? undefined : JSON.parse(t);
+  } catch {
+    return undefined;
+  }
+};
+const seriesList = (j: unknown): Record<string, unknown>[] =>
+  isObj(j) && Array.isArray(j.series) ? j.series.filter(isObj) : [];
+
+/**
+ * Basket history against the base: existing baskets are immutable (L4); appending one bumps the series' major
+ * version (L11). A base still in the legacy `basket` shape reads as baskets [{version 1, issuers: basket}], so
+ * migrating it to `baskets` keeps its issuers and only adds floor_pct.
+ */
+function basketHistory(ctx: Ctx, emit: Emit) {
+  const F = "catalog.json";
+  const was = seriesList(parseJson(ctx.base?.get(F)));
+  for (const s of seriesList(parseJson(ctx.text.get(F)))) {
+    const b = was.find((x) => x.id === s.id && s.id !== undefined);
+    if (!b) continue;
+    const legacy = !Array.isArray(b.baskets) && Array.isArray(b.basket);
+    const before: unknown[] = Array.isArray(b.baskets) ? b.baskets : legacy ? [{ version: 1, issuers: b.basket }] : [];
+    const after: unknown[] = Array.isArray(s.baskets) ? s.baskets : [];
+    for (const [j, old] of before.entries()) {
+      const cur = after[j];
+      const same =
+        legacy && isObj(cur)
+          ? canon(cur.version) === "1" && canon(cur.issuers) === canon(b.basket)
+          : canon(cur) === canon(old);
+      if (cur === undefined)
+        emit(
+          "L4",
+          F,
+          `basket version ${j + 1} of ${String(s.id)} was removed; baskets are immutable (append a new one)`,
+        );
+      else if (!same)
+        emit(
+          "L4",
+          F,
+          `basket version ${j + 1} of ${String(s.id)} was changed; baskets are immutable (append a new version with a major version bump)`,
+        );
+    }
+    const major = (v: unknown) => (typeof v === "string" ? SEMVER.exec(v)?.[1] : undefined);
+    const [now, then] = [major(s.version), major(b.version)];
+    if (before.length > 0 && after.length > before.length && now !== undefined && then !== undefined)
+      if (BigInt(now) <= BigInt(then))
+        emit(
+          "L11",
+          F,
+          `series ${String(s.id)} appends basket version ${before.length + 1} but version ${s.version} does not bump the major of ${b.version} (a basket change is a major version)`,
+        );
+  }
+}
+
+export interface Basket {
+  readonly issuers: ReadonlySet<string>;
+  /** Coverage floor in hundredths of a percent; undefined when floor_pct is invalid (L11 reports it). */
+  readonly floor: bigint | undefined;
+  readonly floorText: string;
+}
+
+/** A series' valid baskets by version. Lenient: L11 reports the invalid entries, which are left out. */
+function seriesBaskets(s: Record<string, unknown>): Map<number, Basket> {
+  const out = new Map<number, Basket>();
+  if (!Array.isArray(s.baskets)) return out;
+  for (const [j, b] of s.baskets.entries()) {
+    if (!isObj(b) || b.version !== j + 1 || !isBasket(b.issuers)) continue;
+    out.set(j + 1, { issuers: new Set(b.issuers), floor: floorOf(b.floor_pct), floorText: String(b.floor_pct) });
+  }
+  return out;
+}
+
+/** The base_money series' baskets and its start_of_day issuers, read leniently from catalog.json text. */
+function catalogModel(t: string | undefined): { baskets: Map<number, Basket>; startOfDay: Set<string> } {
+  const s = seriesList(parseJson(t)).find((x) => x.id === SERIES);
+  const startOfDay = new Set<string>();
+  if (!s) return { baskets: new Map(), startOfDay };
+  if (Array.isArray(s.issuers))
+    for (const x of s.issuers)
+      if (isObj(x) && typeof x.id === "string" && x.as_of_convention === "start_of_day") startOfDay.add(x.id);
+  return { baskets: seriesBaskets(s), startOfDay };
 }
 
 const isBasket = (v: unknown): v is string[] =>
@@ -895,12 +1213,14 @@ const isBasket = (v: unknown): v is string[] =>
 /** issuers/FX/ holds the FX-rate sources fx_source_anchor cites. It is not a basket issuer. */
 const FX_FOLDER = "FX";
 
-/** Issuers named by any valid catalog basket. Lenient: L11 reports a bad catalog, and an empty set skips membership. */
+/** Issuers named by any valid catalog basket, all versions (the union). Lenient: L11 reports a bad catalog, and an empty set skips membership. */
 function catalogBasket(ctx: Ctx): Set<string> {
   try {
     const j: unknown = JSON.parse(ctx.text.get("catalog.json") ?? "");
     const series = isObj(j) && Array.isArray(j.series) ? j.series : [];
-    return new Set(series.flatMap((x) => (isObj(x) && isBasket(x.basket) ? x.basket : [])));
+    return new Set(
+      series.flatMap((x) => (isObj(x) ? [...seriesBaskets(x).values()].flatMap((b) => [...b.issuers]) : [])),
+    );
   } catch {
     return new Set();
   }

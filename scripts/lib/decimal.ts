@@ -28,3 +28,11 @@ export function roundHalfEven({ digits, scale }: Decimal): bigint {
   if (twice > unit || (twice === unit && q % 2n === 1n)) return q + 1n;
   return q;
 }
+
+/** num / den (den > 0) rounded half-to-even to an integer. */
+export function ratioHalfEven(num: bigint, den: bigint): bigint {
+  const q = num / den;
+  const twice = 2n * (num % den);
+  if (twice > den || (twice === den && q % 2n === 1n)) return q + 1n;
+  return q;
+}

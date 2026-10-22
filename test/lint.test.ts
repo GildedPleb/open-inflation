@@ -233,7 +233,7 @@ describe("L5 link integrity", () => {
   test("uppercase fragment does not match GitHub's lowercase slug", () =>
     fails(withLink("- [FED](../../issuers/FED/2026.md#2026Q3)"), ["L5"], /#2026Q3/));
   test("missing target file", () =>
-    fails(withLink("- [BOJ](../../issuers/BOJ/2026.md#2026q3)"), ["L5"], /BOJ\/2026\.md/));
+    fails(withLink("- [SNB](../../issuers/SNB/2026.md#2026q3)"), ["L5"], /SNB\/2026\.md/));
   test("missing anchor", () => fails(withLink("- [FED](../../issuers/FED/2026.md#2026q4)"), ["L5"], /#2026q4/));
   test("root-relative path from evidence/ is wrong on GitHub", () =>
     fails(withLink("- [FED](issuers/FED/2026.md#2026q3)"), ["L5"], /evidence\/base_money\/issuers/));
@@ -615,7 +615,7 @@ describe("L8 archive resolution (fake network)", () => {
   test("no base: every archive URL is new", async () => {
     const f = fake({ kind: "ok", status: 200 });
     await passes(good(), f.opts);
-    expect(f.heads.length).toBe(3);
+    expect(f.heads.length).toBe(4); // FED, ECB, BOJ (reference only) and FX extracts
   });
   test("an archive URL is HEADed once: citing a committed URL again is not re-checked", async () => {
     const f = fake({ kind: "http", status: 404 });
@@ -738,7 +738,10 @@ describe("L9 aggregation", () => {
     passes(excl("exclusions: [{issuer: BOJ, reason: SGS 20306 convention unconfirmed from a BOJ primary page}]")));
   test("an excluded issuer must be in the catalog basket", () =>
     fails(
-      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: PBOC\n    reason: "x"'),
+      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: PBOC\n    reason: "x"', {
+        referenceValues:
+          'reference_values:\n  - issuer: BOJ\n    anchor: issuers/BOJ/2026.md#2026q3\n    local_currency: USD\n    local_value: "1"\n    fx_rate: "1"',
+      }),
       ["L9"],
       /exclusions\[1\]\.issuer PBOC is not in the catalog basket/,
     ));
@@ -1243,14 +1246,16 @@ describe("L4/L11 basket history", () => {
   test("migrating a legacy basket to a v1 with different issuers fails", () =>
     fails(
       onBase(legacy(), cat({ baskets: [{ ...V1, issuers: ["FED", "ECB"] }] })),
-      ["L4", "L9"],
+      ["L4", "L9", "L12"],
       /basket version 1 of base_money was changed/,
     ));
 });
 
 describe("L9 basket_version", () => {
-  const two = (block: string, version = "1.0.0", b2: unknown = V2) =>
-    good({ "catalog.json": withSeries({ version, baskets: [V1, b2] }), [ROLLUP]: rollup(block) });
+  const two = (block: string, version = "1.0.0", b2: unknown = V2, extra: Record<string, string> = {}) =>
+    good({ "catalog.json": withSeries({ version, baskets: [V1, b2] }), [ROLLUP]: rollup(block), ...extra });
+  const BOJ10 =
+    'reference_values:\n  - issuer: BOJ\n    anchor: issuers/BOJ/2026.md#2026q3\n    local_currency: USD\n    local_value: "10"\n    fx_rate: "1"';
   test("an explicit basket_version 1 passes", () =>
     passes(good({ [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })) })));
   test("an absent basket_version means 1 while one basket exists", () => passes(good()));
@@ -1278,11 +1283,21 @@ describe("L9 basket_version", () => {
           basketVersion: "2",
           exclusions: 'exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: SNB\n    reason: "y"',
         }),
+        "1.0.0",
+        V2,
+        {
+          "issuers/SNB/2026.md": issuerFile("SNB", "2026Q3", extract({ title: "SNB (reference only)" })),
+          "INDEX.md": index("- [SNB 2026](issuers/SNB/2026.md)"),
+        },
       ),
     ));
   test("the floor is the block's own basket's", () =>
     fails(
-      two(machineBlock({ basketVersion: "2" }), "1.0.0", { ...V1, version: 2, floor_pct: "99.5" }),
+      two(machineBlock({ basketVersion: "2", referenceValues: BOJ10 }), "1.0.0", {
+        ...V1,
+        version: 2,
+        floor_pct: "99.5",
+      }),
       ["L9"],
       /below the basket 2 floor 99\.5/,
     ));
@@ -1300,7 +1315,8 @@ describe("L9 basket_version", () => {
 });
 
 describe("L9 reference_values and coverage_pct", () => {
-  const blk = (o: Parameters<typeof machineBlock>[0]) => good({ [ROLLUP]: rollup(machineBlock(o)) });
+  const blk = (o: Parameters<typeof machineBlock>[0], extra: Record<string, string> = {}) =>
+    good({ [ROLLUP]: rollup(machineBlock(o)), ...extra });
   const ref = (iss: string, value: string, cur = "USD", fx = "1", anchor = `issuers/${iss}/2026.md#2026q3`) =>
     [
       `  - issuer: ${iss}`,
@@ -1310,23 +1326,27 @@ describe("L9 reference_values and coverage_pct", () => {
       `    fx_rate: "${fx}"`,
     ].join("\n");
   const usdOnly = (fed: string, refs: [string, string][], coverage?: string) =>
-    blk({
-      components: [
-        "  - issuer: FED",
-        "    anchor: issuers/FED/2026.md#2026q3",
-        "    local_currency: USD",
-        `    local_value: "${fed}"`,
-        '    fx_rate: "1"',
-      ].join("\n"),
-      exclusions: `exclusions:\n${refs.map(([i]) => `  - issuer: ${i}\n    reason: "x"`).join("\n")}`,
-      referenceValues: `reference_values:\n${refs.map(([i, v]) => ref(i, v)).join("\n")}`,
-      ...(coverage === undefined ? {} : { coverage }),
-      total: fed,
-    });
+    blk(
+      {
+        components: [
+          "  - issuer: FED",
+          "    anchor: issuers/FED/2026.md#2026q3",
+          "    local_currency: USD",
+          `    local_value: "${fed}"`,
+          '    fx_rate: "1"',
+        ].join("\n"),
+        exclusions: `exclusions:\n${refs.map(([i]) => `  - issuer: ${i}\n    reason: "x"`).join("\n")}`,
+        referenceValues: `reference_values:\n${refs.map(([i, v]) => ref(i, v)).join("\n")}`,
+        ...(coverage === undefined ? {} : { coverage }),
+        total: fed,
+      },
+      { "base_money.csv": `${CSV_HEADER}2026-09-30,${fed},${ROLLUP}\n` },
+    );
+  const boj10 = `reference_values:\n${ref("BOJ", "10")}`;
   // Hand-computed: 1220.775 / (1220.775 + 10) x 100 = 99.18750...  -> 99.19
-  test("the hand-computed coverage 99.19 passes", () => passes(blk({ coverage: '"99.19"' })));
+  test("the hand-computed coverage 99.19 passes", () => passes(blk({ referenceValues: boj10, coverage: '"99.19"' })));
   test("a wrong coverage_pct fails", () =>
-    fails(blk({ coverage: '"99.18"' }), ["L9"], /coverage_pct "99\.18" but recomputed 99\.19/));
+    fails(blk({ referenceValues: boj10, coverage: '"99.18"' }), ["L9"], /coverage_pct "99\.18" but recomputed 99\.19/));
   for (const c of ['"99.2"', '"99.190"', "99.19", '"99,19"', '"+99.19"'])
     test(`coverage_pct ${c} is not a string with exactly 2 decimals`, () =>
       fails(blk({ coverage: c }), ["L9"], /coverage_pct must be a string with exactly 2 decimals/));
@@ -1344,10 +1364,32 @@ describe("L9 reference_values and coverage_pct", () => {
     ));
   test("an empty reference_values passes when nothing is excluded", () =>
     passes(
-      good({
-        "catalog.json": withSeries({ baskets: [{ ...V1, issuers: ["FED", "ECB"] }] }),
-        [ROLLUP]: rollup(machineBlock({ exclusions: "exclusions: []", coverage: '"100.00"' })),
-      }),
+      blk(
+        {
+          components: [
+            "  - issuer: FED",
+            "    anchor: issuers/FED/2026.md#2026q3",
+            "    local_currency: USD",
+            '    local_value: "1000.5"',
+            '    fx_rate: "1"',
+            "  - issuer: ECB",
+            "    anchor: issuers/ECB/2026.md#2026q3",
+            "    local_currency: EUR",
+            '    local_value: "200.25"',
+            '    fx_rate: "1.1"',
+            "  - issuer: BOJ",
+            "    anchor: issuers/BOJ/2026.md#2026q3",
+            "    local_currency: USD",
+            '    local_value: "10"',
+            '    fx_rate: "1"',
+          ].join("\n"),
+          exclusions: "exclusions: []",
+          referenceValues: "reference_values: []",
+          coverage: '"100.00"',
+          total: "1231",
+        },
+        { "base_money.csv": `${CSV_HEADER}2026-09-30,1231,${ROLLUP}\n` },
+      ),
     ));
   test("half-to-even: 93.125 rounds to 93.12", () =>
     passes(
@@ -1440,7 +1482,8 @@ describe("L9 reference_values and coverage_pct", () => {
       ["L9"],
       /coverage 19\.5\d% is below the basket 1 floor 93%/,
     ));
-  test("reference values never count toward total_usd", () => fails(blk({ total: "1231" }), ["L9"], /recomputed 1221/));
+  test("reference values never count toward total_usd", () =>
+    fails(blk({ referenceValues: boj10, total: "1231" }), ["L9"], /recomputed 1221/));
   test("a reference for an issuer that is not excluded fails", () =>
     fails(
       blk({ referenceValues: `reference_values:\n${ref("BOJ", "10")}\n${ref("FED", "10")}` }),
@@ -1471,12 +1514,12 @@ describe("L9 reference_values and coverage_pct", () => {
         "issuers/BOJ/2026.md": null as unknown as string,
         "INDEX.md": index(),
       }),
-      ["L5", "L6"],
+      ["L5"],
       /issuers\/BOJ\/2026\.md#2026q3/,
     ));
   test("a reference value must be a decimal", () =>
     fails(
-      blk({ referenceValues: `reference_values:\n${ref("BOJ", "1e4")}` }),
+      blk({ referenceValues: `reference_values:\n${ref("BOJ", "1e4")}`, coverage: '"99.00"' }),
       ["L9"],
       /reference_values\[0\]\.local_value/,
     ));
@@ -1544,9 +1587,16 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
   test("issuer As of 2026-03 (month form) under Q2 fails", () =>
     fails(issuer("2026-03"), ["L7"], /As of 2026-03 is outside/));
   test("an As of that is not a date fails", () =>
-    fails(issuer("June 2026"), ["L7"], /As of "June 2026" does not start with a date/));
-  test("an impossible As of date fails", () => fails(issuer("2026-02-30"), ["L7"], /does not start with a date/));
-  test("an impossible As of month fails", () => fails(issuer("2026-13"), ["L7"], /does not start with a date/));
+    fails(issuer("June 2026"), ["L7"], /As of "June 2026" must be YYYY-MM-DD or YYYY-MM/));
+  test("trailing words without parentheses fail", () =>
+    fails(issuer("2026-06 monthly"), ["L7"], /As of "2026-06 monthly" must be YYYY-MM-DD or YYYY-MM/));
+  test("a time after the date fails", () => fails(issuer("2026-06-30T00:00"), ["L7"], /must be YYYY-MM-DD or YYYY-MM/));
+  test("two parenthetical notes are one note running to the end of the line", () =>
+    passes(issuer("2026-06-30 (end of period) (weekly)")));
+  test("an impossible As of date fails", () =>
+    fails(issuer("2026-02-30"), ["L7"], /must be YYYY-MM-DD or YYYY-MM \(a real date\)/));
+  test("an impossible As of month fails", () =>
+    fails(issuer("2026-13"), ["L7"], /must be YYYY-MM-DD or YYYY-MM \(a real date\)/));
   test("a confirming extract out of quarter fails too", () =>
     fails(issuer("2026-07-01", "FED confirming", ["- Adopted: no, confirming"]), ["L7"], /outside its quarter/));
   test("Retrieved is unconstrained (an October retrieval under Q2 passes)", () => passes(issuer("2026-05-15")));

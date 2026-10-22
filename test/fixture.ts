@@ -40,8 +40,9 @@ export const BASKET = ["FED", "ECB", "BOJ"];
 /** The fixture catalog's baskets: version 1 only, coverage floor 93%. */
 export const BASKETS = [{ version: 1, issuers: BASKET, floor_pct: "93" }];
 
-/** Synthetic reference value for an excluded issuer: 10 USD (USD, so no FX extract is needed). */
-const REF_VALUE = "10";
+/** Synthetic reference value for an excluded issuer: 0.01 USD (USD, so no FX extract is needed; small, so
+ * coverage stays above any floor unless a test sets reference_values itself). */
+const REF_VALUE = "0.01";
 
 /** Exact decimal string -> [digits, scale]. Test-side arithmetic, independent of scripts/lib/decimal.ts. */
 const dec = (s: string): [bigint, number] => {
@@ -232,7 +233,8 @@ export const goodText = (): Record<string, string> => ({
   "evidence/base_money/2026Q3.md": rollup(),
   "issuers/FED/2026.md": issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
   "issuers/ECB/2026.md": issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement" })),
-  "issuers/BOJ/2026.md": issuerFile("BOJ", "2026Q3", extract({ title: "BOJ monetary base (reference only)" })),
+  // Reference-only issuer: every quarter heading exists so default reference_values anchors resolve.
+  "issuers/BOJ/2026.md": `${issuerFile("BOJ", "2026Q3", extract({ title: "BOJ monetary base (reference only)" }))}\n## 2026Q1\n\n## 2026Q2\n\n## 2026Q4\n`,
   "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")),
 });
 
