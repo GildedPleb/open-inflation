@@ -1437,6 +1437,31 @@ describe("L9 reference_values and coverage_pct", () => {
       ["L9"],
       /coverage 93\.9949% is below the basket 1 floor 94%/,
     ));
+  // Away from the floor, so only the rounding decides: 98.7949 rounds once to 98.79; via 3 decimals it would be 98.795 -> 98.80.
+  test("rounded once: 98.7949 states 98.79", () =>
+    passes(
+      usdOnly(
+        "987949",
+        [
+          ["ECB", "12051"],
+          ["BOJ", "0"],
+        ],
+        '"98.79"',
+      ),
+    ));
+  test("rounded once: 98.7949 stated 98.80 (rounded twice) fails", () =>
+    fails(
+      usdOnly(
+        "987949",
+        [
+          ["ECB", "12051"],
+          ["BOJ", "0"],
+        ],
+        '"98.80"',
+      ),
+      ["L9"],
+      /coverage_pct "98\.80" but recomputed 98\.79/,
+    ));
   test("true floor: unrounded 93.995 (stated 94.00) is below the 94 floor", () =>
     fails(
       usdOnly(
