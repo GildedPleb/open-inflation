@@ -284,7 +284,6 @@ function linkIntegrity(ctx: Ctx, emit: Emit) {
     const anchors = [
       m.data.fx_source_anchor,
       ...(Array.isArray(m.data.components) ? m.data.components : []).map((c) => (isObj(c) ? c.anchor : undefined)),
-      ...(Array.isArray(m.data.benchmarks) ? m.data.benchmarks : []).map((b) => (isObj(b) ? b.anchor : undefined)),
       ...(Array.isArray(m.data.adopted_conflicts) ? m.data.adopted_conflicts : []).flatMap((c) =>
         isObj(c) && Array.isArray(c.rejected_anchors) ? c.rejected_anchors : [],
       ),
@@ -510,11 +509,8 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
       for (const [i, x] of v.entries())
         for (const k of need) if (!isObj(x) || !nonEmpty(x[k])) errs.push(`${key}[${i}].${k} is required`);
     };
-    if (d.benchmarks !== undefined) list("benchmarks", ["name", "anchor"]);
-    if (Array.isArray(d.benchmarks))
-      for (const [i, b] of d.benchmarks.entries())
-        if (isObj(b) && !(typeof b.value_usd === "string" && parseDecimal(b.value_usd)))
-          errs.push(`benchmarks[${i}].value_usd must be a decimal string (quoted), got ${show(b.value_usd)}`);
+    for (const k of Object.keys(d)) if (!MACHINE_KEYS.includes(k)) errs.push(`unknown key "${k}"`);
+    if (d.cross_checks !== undefined) errs.push(...crossChecks(d.cross_checks));
     list("exclusions", ["reason"]);
     list("adopted_conflicts", ["adopted_anchor", "reason"]);
     if (Array.isArray(d.adopted_conflicts))
@@ -538,6 +534,51 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     if (row && row.value !== total)
       e(`CSV value ${row.value} (${CSV} line ${row.line}) differs from total_usd ${total}`);
   }
+}
+
+const MACHINE_KEYS = [
+  "quarter",
+  "as_of",
+  "unit",
+  "fx_source_anchor",
+  "components",
+  "cross_checks",
+  "exclusions",
+  "adopted_conflicts",
+  "total_usd",
+];
+
+/** Any number anywhere in a value: a YAML number, a numeric string, or one nested inside. */
+const hasFigure = (v: unknown): boolean =>
+  typeof v === "number" ||
+  typeof v === "bigint" ||
+  (typeof v === "string" && /^[-+]?[\d][\d,_]*(\.\d+)?(e[-+]?\d+)?$/i.test(v.trim())) ||
+  (Array.isArray(v) && v.some(hasFigure)) ||
+  (isObj(v) && Object.values(v).some(hasFigure));
+
+/** cross_checks name another aggregate and where it is published. They never carry its figures. */
+function crossChecks(v: unknown): string[] {
+  if (!Array.isArray(v)) return ["cross_checks must be a list"];
+  const errs: string[] = [];
+  for (const [i, c] of v.entries()) {
+    const at = `cross_checks[${i}]`;
+    if (!isObj(c)) {
+      errs.push(`${at} must be a mapping of name and url`);
+      continue;
+    }
+    for (const [k, x] of Object.entries(c)) {
+      if (k === "name" || k === "url") continue;
+      errs.push(
+        hasFigure(x)
+          ? `${at} has numeric field "${k}"; cross_checks carry no figures (we never republish another aggregator's numbers)`
+          : `${at} has field "${k}"; only name and url are allowed`,
+      );
+    }
+    if (!nonEmpty(c.name)) errs.push(`${at}.name is required`);
+    if (typeof c.url !== "string") errs.push(`${at}.url is required`);
+    else if (!/^https?:\/\/\S+$/.test(c.url)) errs.push(`${at}.url ${show(c.url)} must be an http(s) URL`);
+  }
+  return errs;
 }
 
 // ---------- L11 ----------

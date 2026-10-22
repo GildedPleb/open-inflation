@@ -1,4 +1,6 @@
-# Open Base-Money Evidence Repository
+# open-inflation
+
+The Open Base-Money Evidence Repository ([GildedPleb/open-inflation](https://github.com/GildedPleb/open-inflation)).
 
 Simple time-series CSVs of global base money, where every observation is backed by a human-traversable, append-only Markdown evidence chain. Heavy artifacts stay external (archive.org); this repository holds only text.
 
@@ -45,6 +47,6 @@ CI (`.github/workflows/lint.yml`) runs all of the above on every push and pull r
 | L6    | `INDEX.md` links every roll-up and every issuer-year file                                                                                                                                                           |
 | L7    | Every extract has Retrieved (UTC), Original URL, an archive.org URL for that page taken within 24h, and a verbatim quote                                                                                            |
 | L8    | Newly added archive URLs answer a HEAD request, or the same commit adds a `Re-archive:` note                                                                                                                        |
-| L9    | Each roll-up's machine block recomputes exactly (decimal, half-to-even) to its `total_usd` and the CSV value; optional `benchmarks` are validated but never summed                                                  |
+| L9    | Each roll-up's machine block recomputes exactly (decimal, half-to-even) to its `total_usd` and the CSV value; optional `cross_checks` name another published aggregate (name and url only, never a figure)          |
 | L10   | Every file is UTF-8 text and at most 1 MB                                                                                                                                                                           |
 | L11   | `catalog.json` matches its schema and points at files that exist                                                                                                                                                    |
