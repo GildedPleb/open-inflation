@@ -164,7 +164,7 @@ A new issuer gets its row here, in the same change that adds its row to [Per-iss
 - **Exclusions.** Every basket issuer not evidenced for the quarter is listed under `exclusions`, with the issuer id and the reason (missing, blocked, convention unconfirmed, RBI not yet final, and so on). A missing issuer's figure is never estimated, interpolated or carried forward from another quarter.
 - **Coverage and warning.** A roll-up with any exclusion states its coverage share and carries this warning in plain words: "This total leaves out <issuers>. The CSV value is lower by the amount of the missing issuers, so growth rates into and out of this quarter are distorted and should not be read as changes in base money." `INDEX.md` gets a Coverage note for that quarter (see [Roll-up template](#roll-up-template)).
 - A quarter below the floor has no roll-up and no CSV row (see [Gaps policy](#gaps-policy)).
-- If an excluded issuer's figure later becomes available, it is added as a revision: a new extract, a `## Revision` block in the roll-up with the new total, and the CSV value changed in the same commit. The exclusion entry is removed in the new machine block, and the superseded block stays recorded in the revision.
+- If an excluded issuer's figure later becomes available, it is added as a revision: a new extract, a `## Revision` block in the roll-up with the new total, and the CSV value changed in the same commit. The new machine block drops that exclusion entry; the earlier block stays in place as the prior vintage.
 - The CSV `date` is the quarter-end date (`YYYY-03-31`, `-06-30`, `-09-30`, `-12-31`), whatever the as-of date of the individual components (ECB Friday statements, monthly averages, the CBR row dated the 1st of the next month).
 - A row is written only after its roll-up exists and links to compliant extracts (research standard 8), and only after `bun test` and `bun run lint` are clean. The CSV line is `<YYYY-MM-DD>,<total_usd>,evidence/base_money/<YYYY>Q<n>.md`, for example `2026-06-30,<total_usd>,evidence/base_money/2026Q2.md`, under the header `date,value,evidence_id`.
 
@@ -172,13 +172,12 @@ A new issuer gets its row here, in the same change that adds its row to [Per-iss
 
 Revisions are appended, never applied in place, in the style of ALFRED vintages: every value ever published stays readable in the repository.
 - **Issuer extract.** When a central bank revises a figure already extracted, append a new `###` extract under the same `## YYYYQn` heading in the same issuer-year file. Its title carries the new vintage (for example the release date). `- Status:` says what it supersedes, and the quote shows the revised figure and the source's revision marker, if any. The original extract is never edited or removed (lint L3 and L4).
-- **Roll-up.** A roll-up has **exactly one** fenced `yaml` machine block, always the current vintage. Forge's lint enforces this. A revision appends a `## Revision <YYYY-MM-DD>` section at the end of the roll-up that states:
-  - which component changed, or which issuer was added or backfilled;
-  - the superseded and new extract anchors;
-  - the old and new `total_usd`;
-  - the superseded machine block, copied verbatim into a fenced `text` block, so the earlier vintage stays readable.
+- **Roll-up.** A roll-up holds one or more fenced `yaml` machine blocks, one per vintage. **Every block must be valid and pass L9 on its own**: it recomputes exactly to its own `total_usd`, and its anchors resolve. The **last** block is the current vintage, and the CSV `value` equals its `total_usd`. A revision appends a `## Revision <YYYY-MM-DD>` section at the end of the roll-up, containing:
+  - a short reason: which component changed, or which issuer was added, backfilled or no longer excluded;
+  - the superseded and new extract anchors, and the old and new `total_usd`;
+  - a new, complete `yaml` machine block for the new vintage.
 
-  The single `yaml` block is then updated to the new vintage in the same commit. Updating the machine block's lines in place is the one change to committed roll-up lines that this needs. It requires a lint L4 allowance, limited to the machine block and only when the same diff appends a `## Revision` section. That allowance is Forge's to add; until it exists, no revision of a committed roll-up can be made.
+  Earlier blocks are never edited or removed: they stay as the prior vintages, ALFRED-style. Nothing committed in a roll-up is ever changed (lint L3 and L4).
 - **CSV.** The row's `value` is changed to the new `total_usd` in the same commit that appends the revision section (lint L4 accepts a changed value only in that case). The row is never deleted. Earlier values are recoverable from the revision sections and from git history.
 - **Which revisions are taken.** A revision is taken up the next time that quarter is touched or at the next scheduled update, not by polling sources. Sources that overwrite in place (BOE, SNB, CBR, BCB and the PBOC year-to-date files) show only the latest vintage, so the archive snapshot recorded in each extract is the only record of the earlier one.
 
@@ -261,7 +260,7 @@ For an FX extract (`issuers/FX/<YYYY>.md`; one extract per currency per quarter)
 
 ## Roll-up template
 
-One roll-up per quarter, only at `evidence/base_money/<YYYY>Q<n>.md`. It has no front-matter. A roll-up has **exactly one** fenced `yaml` block, its machine block (Forge's lint enforces it). Lint L9 reads it. Any other structured content in a roll-up, such as a superseded machine block inside a revision, goes in a fenced `text` block. The machine block may contain only these keys:
+One roll-up per quarter, only at `evidence/base_money/<YYYY>Q<n>.md`. It has no front-matter. A roll-up holds one or more fenced `yaml` machine blocks: the first, then one per appended revision. Lint L9 checks every block on its own. The last block is the current vintage, and the CSV `value` equals its `total_usd`. Every machine block may contain only these keys:
 
 | Key                 | Required                          | Form                                                                                                                                                                                                                                                                                                                |
 | ------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -409,17 +408,15 @@ A full CSV row for the quarter above, under the header `date,value,evidence_id`:
 
 **INDEX.md Coverage note.** For each quarter with an exclusion, `INDEX.md` carries a line under a "Coverage" heading, for example: "2026Q2: 98.79% of the basket; BCB excluded (SGS 20306 convention unconfirmed). The CSV value is lower by BCB's amount; growth rates across this quarter are distorted."
 
-A revision appends, at the end of the roll-up (see [Revisions](#revisions)), and updates the single `yaml` machine block in the same commit:
+A revision appends, at the end of the roll-up (see [Revisions](#revisions)), without touching anything above it:
 
 ````markdown
 ## Revision <YYYY-MM-DD>
 
-<Component revised, or issuer added or backfilled; superseded and new extract anchors; old total_usd and new total_usd.>
+<Short reason: component revised, or issuer added, backfilled or no longer excluded; superseded and new extract anchors; old total_usd and new total_usd.>
 
-Superseded machine block:
-
-```text
-<the previous machine block, verbatim>
+```yaml
+<the complete machine block for the new vintage: every key, every component, the new total_usd>
 ```
 ````
 
@@ -458,7 +455,7 @@ An example FED extract under `## 2026Q2` of `issuers/FED/2026.md`. The quote, he
 - Every extract follows the [Extract template](#extract-template), with an archive snapshot taken at retrieval time. Its printed figure occurs verbatim in the quote, and printed figure × multiplier equals its local value.
 - Every alternative definition named in [Per-issuer definitions](#per-issuer-definitions) is extracted and labelled `- Adopted: no`.
 - The FX file has one extract per currency per quarter.
-- The roll-up follows the [Roll-up template](#roll-up-template). Every basket issuer appears exactly once, in `components` or in `exclusions` with a reason. The coverage share is at or above the floor and stated, with the warning when anything is excluded. The roll-up has exactly one `yaml` block, and its `total_usd` equals the CSV value.
+- The roll-up follows the [Roll-up template](#roll-up-template). Every basket issuer appears exactly once, in `components` or in `exclusions` with a reason. The coverage share is at or above the floor and stated, with the warning when anything is excluded. Every `yaml` block in the roll-up is valid on its own, nothing committed was edited, and the last block's `total_usd` equals the CSV value.
 - `INDEX.md` links the roll-up and every issuer-year file, and records any gap and any Coverage note.
 - `bun test` and `bun run lint` are clean.
 - Sources considered and rejected are logged in the roll-up's Conflicts section or in the quarter's research log at `research/base_money/<YYYY>Q<n>.md` (research standard 8). `research/` is outside the folders lint L12 restricts.
