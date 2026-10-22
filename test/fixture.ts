@@ -34,6 +34,7 @@ export const machineBlock = (o: {
   components?: string;
   total?: string;
   extra?: string;
+  benchmarks?: string;
 }): string =>
   [
     "```yaml",
@@ -55,6 +56,7 @@ export const machineBlock = (o: {
         '    local_value: "200.25"',
         '    fx_rate: "1.1"',
       ].join("\n"),
+    ...(o.benchmarks ? [o.benchmarks] : []),
     "exclusions: []",
     "adopted_conflicts: []",
     ...(o.extra ? [o.extra] : []),
@@ -74,9 +76,9 @@ export const rollup = (block = machineBlock({})): string =>
     "",
     "## Components",
     "",
-    "- [FED](../issuers/FED/2026.md#2026q3)",
-    "- [ECB](../issuers/ECB/2026.md#2026q3)",
-    "- [FX](../issuers/FX/2026.md#2026q3)",
+    "- [FED](../../issuers/FED/2026.md#2026q3)",
+    "- [ECB](../../issuers/ECB/2026.md#2026q3)",
+    "- [FX](../../issuers/FX/2026.md#2026q3)",
     "",
     "## Conflicts",
     "",
@@ -113,7 +115,7 @@ export const index = (...extra: string[]): string =>
     "",
     "## Quarterly roll-ups",
     "",
-    "- [2026Q3](evidence/2026Q3_basemoney.md)",
+    "- [2026Q3](evidence/base_money/2026Q3.md)",
     "",
     "## Issuer years",
     "",
@@ -128,10 +130,10 @@ export const index = (...extra: string[]): string =>
 export const goodText = (): Record<string, string> => ({
   "README.md": "# fixture\n",
   "catalog.json": catalog(),
-  "base_money.csv": `${CSV_HEADER}2026-09-30,1221,evidence/2026Q3_basemoney.md\n`,
+  "base_money.csv": `${CSV_HEADER}2026-09-30,1221,evidence/base_money/2026Q3.md\n`,
   "INDEX.md": index(),
   "methodology/base_money.md": "# Methodology\n",
-  "evidence/2026Q3_basemoney.md": rollup(),
+  "evidence/base_money/2026Q3.md": rollup(),
   "issuers/FED/2026.md": issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
   "issuers/ECB/2026.md": issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement" })),
   "issuers/FX/2026.md": issuerFile("FX", "2026Q3", extract({ title: "EURUSD reference rate" })),
@@ -153,7 +155,7 @@ export const skeletonText = (): Record<string, string> => ({
   "base_money.csv": CSV_HEADER,
   "INDEX.md": "# Index\n\nNo quarters yet.\n",
   "methodology/base_money.md": "# Methodology (stub)\n",
-  "evidence/.gitkeep": "",
+  "evidence/base_money/.gitkeep": "",
   "issuers/.gitkeep": "",
 });
 
