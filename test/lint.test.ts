@@ -507,6 +507,29 @@ describe("L8 archive resolution (fake network)", () => {
     await lint(onGood({}), { ...f.opts, progress: (l) => quiet.push(l) });
     expect(quiet).toEqual([]);
   });
+  // Probe M2: the progress line says why a URL passed: the HEAD status and snapshot timestamp, the availability
+  // timestamp, or the Re-archive note that excused a dead snapshot.
+  const progressOf = async (files: Record<string, string>, f: ReturnType<typeof fake>) => {
+    const lines: string[] = [];
+    await lint(onGood(files), { ...f.opts, progress: (l) => lines.push(l) });
+    return lines.slice(1);
+  };
+  test("progress: ok shows the HEAD status and the snapshot timestamp", async () =>
+    expect(await progressOf({ [FED]: added }, fake({ kind: "ok", status: 200 }))).toEqual([
+      `L8 [1/1] ok (HTTP 200, ${TS}) ${NEW}`,
+    ]));
+  test("progress: ok by the availability fallback names it and the timestamp", async () =>
+    expect(await progressOf({ [FED]: added }, fake(DOWN, { kind: "ok", timestamp: TS }))).toEqual([
+      `L8 [1/1] ok (archive.org availability, ${TS}) ${NEW}`,
+    ]));
+  test("progress: a dead snapshot excused by a Re-archive note says so", async () => {
+    for (const status of [404, 410])
+      expect(await progressOf({ [FED]: noted }, fake({ kind: "http", status }))).toEqual([
+        `L8 [1/1] excused (HTTP ${status}, Re-archive note) ${NEW}`,
+      ]);
+  });
+  test("progress: a note that cannot excuse the failure still logs fail", async () =>
+    expect(await progressOf({ [FED]: noted }, fake({ kind: "http", status: 500 }))).toEqual([`L8 [1/1] fail ${NEW}`]));
   test("a Re-archive note never excuses an availability HTTP error (429)", () =>
     fails(onGood({ [FED]: noted }), ["L8"], /rate-limited/, fake(DOWN, { kind: "http", status: 429 }).opts));
   test("a Re-archive note never excuses a network error", () =>
