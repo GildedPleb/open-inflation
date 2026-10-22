@@ -409,6 +409,24 @@ const utcMs = (y: string, mo: string, d: string, h: string, mi: string, s: strin
   return same ? ms : null;
 };
 
+/**
+ * A URL as its components, each percent-decoded: path segments split on "/", then the query and fragment split on
+ * "?", "&", "=" and "#", delimiters kept as tokens. Wayback writes "/" inside a query as %2F, so decoded components
+ * match; an encoded delimiter (%26 in a value, %2F in a path segment) stays inside its component and does not.
+ * null when a component has a malformed percent-escape.
+ */
+function urlParts(u: string): string[] | null {
+  const q = u.search(/[?#]/);
+  const path = q < 0 ? u : u.slice(0, q);
+  const rest = q < 0 ? "" : u.slice(q);
+  const raw = [...path.split(/(\/)/), ...rest.split(/([?&=#])/)];
+  try {
+    return raw.map((c) => decodeURIComponent(c));
+  } catch {
+    return null;
+  }
+}
+
 /** Everything L7 has to say about one extract block; empty means the block passes. */
 function blockProblems(b: Extract, now: number): string[] {
   const out: string[] = [];
@@ -443,8 +461,14 @@ function blockProblems(b: Extract, now: number): string[] {
     out.push(`Archive URL ${show(archive)} is not https://web.archive.org/web/<14-digit timestamp>/<Original URL>`);
     return out;
   }
-  if (original !== undefined && a[2] !== original)
-    out.push(`Archive URL snapshots ${show(a[2])}, not the Original URL ${show(original)}`);
+  if (original !== undefined) {
+    const want = urlParts(original);
+    const got = urlParts(a[2] ?? "");
+    if (want === null) out.push(`Original URL ${show(original)} has a malformed percent-escape`);
+    if (got === null) out.push(`Archive URL ${show(archive)} has a malformed percent-escape`);
+    if (want !== null && got !== null && want.join("\u0000") !== got.join("\u0000"))
+      out.push(`Archive URL snapshots ${show(a[2])}, not the Original URL ${show(original)}`);
+  }
   const sMs = utcMs(
     ts.slice(0, 4),
     ts.slice(4, 6),
