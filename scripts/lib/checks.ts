@@ -527,46 +527,59 @@ function archiveRefs(texts: Texts | null, now?: number): { urls: Map<string, Arc
 const DEAD = [404, 410];
 const CONCURRENCY = 4;
 
-type Problem = { readonly dead: boolean; readonly message: string } | null;
+type Problem = { readonly dead: boolean; readonly message: string; readonly status?: number } | null;
+/** Why a URL passed, for the progress line: "HTTP 200, <timestamp>" or "archive.org availability, <timestamp>". */
+type Verdict = { readonly problem: Problem; readonly ok?: string };
 
 /** HEAD the snapshot; when web.archive.org is unreachable, ask archive.org for the exact timestamp instead. */
 const RATE_LIMITED = 429;
 
-async function snapshotProblem(net: Net, url: string, ref: ArchiveRef): Promise<Problem> {
+async function snapshotVerdict(net: Net, url: string, ref: ArchiveRef): Promise<Verdict> {
   const r = await net.head(url);
-  if (r.kind === "ok") return null;
+  if (r.kind === "ok") return { problem: null, ok: `HTTP ${r.status}, ${ref.ts}` };
   if (r.kind === "redirect")
     return {
-      dead: false,
-      message:
-        r.reason === "other-capture"
-          ? `snapshot ${ref.ts} does not exist; Wayback redirected (HTTP ${r.status}) to nearest capture ${r.timestamp}`
-          : r.reason === "off-snapshot"
-            ? `HEAD redirected (HTTP ${r.status}) off the snapshot to ${r.location}`
-            : `HEAD redirected more than ${MAX_HOPS} times (last to ${r.location})`,
+      problem: {
+        dead: false,
+        message:
+          r.reason === "other-capture"
+            ? `snapshot ${ref.ts} does not exist; Wayback redirected (HTTP ${r.status}) to nearest capture ${r.timestamp}`
+            : r.reason === "off-snapshot"
+              ? `HEAD redirected (HTTP ${r.status}) off the snapshot to ${r.location}`
+              : `HEAD redirected more than ${MAX_HOPS} times (last to ${r.location})`,
+      },
     };
   if (r.kind === "http")
     return {
-      dead: DEAD.includes(r.status),
-      message: `failed HEAD: HTTP ${r.status}${r.status === RATE_LIMITED ? " (rate-limited; retry later)" : ""}`,
+      problem: {
+        dead: DEAD.includes(r.status),
+        status: r.status,
+        message: `failed HEAD: HTTP ${r.status}${r.status === RATE_LIMITED ? " (rate-limited; retry later)" : ""}`,
+      },
     };
   const a = await net.available(ref.original, ref.ts);
   if (a.kind === "http") {
     const why = a.status === RATE_LIMITED ? "rate-limited; " : "";
     return {
-      dead: false,
-      message: `could not be checked: web.archive.org: ${r.message}; archive.org availability: HTTP ${a.status} (${why}no verdict on the snapshot; retry later)`,
+      problem: {
+        dead: false,
+        message: `could not be checked: web.archive.org: ${r.message}; archive.org availability: HTTP ${a.status} (${why}no verdict on the snapshot; retry later)`,
+      },
     };
   }
   if (a.kind === "network")
     return {
-      dead: false,
-      message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
+      problem: {
+        dead: false,
+        message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
+      },
     };
-  if (a.timestamp === ref.ts) return null;
+  if (a.timestamp === ref.ts) return { problem: null, ok: `archive.org availability, ${a.timestamp}` };
   const why =
     a.timestamp === null ? "has no snapshot" : `returns closest snapshot ${a.timestamp}, not the recorded ${ref.ts}`;
-  return { dead: false, message: `web.archive.org unreachable (${r.message}) and archive.org availability ${why}` };
+  return {
+    problem: { dead: false, message: `web.archive.org unreachable (${r.message}) and archive.org availability ${why}` },
+  };
 }
 
 /** Check each archive URL once: when the diff first adds it. Committed URLs are never re-checked. */
@@ -575,25 +588,28 @@ async function archiveResolution(ctx: Ctx, net: Net, emit: Emit, progress?: (lin
   const was = archiveRefs(ctx.base);
   const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
   const results: Problem[] = [];
+  const noted = (url: string) => now.notes.has(url) && !was.notes.has(url);
   if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
   let next = 0;
   let done = 0;
   const worker = async () => {
     for (let i = next++; i < todo.length; i = next++) {
       const [url, ref] = todo[i] as [string, ArchiveRef];
-      results[i] = await snapshotProblem(net, url, ref);
-      progress?.(`L8 [${++done}/${todo.length}] ${results[i] ? "fail" : "ok"} ${url}`);
+      const v = await snapshotVerdict(net, url, ref);
+      results[i] = v.problem;
+      const p = v.problem;
+      const word = !p ? `ok (${v.ok})` : p.dead && noted(url) ? `excused (HTTP ${p.status}, Re-archive note)` : "fail";
+      progress?.(`L8 [${++done}/${todo.length}] ${word} ${url}`);
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   for (const [i, [url, ref]] of todo.entries()) {
     const p = results[i];
     if (!p) continue;
-    const noted = now.notes.has(url) && !was.notes.has(url);
-    if (p.dead && noted) continue;
+    if (p.dead && noted(url)) continue;
     const fix = p.dead
       ? `; the commit must add a "Re-archive: ${url}" note`
-      : noted
+      : noted(url)
         ? `; a Re-archive note excuses only a dead snapshot (HTTP ${DEAD.join("/")})`
         : "";
     emit("L8", ref.file, `archive URL ${url} ${p.message}${fix}`);
