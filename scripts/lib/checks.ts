@@ -38,6 +38,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   evidenceExistence(ctx, rows, emit);
   headingImmutability(ctx, emit);
   appendOnly(ctx, emit);
+  csvAppendOnly(ctx, rows, emit);
   linkIntegrity(ctx, emit);
   indexCompleteness(ctx, emit);
   extractSchema(ctx, emit);
@@ -242,6 +243,36 @@ function appendOnly(ctx: Ctx, emit: Emit) {
   }
 }
 
+/**
+ * base_money.csv under L4: committed rows are never deleted and keep their evidence_id. A value may change
+ * only when the same diff appends a revision block to that roll-up and its total_usd is the new value.
+ */
+function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
+  const old = ctx.base?.get(CSV);
+  if (old === undefined || (ctx.files.has(CSV) && !ctx.text.has(CSV))) return;
+  const e = (m: string) => emit("L4", CSV, m);
+  const now = new Map(rows.map((r) => [r.date, r]));
+  const blocks = (body: string | undefined) => (body === undefined ? 0 : fencedBlocks(body, ["yaml", "yml"]).length);
+  for (const line of old.split("\n").slice(1)) {
+    const [date, value, evidenceId, ...rest] = line.split(",");
+    if (!date || value === undefined || evidenceId === undefined || rest.length > 0) continue;
+    const r = now.get(date);
+    if (!r) e(`committed row for ${date} was deleted (or is no longer valid); rows are append-only`);
+    else if (r.evidenceId !== evidenceId) e(`row for ${date}: evidence_id changed ${evidenceId} -> ${r.evidenceId}`);
+    else if (r.value !== value) {
+      const after = ctx.text.get(r.evidenceId);
+      const m = after === undefined ? null : machine(after);
+      const total = m?.ok && isObj(m.data) ? m.data.total_usd : undefined;
+      if (blocks(after) <= blocks(ctx.base?.get(r.evidenceId)))
+        e(`row for ${date}: value ${value} -> ${r.value} without appending a revision block to ${r.evidenceId}`);
+      else if (total !== r.value)
+        e(
+          `row for ${date}: value ${value} -> ${r.value}, but the revision total_usd ${String(total)} in ${r.evidenceId} differs`,
+        );
+    }
+  }
+}
+
 // ---------- L5, L6 ----------
 
 function linkIntegrity(ctx: Ctx, emit: Emit) {
@@ -254,6 +285,9 @@ function linkIntegrity(ctx: Ctx, emit: Emit) {
       m.data.fx_source_anchor,
       ...(Array.isArray(m.data.components) ? m.data.components : []).map((c) => (isObj(c) ? c.anchor : undefined)),
       ...(Array.isArray(m.data.benchmarks) ? m.data.benchmarks : []).map((b) => (isObj(b) ? b.anchor : undefined)),
+      ...(Array.isArray(m.data.adopted_conflicts) ? m.data.adopted_conflicts : []).flatMap((c) =>
+        isObj(c) && Array.isArray(c.rejected_anchors) ? c.rejected_anchors : [],
+      ),
       ...(Array.isArray(m.data.adopted_conflicts) ? m.data.adopted_conflicts : []).map((c) =>
         isObj(c) ? c.adopted_anchor : undefined,
       ),
@@ -483,6 +517,15 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
           errs.push(`benchmarks[${i}].value_usd must be a decimal string (quoted), got ${show(b.value_usd)}`);
     list("exclusions", ["reason"]);
     list("adopted_conflicts", ["adopted_anchor", "reason"]);
+    if (Array.isArray(d.adopted_conflicts))
+      for (const [i, c] of d.adopted_conflicts.entries()) {
+        const ra = isObj(c) ? c.rejected_anchors : undefined;
+        if (!Array.isArray(ra) || ra.length === 0)
+          errs.push(`adopted_conflicts[${i}].rejected_anchors must be a non-empty list of anchors`);
+        else
+          for (const [j, a] of ra.entries())
+            if (!nonEmpty(a)) errs.push(`adopted_conflicts[${i}].rejected_anchors[${j}] must be an anchor string`);
+      }
     if (typeof d.total_usd !== "string" || !/^(0|[1-9]\d*)$/.test(d.total_usd))
       errs.push(`total_usd must be an integer string (quoted), got ${show(d.total_usd)}`);
     for (const x of errs) e(`machine block: ${x}`);
