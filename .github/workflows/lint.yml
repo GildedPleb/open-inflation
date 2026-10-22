@@ -1,0 +1,32 @@
+name: lint
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Install
+        run: bun install --frozen-lockfile
+      - name: Test (offline merge gate)
+        run: bun test
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Format and code lint
+        run: bun run check
+      - name: Evidence lint (HEADs archive URLs added since base)
+        env:
+          LINT_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: bun run lint
