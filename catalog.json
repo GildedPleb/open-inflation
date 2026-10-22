@@ -9,7 +9,14 @@
       "last_updated": "2026-10-22",
       "version": "1.0.0",
       "license": "CC-BY-4.0",
-      "basket": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"]
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ],
+      "issuers": [{ "id": "CBR", "as_of_convention": "start_of_day" }]
     }
   ]
 }

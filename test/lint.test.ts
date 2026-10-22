@@ -233,7 +233,7 @@ describe("L5 link integrity", () => {
   test("uppercase fragment does not match GitHub's lowercase slug", () =>
     fails(withLink("- [FED](../../issuers/FED/2026.md#2026Q3)"), ["L5"], /#2026Q3/));
   test("missing target file", () =>
-    fails(withLink("- [BOJ](../../issuers/BOJ/2026.md#2026q3)"), ["L5"], /BOJ\/2026\.md/));
+    fails(withLink("- [SNB](../../issuers/SNB/2026.md#2026q3)"), ["L5"], /SNB\/2026\.md/));
   test("missing anchor", () => fails(withLink("- [FED](../../issuers/FED/2026.md#2026q4)"), ["L5"], /#2026q4/));
   test("root-relative path from evidence/ is wrong on GitHub", () =>
     fails(withLink("- [FED](issuers/FED/2026.md#2026q3)"), ["L5"], /evidence\/base_money\/issuers/));
@@ -615,7 +615,7 @@ describe("L8 archive resolution (fake network)", () => {
   test("no base: every archive URL is new", async () => {
     const f = fake({ kind: "ok", status: 200 });
     await passes(good(), f.opts);
-    expect(f.heads.length).toBe(3);
+    expect(f.heads.length).toBe(4); // FED, ECB, BOJ (reference only) and FX extracts
   });
   test("an archive URL is HEADed once: citing a committed URL again is not re-checked", async () => {
     const f = fake({ kind: "http", status: 404 });
@@ -738,7 +738,10 @@ describe("L9 aggregation", () => {
     passes(excl("exclusions: [{issuer: BOJ, reason: SGS 20306 convention unconfirmed from a BOJ primary page}]")));
   test("an excluded issuer must be in the catalog basket", () =>
     fails(
-      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: PBOC\n    reason: "x"'),
+      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: PBOC\n    reason: "x"', {
+        referenceValues:
+          'reference_values:\n  - issuer: BOJ\n    anchor: issuers/BOJ/2026.md#2026q3\n    local_currency: USD\n    local_value: "1"\n    fx_rate: "1"',
+      }),
       ["L9"],
       /exclusions\[1\]\.issuer PBOC is not in the catalog basket/,
     ));
@@ -778,7 +781,9 @@ describe("L9 aggregation", () => {
   test("a component issuer must be in the catalog basket", () =>
     fails(
       good({
-        "catalog.json": catalog([{ ...JSON.parse(catalog()).series[0], basket: ["FED", "BOJ"] }]),
+        "catalog.json": catalog([
+          { ...JSON.parse(catalog()).series[0], baskets: [{ version: 1, issuers: ["FED", "BOJ"], floor_pct: "94" }] },
+        ]),
         [ROLLUP]: rollup(machineBlock({ exclusions: 'exclusions:\n  - issuer: BOJ\n    reason: "x"' })),
       }),
       ["L9", "L12"],
@@ -967,7 +972,7 @@ describe("L11 catalog.json", () => {
     last_updated: "2026-10-02",
     version: "0.1.0",
     license: "CC-BY-4.0",
-    basket: ["FED", "ECB", "BOJ"],
+    baskets: [{ version: 1, issuers: ["FED", "ECB", "BOJ"], floor_pct: "94" }],
   };
   const without = (k: keyof typeof entry) => Object.fromEntries(Object.entries(entry).filter(([x]) => x !== k));
   test("version missing", () =>
@@ -1088,17 +1093,659 @@ describe("L11 catalog lists the base_money series (F2)", () => {
     fails(good({ "catalog.json": catalog([{ ...entry, id: "cpi_u" }]) }), ["L11"], /series has no "base_money" entry/));
 });
 
-describe("L11 catalog basket", () => {
-  const entry = JSON.parse(catalog()).series[0];
-  const { basket: _, ...noBasket } = entry;
-  test("basket missing", () => fails(good({ "catalog.json": catalog([noBasket]) }), ["L11"], /missing "basket"/));
-  for (const b of [[], ["fed"], ["FED", "FED"], "FED", [1]])
-    test(`basket ${JSON.stringify(b)} is not a non-empty list of unique issuer ids`, async () => {
-      const fs = await lint(good({ "catalog.json": catalog([{ ...entry, basket: b }]) }), OFF);
-      expect(
-        fs.some((f) => f.check === "L11" && /basket .* is not a non-empty list of unique issuer ids/.test(f.message)),
-      ).toBe(true);
+// ---------- basket-version PR: catalog baskets, basket_version, reference_values, coverage_pct, As-of ----------
+
+const series0 = () => JSON.parse(catalog()).series[0] as Record<string, unknown>;
+const withSeries = (patch: Record<string, unknown>) => catalog([{ ...series0(), ...patch }]);
+const V1 = { version: 1, issuers: ["FED", "ECB", "BOJ"], floor_pct: "94" };
+const V2 = { version: 2, issuers: ["FED", "ECB", "BOJ", "SNB"], floor_pct: "94" };
+/** Current = good + patch; base = good + basePatch. */
+const onBase = (basePatch: Record<string, string>, patch: Record<string, string>): Snapshot => ({
+  files: files(goodText(), patch),
+  base: files(goodText(), basePatch),
+});
+
+describe("L11 catalog baskets", () => {
+  const { baskets: _, ...noBaskets } = series0();
+  test("baskets missing", () => fails(good({ "catalog.json": catalog([noBaskets]) }), ["L11"], /missing "baskets"/));
+  test("the legacy basket key is no longer allowed", () =>
+    fails(
+      good({ "catalog.json": catalog([{ ...noBaskets, basket: ["FED", "ECB", "BOJ"], baskets: [V1] }]) }),
+      ["L11"],
+      /unknown key "basket"/,
+    ));
+  const bad: [string, unknown, RegExp][] = [
+    ["an empty list", [], /baskets must be a non-empty list/],
+    ["not a list", V1, /baskets must be a non-empty list/],
+    ["versions not starting at 1", [{ ...V1, version: 2 }], /baskets\[0\]\.version must be 1/],
+    ["a gap in versions", [V1, { ...V2, version: 3 }], /baskets\[1\]\.version must be 2/],
+    ["a string version", [{ ...V1, version: "1" }], /baskets\[0\]\.version must be 1/],
+    ["lower-case issuers", [{ ...V1, issuers: ["fed"] }], /baskets\[0\]\.issuers .* non-empty list of unique/],
+    ["duplicate issuers", [{ ...V1, issuers: ["FED", "FED"] }], /baskets\[0\]\.issuers .* non-empty list of unique/],
+    ["empty issuers", [{ ...V1, issuers: [] }], /baskets\[0\]\.issuers .* non-empty list of unique/],
+    ["a numeric floor_pct", [{ ...V1, floor_pct: 94 }], /baskets\[0\]\.floor_pct/],
+    ["a floor_pct above 100", [{ ...V1, floor_pct: "100.01" }], /baskets\[0\]\.floor_pct/],
+    ["a non-decimal floor_pct", [{ ...V1, floor_pct: "94%" }], /baskets\[0\]\.floor_pct/],
+    ["a missing floor_pct", [{ version: 1, issuers: V1.issuers }], /baskets\[0\]\.floor_pct/],
+    ["an unknown basket key", [{ ...V1, note: "x" }], /baskets\[0\] has unknown key "note"/],
+  ];
+  for (const [name, b, re] of bad)
+    test(`baskets with ${name} fails`, async () => {
+      const fs = await lint(good({ "catalog.json": withSeries({ baskets: b }) }), OFF);
+      expect(fs.some((f) => f.check === "L11" && re.test(f.message))).toBe(true);
     });
+  test("two contiguous baskets pass (no base)", () =>
+    passes(
+      good({
+        "catalog.json": withSeries({ version: "1.0.0", baskets: [V1, V2] }),
+        [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })),
+      }),
+    ));
+  test("floor_pct 100 and 0 are valid", () =>
+    passes(
+      good({
+        "catalog.json": withSeries({
+          version: "1.0.0",
+          baskets: [
+            { ...V1, floor_pct: "0" },
+            { ...V2, floor_pct: "100" },
+          ],
+        }),
+        [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })),
+      }),
+    ));
+  test("L12 places an issuer that is only in a later basket (union of versions)", () =>
+    passes(
+      good({
+        "catalog.json": withSeries({ version: "1.0.0", baskets: [V1, V2] }),
+        [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })),
+        "issuers/SNB/2026.md": issuerFile("SNB", "2026Q3"),
+        "INDEX.md": index("- [SNB 2026](issuers/SNB/2026.md)"),
+      }),
+    ));
+});
+
+describe("L11 catalog issuers (as_of_convention)", () => {
+  test("no issuers list passes (optional)", () => passes(good()));
+  test("an issuer entry with start_of_day passes", () =>
+    passes(good({ "catalog.json": withSeries({ issuers: [{ id: "BOJ", as_of_convention: "start_of_day" }] }) })));
+  test("an issuer entry without a convention passes", () =>
+    passes(good({ "catalog.json": withSeries({ issuers: [{ id: "BOJ" }] }) })));
+  test("an unknown as_of_convention fails", () =>
+    fails(
+      good({ "catalog.json": withSeries({ issuers: [{ id: "BOJ", as_of_convention: "end_of_day" }] }) }),
+      ["L11"],
+      /issuers\[0\]\.as_of_convention "end_of_day" is not one of start_of_day/,
+    ));
+  test("an issuer id outside the baskets fails", () =>
+    fails(
+      good({ "catalog.json": withSeries({ issuers: [{ id: "XYZ" }] }) }),
+      ["L11"],
+      /issuers\[0\]\.id XYZ is not in any basket/,
+    ));
+  test("a duplicate issuer id fails", () =>
+    fails(
+      good({ "catalog.json": withSeries({ issuers: [{ id: "BOJ" }, { id: "BOJ" }] }) }),
+      ["L11"],
+      /issuer BOJ is listed 2 times in issuers/,
+    ));
+  test("issuers not a list fails", () =>
+    fails(good({ "catalog.json": withSeries({ issuers: { id: "BOJ" } }) }), ["L11"], /issuers must be a list/));
+  test("an unknown issuer key fails", () =>
+    fails(
+      good({ "catalog.json": withSeries({ issuers: [{ id: "BOJ", tz: "JST" }] }) }),
+      ["L11"],
+      /issuers\[0\] has unknown key "tz"/,
+    ));
+});
+
+describe("L4/L11 basket history", () => {
+  const cat = (patch: Record<string, unknown>) => ({ "catalog.json": withSeries(patch) });
+  // R1-19: appending a basket never invalidates a roll-up published under an earlier one.
+  test("R1-19: a v1 roll-up still lints after a v2 basket is appended (major bump)", () =>
+    passes(onGood(cat({ version: "1.0.0", baskets: [V1, V2] }))));
+  test("R1-19: an explicit basket_version 1 roll-up still lints after v2 is appended", () =>
+    passes(
+      onBase(
+        { [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })) },
+        { ...cat({ version: "1.0.0", baskets: [V1, V2] }), [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })) },
+      ),
+    ));
+  test("an appended basket without a major version bump fails", () =>
+    fails(
+      onGood(cat({ version: "0.2.0", baskets: [V1, V2] })),
+      ["L11"],
+      /appends basket version 2 but version 0\.2\.0 does not bump the major of 0\.1\.0/,
+    ));
+  test("a major bump from 1.x to 2.0.0 for an appended basket passes", () =>
+    passes(onBase(cat({ version: "1.0.0", baskets: [V1] }), cat({ version: "2.0.0", baskets: [V1, V2] }))));
+  test("editing an existing basket's floor fails", () =>
+    fails(
+      onGood(cat({ baskets: [{ ...V1, floor_pct: "90" }] })),
+      ["L4"],
+      /basket version 1 of base_money was changed; baskets are immutable/,
+    ));
+  test("editing an existing basket's issuers fails", () =>
+    fails(
+      onGood(cat({ baskets: [{ ...V1, issuers: ["FED", "ECB", "BOJ", "SNB"] }] })),
+      ["L4", "L9"],
+      /basket version 1 of base_money was changed; baskets are immutable/,
+    ));
+  test("removing a basket fails", () =>
+    fails(
+      onBase(cat({ version: "1.0.0", baskets: [V1, V2] }), cat({ version: "1.0.0", baskets: [V1] })),
+      ["L4"],
+      /basket version 2 of base_money was removed/,
+    ));
+  // Migration: a base still in the legacy `basket` shape reads as baskets [v1 = that list].
+  const legacy = () => {
+    const { baskets: _, ...s } = series0();
+    return { "catalog.json": catalog([{ ...s, basket: ["FED", "ECB", "BOJ"] }]) };
+  };
+  test("migrating a legacy basket to baskets v1 with the same issuers passes", () => passes(onBase(legacy(), {})));
+  test("migrating a legacy basket to a v1 with different issuers fails", () =>
+    fails(
+      onBase(legacy(), cat({ baskets: [{ ...V1, issuers: ["FED", "ECB"] }] })),
+      ["L4", "L9", "L12"],
+      /basket version 1 of base_money was changed/,
+    ));
+});
+
+describe("L9 basket_version", () => {
+  const two = (block: string, version = "1.0.0", b2: unknown = V2, extra: Record<string, string> = {}) =>
+    good({ "catalog.json": withSeries({ version, baskets: [V1, b2] }), [ROLLUP]: rollup(block), ...extra });
+  const BOJ10 =
+    'reference_values:\n  - issuer: BOJ\n    anchor: issuers/BOJ/2026.md#2026q3\n    local_currency: USD\n    local_value: "10"\n    fx_rate: "1"';
+  test("an explicit basket_version 1 passes", () =>
+    passes(good({ [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })) })));
+  test("an absent basket_version means 1 while one basket exists", () => passes(good()));
+  test("an unknown basket_version fails", () =>
+    fails(
+      good({ [ROLLUP]: rollup(machineBlock({ basketVersion: "2" })) }),
+      ["L9"],
+      /basket_version 2 is not a catalog basket version/,
+    ));
+  for (const v of ['"1"', "1.5", "0", "-1"])
+    test(`basket_version ${v} is not a positive integer`, () =>
+      fails(
+        good({ [ROLLUP]: rollup(machineBlock({ basketVersion: v })) }),
+        ["L9"],
+        /basket_version .* positive integer/,
+      ));
+  for (const v of ["1.0", "1e0", "0x1", "01", "+1", "!!int 1", "1.0e0"])
+    test(`basket_version written ${v} fails: a plain YAML integer in the source text`, () =>
+      fails(
+        good({ [ROLLUP]: rollup(machineBlock({ basketVersion: v })) }),
+        ["L9"],
+        new RegExp(`basket_version ${v.replace(/[.+!]/g, "\\$&")} must be written as a plain positive integer`),
+      ));
+  test("basket_version 1 with a trailing comment passes", () =>
+    passes(good({ [ROLLUP]: rollup(machineBlock({ basketVersion: "1  # basket v1" })) })));
+  test("a new block without basket_version fails once two baskets exist", () =>
+    fails(two(machineBlock({})), ["L9"], /basket_version is required once the catalog lists more than one basket/));
+  test("a block on basket_version 2 is checked against v2's issuers", () =>
+    fails(two(machineBlock({ basketVersion: "2" })), ["L9"], /basket issuer SNB is neither a component nor excluded/));
+  test("a complete v2 block passes", () =>
+    passes(
+      two(
+        machineBlock({
+          basketVersion: "2",
+          exclusions: 'exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: SNB\n    reason: "y"',
+        }),
+        "1.0.0",
+        V2,
+        {
+          "issuers/SNB/2026.md": issuerFile("SNB", "2026Q3", extract({ title: "SNB (reference only)" })),
+          "INDEX.md": index("- [SNB 2026](issuers/SNB/2026.md)"),
+        },
+      ),
+    ));
+  test("the floor is the block's own basket's", () =>
+    fails(
+      two(machineBlock({ basketVersion: "2", referenceValues: BOJ10 }), "1.0.0", {
+        ...V1,
+        version: 2,
+        floor_pct: "99.5",
+      }),
+      ["L9"],
+      /below the basket 2 floor 99\.5/,
+    ));
+  test("a revision appended to a committed file needs basket_version once two baskets exist", async () => {
+    const fs = await fails(
+      onGood({
+        "catalog.json": withSeries({ version: "1.0.0", baskets: [V1, V2] }),
+        [ROLLUP]: `${rollup()}\n## Revision 1\n\n${machineBlock({})}`,
+      }),
+      ["L9"],
+      /machine block 2 of 2 .*basket_version is required/,
+    );
+    expect(fs.some((f) => /machine block 1 of 2/.test(f.message))).toBe(false);
+  });
+});
+
+describe("L9 reference_values and coverage_pct", () => {
+  const blk = (o: Parameters<typeof machineBlock>[0], extra: Record<string, string> = {}) =>
+    good({ [ROLLUP]: rollup(machineBlock(o)), ...extra });
+  const ref = (iss: string, value: string, cur = "USD", fx = "1", anchor = `issuers/${iss}/2026.md#2026q3`) =>
+    [
+      `  - issuer: ${iss}`,
+      `    anchor: ${anchor}`,
+      `    local_currency: ${cur}`,
+      `    local_value: "${value}"`,
+      `    fx_rate: "${fx}"`,
+    ].join("\n");
+  const usdOnly = (fed: string, refs: [string, string][], coverage?: string) =>
+    blk(
+      {
+        components: [
+          "  - issuer: FED",
+          "    anchor: issuers/FED/2026.md#2026q3",
+          "    local_currency: USD",
+          `    local_value: "${fed}"`,
+          '    fx_rate: "1"',
+        ].join("\n"),
+        exclusions: `exclusions:\n${refs.map(([i]) => `  - issuer: ${i}\n    reason: "x"`).join("\n")}`,
+        referenceValues: `reference_values:\n${refs.map(([i, v]) => ref(i, v)).join("\n")}`,
+        ...(coverage === undefined ? {} : { coverage }),
+        total: fed,
+      },
+      { "base_money.csv": `${CSV_HEADER}2026-09-30,${fed},${ROLLUP}\n` },
+    );
+  const boj10 = `reference_values:\n${ref("BOJ", "10")}`;
+  // Hand-computed: 1220.775 / (1220.775 + 10) x 100 = 99.18750...  -> 99.19
+  test("the hand-computed coverage 99.19 passes", () => passes(blk({ referenceValues: boj10, coverage: '"99.19"' })));
+  test("a wrong coverage_pct fails", () =>
+    fails(blk({ referenceValues: boj10, coverage: '"99.18"' }), ["L9"], /coverage_pct "99\.18" but recomputed 99\.19/));
+  for (const c of ['"99.2"', '"99.190"', "99.19", '"99,19"', '"+99.19"'])
+    test(`coverage_pct ${c} is not a string with exactly 2 decimals`, () =>
+      fails(blk({ coverage: c }), ["L9"], /coverage_pct must be a string with exactly 2 decimals/));
+  test("coverage_pct is required", () =>
+    fails(
+      good({ [ROLLUP]: rollup(machineBlock({}).replace(/coverage_pct:.*\n/, "")) }),
+      ["L9"],
+      /coverage_pct is required/,
+    ));
+  test("reference_values is required", () =>
+    fails(
+      good({ [ROLLUP]: rollup(machineBlock({}).replace(/reference_values:[\s\S]*?(?=coverage_pct)/, "")) }),
+      ["L9"],
+      /reference_values must be a list/,
+    ));
+  test("an empty reference_values passes when nothing is excluded", () =>
+    passes(
+      blk(
+        {
+          components: [
+            "  - issuer: FED",
+            "    anchor: issuers/FED/2026.md#2026q3",
+            "    local_currency: USD",
+            '    local_value: "1000.5"',
+            '    fx_rate: "1"',
+            "  - issuer: ECB",
+            "    anchor: issuers/ECB/2026.md#2026q3",
+            "    local_currency: EUR",
+            '    local_value: "200.25"',
+            '    fx_rate: "1.1"',
+            "  - issuer: BOJ",
+            "    anchor: issuers/BOJ/2026.md#2026q3",
+            "    local_currency: USD",
+            '    local_value: "10"',
+            '    fx_rate: "1"',
+          ].join("\n"),
+          exclusions: "exclusions: []",
+          referenceValues: "reference_values: []",
+          coverage: '"100.00"',
+          total: "1231",
+        },
+        { "base_money.csv": `${CSV_HEADER}2026-09-30,1231,${ROLLUP}\n` },
+      ),
+    ));
+  test("half-to-even: 94.125 rounds to 94.12", () =>
+    passes(
+      usdOnly(
+        "94125",
+        [
+          ["ECB", "5875"],
+          ["BOJ", "0"],
+        ],
+        '"94.12"',
+      ),
+    ));
+  test("half-to-even: 94.13 for 94.125 fails", () =>
+    fails(
+      usdOnly(
+        "94125",
+        [
+          ["ECB", "5875"],
+          ["BOJ", "0"],
+        ],
+        '"94.13"',
+      ),
+      ["L9"],
+      /recomputed 94\.12/,
+    ));
+  test("rounded once: 93.9949 is 93.99 (not 94.00 via 93.995) and below the floor", () =>
+    fails(
+      usdOnly(
+        "939949",
+        [
+          ["ECB", "60051"],
+          ["BOJ", "0"],
+        ],
+        '"93.99"',
+      ),
+      ["L9"],
+      /coverage 93\.9949% is below the basket 1 floor 94%/,
+    ));
+  // Away from the floor, so only the rounding decides: 98.7949 rounds once to 98.79; via 3 decimals it would be 98.795 -> 98.80.
+  test("rounded once: 98.7949 states 98.79", () =>
+    passes(
+      usdOnly(
+        "987949",
+        [
+          ["ECB", "12051"],
+          ["BOJ", "0"],
+        ],
+        '"98.79"',
+      ),
+    ));
+  test("rounded once: 98.7949 stated 98.80 (rounded twice) fails", () =>
+    fails(
+      usdOnly(
+        "987949",
+        [
+          ["ECB", "12051"],
+          ["BOJ", "0"],
+        ],
+        '"98.80"',
+      ),
+      ["L9"],
+      /coverage_pct "98\.80" but recomputed 98\.79/,
+    ));
+  test("true floor: unrounded 93.995 (stated 94.00) is below the 94 floor", () =>
+    fails(
+      usdOnly(
+        "93995",
+        [
+          ["ECB", "6005"],
+          ["BOJ", "0"],
+        ],
+        '"94.00"',
+      ),
+      ["L9"],
+      /coverage 93\.995% is below the basket 1 floor 94% \(compared unrounded; coverage_pct 94\.00;/,
+    ));
+  test("true floor: unrounded 93.9999 (stated 94.00) is below the 94 floor", () =>
+    fails(
+      usdOnly(
+        "939999",
+        [
+          ["ECB", "60001"],
+          ["BOJ", "0"],
+        ],
+        '"94.00"',
+      ),
+      ["L9"],
+      /coverage 93\.9999% is below the basket 1 floor 94%/,
+    ));
+  test("true floor: unrounded 94.0001 passes", () =>
+    passes(
+      usdOnly(
+        "940001",
+        [
+          ["ECB", "59999"],
+          ["BOJ", "0"],
+        ],
+        '"94.00"',
+      ),
+    ));
+  test("coverage exactly at the floor (94.00) passes", () =>
+    passes(
+      usdOnly(
+        "94",
+        [
+          ["ECB", "6"],
+          ["BOJ", "0"],
+        ],
+        '"94.00"',
+      ),
+    ));
+  test("coverage 93.99 is below the floor", () =>
+    fails(
+      usdOnly(
+        "9399",
+        [
+          ["ECB", "601"],
+          ["BOJ", "0"],
+        ],
+        '"93.99"',
+      ),
+      ["L9"],
+      /below the basket 1 floor 94%/,
+    ));
+  test("zero component and reference USD leaves coverage undefined", () =>
+    fails(
+      usdOnly(
+        "0",
+        [
+          ["ECB", "0"],
+          ["BOJ", "0"],
+        ],
+        '"0.00"',
+      ),
+      ["L9"],
+      /coverage is undefined/,
+    ));
+  test("excluding PBOC fails the floor", () =>
+    fails(
+      good({
+        "catalog.json": withSeries({ baskets: [{ ...V1, issuers: ["PBOC", "FED", "ECB", "BOJ"] }] }),
+        "issuers/PBOC/2026.md": issuerFile("PBOC", "2026Q3", extract({ title: "PBOC (reference only)" })),
+        "INDEX.md": index("- [PBOC 2026](issuers/PBOC/2026.md)"),
+        [ROLLUP]: rollup(
+          machineBlock({
+            exclusions:
+              'exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: PBOC\n    reason: "no primary source"',
+            referenceValues: `reference_values:\n${ref("BOJ", "10")}\n${ref("PBOC", "5000")}`,
+          }),
+        ),
+      }),
+      ["L9"],
+      /coverage 19\.5\d+…?% is below the basket 1 floor 94%/,
+    ));
+  test("reference values never count toward total_usd", () =>
+    fails(blk({ referenceValues: boj10, total: "1231" }), ["L9"], /recomputed 1221/));
+  test("a reference for an issuer that is not excluded fails", () =>
+    fails(
+      blk({ referenceValues: `reference_values:\n${ref("BOJ", "10")}\n${ref("FED", "10")}` }),
+      ["L9"],
+      /reference_values\[1\]\.issuer FED is not excluded/,
+    ));
+  test("an excluded issuer without a reference fails", () =>
+    fails(
+      blk({ referenceValues: "reference_values: []" }),
+      ["L9"],
+      /excluded issuer BOJ has no reference_values entry/,
+    ));
+  test("an issuer referenced twice fails", () =>
+    fails(
+      blk({ referenceValues: `reference_values:\n${ref("BOJ", "10")}\n${ref("BOJ", "10")}` }),
+      ["L9"],
+      /BOJ is listed 2 times in reference_values/,
+    ));
+  test("a reference anchor in another issuer's file fails", () =>
+    fails(
+      blk({ referenceValues: `reference_values:\n${ref("BOJ", "10", "USD", "1", "issuers/FED/2026.md#2026q3")}` }),
+      ["L9"],
+      /reference_values\[0\]\.anchor .* must be issuers\/BOJ\/2026\.md#2026q3/,
+    ));
+  test("a reference anchor that does not resolve fails L5", () =>
+    fails(
+      good({
+        "issuers/BOJ/2026.md": null as unknown as string,
+        "INDEX.md": index(),
+      }),
+      ["L5"],
+      /issuers\/BOJ\/2026\.md#2026q3/,
+    ));
+  test("a reference value must be a decimal", () =>
+    fails(
+      blk({ referenceValues: `reference_values:\n${ref("BOJ", "1e4")}`, coverage: '"99.00"' }),
+      ["L9"],
+      /reference_values\[0\]\.local_value/,
+    ));
+  test("a non-USD reference needs an FX extract for its currency", () =>
+    fails(
+      blk({ referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.001")}` }),
+      ["L9"],
+      /reference_values\[0\] \(BOJ\) local_currency JPY has no FX extract/,
+    ));
+  test("a non-USD reference with its FX extract passes", () =>
+    passes(
+      good({
+        "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR"), fxExtract("JPY")),
+        [ROLLUP]: rollup(
+          machineBlock({ referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.001")}` }),
+        ),
+      }),
+    ));
+  test("fx_source_anchor is required when only a reference is non-USD", () =>
+    fails(
+      good({
+        "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("JPY")),
+        [ROLLUP]: rollup(
+          machineBlock({
+            components: [
+              "  - issuer: FED",
+              "    anchor: issuers/FED/2026.md#2026q3",
+              "    local_currency: USD",
+              '    local_value: "1000"',
+              '    fx_rate: "1"',
+            ].join("\n"),
+            exclusions: 'exclusions:\n  - issuer: ECB\n    reason: "x"\n  - issuer: BOJ\n    reason: "y"',
+            referenceValues: `reference_values:\n${ref("ECB", "1")}\n${ref("BOJ", "10", "JPY", "0.001")}`,
+            total: "1000",
+          }).replace("fx_source_anchor: issuers/FX/2026.md#2026q3\n", ""),
+        ),
+        "base_money.csv": `${CSV_HEADER}2026-09-30,1000,evidence/base_money/2026Q3.md\n`,
+      }),
+      ["L9"],
+      /fx_source_anchor/,
+    ));
+});
+
+describe("L7 As of inside the quarter heading (P2-m1)", () => {
+  const q2 = (path: string, iss: string, block: string, patch: Record<string, string> = {}) =>
+    good({ [path]: `${goodText()[path] ?? issuerFile(iss, "2026Q3")}\n## 2026Q2\n\n${block}`, ...patch });
+  const issuer = (asOf: string, title = "FED H.4.1 Q2", extra: string[] = []) =>
+    q2(FED, "FED", extract({ title, fields: [`- As of: ${asOf}`, ...extra] }));
+  const fx = (asOf: string) =>
+    q2("issuers/FX/2026.md", "FX", extract({ title: "FX EUR Q2", fields: ["- Currency: EUR", `- As of: ${asOf}`] }));
+  test("issuer As of 2026-06-30 (quarter end) under Q2 passes", () => passes(issuer("2026-06-30")));
+  test("issuer As of 2026-04-01 under Q2 passes", () => passes(issuer("2026-04-01")));
+  test("issuer As of with a parenthetical note passes", () => passes(issuer("2026-06-30 (end of period)")));
+  test("issuer As of 2026-07-01 under Q2 fails", () =>
+    fails(
+      issuer("2026-07-01"),
+      ["L7"],
+      /As of 2026-07-01 is outside its quarter heading 2026Q2 \(2026-04-01\.\.2026-06-30\)/,
+    ));
+  test("issuer As of 2026-03-31 under Q2 fails", () =>
+    fails(issuer("2026-03-31"), ["L7"], /As of 2026-03-31 is outside/));
+  test("issuer As of 2026-06 (month form) under Q2 passes", () => passes(issuer("2026-06 (monthly average)")));
+  test("issuer As of 2026-07 (month form) under Q2 fails", () =>
+    fails(issuer("2026-07"), ["L7"], /As of 2026-07 is outside/));
+  test("issuer As of 2026-03 (month form) under Q2 fails", () =>
+    fails(issuer("2026-03"), ["L7"], /As of 2026-03 is outside/));
+  test("an As of that is not a date fails", () =>
+    fails(issuer("June 2026"), ["L7"], /As of "June 2026" must be YYYY-MM-DD or YYYY-MM/));
+  test("trailing words without parentheses fail", () =>
+    fails(issuer("2026-06 monthly"), ["L7"], /As of "2026-06 monthly" must be YYYY-MM-DD or YYYY-MM/));
+  test("a time after the date fails", () => fails(issuer("2026-06-30T00:00"), ["L7"], /must be YYYY-MM-DD or YYYY-MM/));
+  test("two parenthetical notes are one note running to the end of the line", () =>
+    passes(issuer("2026-06-30 (end of period) (weekly)")));
+  test("an impossible As of date fails", () =>
+    fails(issuer("2026-02-30"), ["L7"], /must be YYYY-MM-DD or YYYY-MM \(a real date\)/));
+  test("an impossible As of month fails", () =>
+    fails(issuer("2026-13"), ["L7"], /must be YYYY-MM-DD or YYYY-MM \(a real date\)/));
+  test("a confirming extract out of quarter fails too", () =>
+    fails(issuer("2026-07-01", "FED confirming", ["- Adopted: no, confirming"]), ["L7"], /outside its quarter/));
+  test("Retrieved is unconstrained (an October retrieval under Q2 passes)", () => passes(issuer("2026-05-15")));
+  test("FX As of 2026-06-27 (quarter end minus 3 days) passes", () => passes(fx("2026-06-27")));
+  test("FX As of 2026-06-30 passes", () => passes(fx("2026-06-30")));
+  test("FX As of 2026-06-26 fails", () =>
+    fails(fx("2026-06-26"), ["L7"], /FX As of 2026-06-26 is outside 2026-06-27\.\.2026-06-30/));
+  test("FX As of 2026-07-01 fails", () => fails(fx("2026-07-01"), ["L7"], /FX As of 2026-07-01 is outside/));
+  test("FX As of in month form fails", () =>
+    fails(fx("2026-06"), ["L7"], /FX As of "2026-06" must be a full YYYY-MM-DD/));
+  test("FX window for Q1 ends 03-31 and starts 03-28", async () => {
+    const q1 = (asOf: string) =>
+      good({
+        "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q1\n\n${extract({ title: "FX EUR Q1", fields: ["- Currency: EUR", `- As of: ${asOf}`] })}`,
+      });
+    await passes(q1("2026-03-28"));
+    await fails(q1("2026-03-27"), ["L7"], /outside 2026-03-28\.\.2026-03-31/);
+  });
+
+  // Assay: a start_of_day issuer's As of must be exactly the first day of the next quarter (no in-quarter date).
+  const cbr = (asOf: string, convention = true, confirming?: string) =>
+    good({
+      "catalog.json": withSeries({
+        version: "1.0.0",
+        baskets: [V1, { version: 2, issuers: [...V1.issuers, "CBR"], floor_pct: "94" }],
+        ...(convention ? { issuers: [{ id: "CBR", as_of_convention: "start_of_day" }] } : {}),
+      }),
+      [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })),
+      "issuers/CBR/2026.md": issuerFile(
+        "CBR",
+        "2026Q2",
+        extract({ title: "CBR monetary base", fields: [`- As of: ${asOf}`] }),
+        ...(confirming === undefined
+          ? []
+          : [
+              extract({
+                title: "CBR narrow (confirming)",
+                fields: [`- As of: ${confirming}`, "- Adopted: no, confirming"],
+              }),
+            ]),
+      ),
+      "INDEX.md": index("- [CBR 2026](issuers/CBR/2026.md)"),
+    });
+  test("CBR (start_of_day) As of 2026-07-01 under Q2 passes", () => passes(cbr("2026-07-01")));
+  test("CBR (start_of_day) As of 2026-06-30 (quarter end) under Q2 fails", () =>
+    fails(
+      cbr("2026-06-30"),
+      ["L7"],
+      /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/,
+    ));
+  test("CBR (start_of_day) As of 2026-06 (month form, in quarter) under Q2 fails", () =>
+    fails(cbr("2026-06"), ["L7"], /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/));
+  test("CBR (start_of_day) As of 2026-07-02 under Q2 fails", () =>
+    fails(
+      cbr("2026-07-02"),
+      ["L7"],
+      /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/,
+    ));
+  test("CBR (start_of_day) As of 2026-07 (month form) under Q2 fails", () =>
+    fails(cbr("2026-07"), ["L7"], /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/));
+  test("CBR (start_of_day) As of 2026-04-01 (the Q1 stock) under Q2 fails", () =>
+    fails(
+      cbr("2026-04-01"),
+      ["L7"],
+      /must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/,
+    ));
+  test("a CBR confirming extract at 2026-06-30 fails too (no exception)", () =>
+    fails(
+      cbr("2026-07-01", true, "2026-06-30"),
+      ["L7"],
+      /CBR narrow \(confirming\).*must be 2026-07-01, the first day of the next quarter, for a start_of_day issuer/,
+    ));
+  test("a CBR confirming extract at 2026-07-01 passes", () =>
+    passes(cbr("2026-07-01", true, "2026-07-01 (start of day)")));
+  test("CBR without the convention at 2026-07-01 fails", () =>
+    fails(cbr("2026-07-01", false), ["L7"], /outside its quarter/));
+  test("a non-start_of_day issuer at 2026-07-01 under Q2 fails", () =>
+    fails(issuer("2026-07-01"), ["L7"], /outside its quarter/));
 });
 
 describe("L12 placement", () => {
