@@ -26,6 +26,12 @@ const git = (dir: string, ...args: string[]) => {
   if (r.exitCode !== 0) throw new Error(dec.decode(r.stderr));
   return dec.decode(r.stdout).trim();
 };
+/**
+ * A self-contained copy of `src`'s committed tree (HEAD), as its own one-commit git repo. Tests that lint "this
+ * repository" use it, never the live working tree, so uncommitted evidence cannot change their result or reach the
+ * network.
+ */
+const committedTree = (src: string): string => src;
 const text = (m: ReadonlyMap<string, Uint8Array> | null, p: string) => {
   const b = m?.get(p);
   return b ? dec.decode(b) : undefined;
@@ -67,8 +73,21 @@ describe("git snapshot loader", () => {
     const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
     expect(() => loadSnapshot(dir, null)).toThrow(NotGitCheckout);
   });
+  test("the committed tree holds only committed files (uncommitted and untracked edits stay out)", () => {
+    const dir = repo({ "a.txt": "a\n" });
+    git(dir, "init", "-q");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "base");
+    writeFileSync(join(dir, "a.txt"), "changed\n");
+    writeFileSync(join(dir, "new.md"), "untracked\n");
+    const t = committedTree(dir);
+    expect(t).not.toBe(dir);
+    const s = loadSnapshot(t, "HEAD");
+    expect([...s.files.keys()].sort()).toEqual(["a.txt"]);
+    expect(text(s.files, "a.txt")).toBe("a\n");
+  });
   test("this repository's committed skeleton lints clean", async () => {
-    expect(await lint(loadSnapshot(ROOT, null), { archive: "off", now: Date.now() })).toEqual([]);
+    expect(await lint(loadSnapshot(committedTree(ROOT), null), { archive: "off", now: Date.now() })).toEqual([]);
   });
 });
 
@@ -100,14 +119,16 @@ describe("repository identity", () => {
     expect(readme).toContain("https://archive.org/wayback/available");
   });
   test("LICENSE files are text that lint accepts (L10)", async () => {
-    const fs = await lint(loadSnapshot(ROOT, null), { archive: "off", now: Date.now() });
+    const fs = await lint(loadSnapshot(committedTree(ROOT), null), { archive: "off", now: Date.now() });
     expect(fs.filter((f) => f.file.startsWith("LICENSE"))).toEqual([]);
   });
 });
 
 describe("CLI", () => {
   const run = (script: string, cwd: string, ...args: string[]) => {
-    const { LINT_BASE: _, ...env } = process.env;
+    // The no-network preload does not reach a child process: OBM_NO_NETWORK makes the CLI refuse every fetch.
+    const { LINT_BASE: _, ...rest } = process.env;
+    const env = { ...rest, OBM_NO_NETWORK: "1" };
     const r = Bun.spawnSync(["bun", join(ROOT, "scripts", script), ...args], { cwd, env });
     return { code: r.exitCode, out: dec.decode(r.stdout) + dec.decode(r.stderr) };
   };
@@ -120,9 +141,38 @@ describe("CLI", () => {
     expect(run("lint.ts", dir, "--nope").code).toBe(2);
     const unknown = run("lint.ts", dir, "--base", "no-such-ref");
     expect([unknown.code, unknown.out.trim()]).toEqual([2, 'lint: unknown base ref "no-such-ref"']);
-    // --base HEAD: nothing is newly added, so L8 makes no network call (with no base, every archive URL in the
-    // repo would be HEADed from this subprocess, which the no-network preload does not cover).
-    expect(run("lint.ts", ROOT, "--base", "HEAD").code).toBe(0);
+    // The committed tree, not the live one: an uncommitted extract in the checkout cannot reach this run.
+    expect(run("lint.ts", committedTree(ROOT), "--base", "HEAD").code).toBe(0);
+  });
+  test("a spawned lint refuses the network: a new archive URL fails closed, fast", () => {
+    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
+    git(dir, "init", "-q");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "base");
+    const original = "https://www.federalreserve.gov/releases/h6/20260723/";
+    mkdirSync(join(dir, "issuers/FED"), { recursive: true });
+    writeFileSync(
+      join(dir, "issuers/FED/2026.md"),
+      [
+        "# FED 2026",
+        "",
+        "## 2026Q2",
+        "",
+        "### FED H.6 2026-06",
+        "- Retrieved: 2026-10-22T17:00:00Z",
+        `- Original URL: ${original}`,
+        `- Archive URL: https://web.archive.org/web/20261022170100/${original}`,
+        "",
+        "> Monetary base 1",
+        "",
+      ].join("\n"),
+    );
+    const t0 = performance.now();
+    const r = run("lint.ts", dir, "--base", "HEAD");
+    expect(performance.now() - t0).toBeLessThan(3000);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("network disabled (OBM_NO_NETWORK)");
+    expect(r.out).toMatch(/L8 issuers\/FED\/2026\.md: .*could not be checked/);
   });
   test("lint outside a git checkout prints one line and exits 2", () => {
     const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
