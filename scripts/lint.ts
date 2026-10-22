@@ -1,18 +1,17 @@
-// bun run lint [--base <ref>] [--archive-all]
+// bun run lint [--base <ref>]
 // Checks the working tree against a base commit (default: $LINT_BASE, else HEAD if it exists).
-// Network: HEADs only archive URLs added since base; --archive-all sweeps every archive URL.
+// Network: HEADs only archive URLs the diff adds, once. Committed links are never re-swept.
 import { httpHead } from "./lib/archive.ts";
 import { lint } from "./lib/checks.ts";
 import { loadSnapshot, UnknownBase } from "./lib/git.ts";
 
-const USAGE = "usage: bun run lint [--base <ref>] [--archive-all]";
+const USAGE = "usage: bun run lint [--base <ref>]";
 
-function parse(argv: string[]): { base?: string; all: boolean } | null {
-  const out: { base?: string; all: boolean } = { all: false };
+function parse(argv: string[]): { base?: string } | null {
+  const out: { base?: string } = {};
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--archive-all") out.all = true;
-    else if (a === "--base" && argv[i + 1]) out.base = argv[++i] as string;
+    if (a === "--base" && argv[i + 1]) out.base = argv[++i] as string;
     else return null;
   }
   return out;
@@ -37,7 +36,7 @@ try {
   process.exit(2);
 }
 const findings = await lint(snapshot, {
-  archive: args.all ? "all" : "added",
+  archive: "added",
   head: httpHead(fetch, 15_000),
 });
 for (const f of findings) console.log(`${f.check} ${f.file}: ${f.message}`);

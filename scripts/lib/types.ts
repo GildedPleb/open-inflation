@@ -25,7 +25,7 @@ export type HeadResult =
 export type Head = (url: string) => Promise<HeadResult>;
 
 export interface LintOptions {
-  /** "added": HEAD archive URLs new since base. "all": every archive URL. "off": no network. */
-  readonly archive: "added" | "all" | "off";
+  /** "added": HEAD archive URLs new since base (once, when added; never re-swept). "off": no network. */
+  readonly archive: "added" | "off";
   readonly head?: Head;
 }

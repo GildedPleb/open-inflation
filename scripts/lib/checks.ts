@@ -4,10 +4,14 @@ import { parseDecimal, roundHalfEven, sumOfProducts } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, slugs } from "./markdown.ts";
 import type { CheckId, Files, Finding, Head, LintOptions, Snapshot } from "./types.ts";
 
-export const CSV = "base_money.csv";
+/** The series with a CSV and a roll-up schema today. A series id names its CSV and its evidence folder. */
+export const SERIES = "base_money";
+export const CSV = `${SERIES}.csv`;
 export const CSV_HEADER = "date,value,evidence_id";
 export const MAX_BYTES = 1024 * 1024;
-const ROLLUP = /^evidence\/(\d{4}Q[1-4])_basemoney\.md$/;
+/** evidence/<series>/YYYYQn.md -> [series, quarter]. */
+const ROLLUP = /^evidence\/([a-z][a-z0-9_]*)\/(\d{4}Q[1-4])\.md$/;
+const IN_SERIES = /^evidence\/[^/]+\/[^/]+\.md$/;
 const ISSUER_YEAR = /^issuers\/[^/]+\/\d{4}\.md$/;
 const QUARTER_ENDS = ["03-31", "06-30", "09-30", "12-31"];
 
@@ -37,7 +41,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   linkIntegrity(ctx, emit);
   indexCompleteness(ctx, emit);
   extractSchema(ctx, emit);
-  if (opts.archive !== "off" && opts.head) await archiveResolution(ctx, opts.archive, opts.head, emit);
+  if (opts.archive !== "off" && opts.head) await archiveResolution(ctx, opts.head, emit);
   aggregation(ctx, rows, emit);
   catalog(ctx, emit);
   const order = (c: CheckId) => Number(c.slice(1));
@@ -180,15 +184,15 @@ function parseRow(l: string, line: number, prev: Row | undefined): Row | string 
 function evidenceExistence(ctx: Ctx, rows: Row[], emit: Emit) {
   for (const r of rows) {
     const m = ROLLUP.exec(r.evidenceId);
-    if (!m)
+    if (!m || m[1] !== SERIES)
       emit(
         "L2",
         CSV,
-        `line ${r.line}: evidence_id ${show(r.evidenceId)} must be a relative path evidence/YYYYQn_basemoney.md`,
+        `line ${r.line}: evidence_id ${show(r.evidenceId)} must be a relative path evidence/${SERIES}/YYYYQn.md`,
       );
     else if (!ctx.files.has(r.evidenceId)) emit("L2", CSV, `line ${r.line}: ${r.evidenceId} does not exist`);
-    else if (m[1] !== quarterOf(r.date))
-      emit("L2", CSV, `line ${r.line}: evidence_id quarter ${m[1]} differs from date quarter ${quarterOf(r.date)}`);
+    else if (m[2] !== quarterOf(r.date))
+      emit("L2", CSV, `line ${r.line}: evidence_id quarter ${m[2]} differs from date quarter ${quarterOf(r.date)}`);
   }
 }
 
@@ -241,14 +245,15 @@ function appendOnly(ctx: Ctx, emit: Emit) {
 // ---------- L5, L6 ----------
 
 function linkIntegrity(ctx: Ctx, emit: Emit) {
-  for (const [p, body] of md(ctx, /^(INDEX\.md|evidence\/[^/]+\.md)$/)) {
+  for (const [p, body] of md(ctx, /^(INDEX\.md|evidence\/.*\.md)$/)) {
     for (const l of links(body)) checkTarget(ctx, p, `link (line ${l.line})`, l.target, false, emit);
-    if (!ROLLUP.test(p)) continue;
+    if (ROLLUP.exec(p)?.[1] !== SERIES) continue;
     const m = machine(body);
     if (!m.ok || !isObj(m.data)) continue;
     const anchors = [
       m.data.fx_source_anchor,
       ...(Array.isArray(m.data.components) ? m.data.components : []).map((c) => (isObj(c) ? c.anchor : undefined)),
+      ...(Array.isArray(m.data.benchmarks) ? m.data.benchmarks : []).map((b) => (isObj(b) ? b.anchor : undefined)),
       ...(Array.isArray(m.data.adopted_conflicts) ? m.data.adopted_conflicts : []).map((c) =>
         isObj(c) ? c.adopted_anchor : undefined,
       ),
@@ -263,7 +268,7 @@ function indexCompleteness(ctx: Ctx, emit: Emit) {
   if (body === undefined) return;
   const linked = new Set(links(body).map((l) => resolveLink("INDEX.md", l.target, false)?.path));
   for (const p of [...ctx.files.keys()].sort()) {
-    if ((/^evidence\/[^/]+\.md$/.test(p) || ISSUER_YEAR.test(p)) && !linked.has(p))
+    if ((/^evidence\/.*\.md$/.test(p) || ISSUER_YEAR.test(p)) && !linked.has(p))
       emit("L6", "INDEX.md", `INDEX.md does not link ${p}`);
   }
 }
@@ -384,15 +389,15 @@ function archiveRefs(texts: Texts | null): { urls: Map<string, string>; notes: S
   return { urls, notes };
 }
 
-async function archiveResolution(ctx: Ctx, mode: "added" | "all", head: Head, emit: Emit) {
+/** HEAD each archive URL once: when the diff first adds it. Committed URLs are never re-checked. */
+async function archiveResolution(ctx: Ctx, head: Head, emit: Emit) {
   const now = archiveRefs(ctx.text);
   const was = archiveRefs(ctx.base);
   for (const [url, file] of now.urls) {
-    if (mode === "added" && was.urls.has(url)) continue;
+    if (was.urls.has(url)) continue;
     const r = await head(url);
     if (r.kind === "ok") continue;
-    const excused = mode === "added" ? now.notes.has(url) && !was.notes.has(url) : now.notes.has(url);
-    if (excused) continue;
+    if (now.notes.has(url) && !was.notes.has(url)) continue;
     if (r.kind === "http")
       emit(
         "L8",
@@ -413,11 +418,20 @@ async function archiveResolution(ctx: Ctx, mode: "added" | "all", head: Head, em
 function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
   for (const [p, body] of md(ctx, /^evidence\//)) {
     const e = (m: string) => emit("L9", p, m);
-    const q = ROLLUP.exec(p)?.[1];
-    if (!q) {
-      e("is not a roll-up name (evidence/YYYYQn_basemoney.md)");
+    const r = ROLLUP.exec(p);
+    if (!IN_SERIES.test(p)) {
+      e("roll-ups live in a series folder: evidence/<series>/YYYYQn.md");
       continue;
     }
+    if (!r) {
+      e("is not a roll-up name (evidence/<series>/YYYYQn.md)");
+      continue;
+    }
+    if (r[1] !== SERIES) {
+      e(`no roll-up schema for series ${r[1]} yet (lint knows: ${SERIES})`);
+      continue;
+    }
+    const q = r[2] as string;
     const m = machine(body);
     if (!m.ok) {
       e(m.error);
@@ -462,6 +476,11 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
       for (const [i, x] of v.entries())
         for (const k of need) if (!isObj(x) || !nonEmpty(x[k])) errs.push(`${key}[${i}].${k} is required`);
     };
+    if (d.benchmarks !== undefined) list("benchmarks", ["name", "anchor"]);
+    if (Array.isArray(d.benchmarks))
+      for (const [i, b] of d.benchmarks.entries())
+        if (isObj(b) && !(typeof b.value_usd === "string" && parseDecimal(b.value_usd)))
+          errs.push(`benchmarks[${i}].value_usd must be a decimal string (quoted), got ${show(b.value_usd)}`);
     list("exclusions", ["reason"]);
     list("adopted_conflicts", ["adopted_anchor", "reason"]);
     if (typeof d.total_usd !== "string" || !/^(0|[1-9]\d*)$/.test(d.total_usd))
