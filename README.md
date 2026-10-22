@@ -26,7 +26,8 @@ Requires Bun 1.4 and git ([Bun](https://bun.sh); lint reads the tree and its bas
 ```sh
 bun install
 bun test          # offline unit tests with fixtures; about 1 second; the merge gate
-bun run lint      # integrity checks on this repository
+git fetch origin main
+bun run lint --base origin/main   # integrity checks against main, online (see AGENTS.md, Commands)
 ```
 
 `bun run lint` compares the working tree with a base commit: `--base <ref>` if given; on a GitHub push to any branch but `main` (`GITHUB_EVENT_NAME=push`, `GITHUB_REF` not `refs/heads/main`), the merge-base of `HEAD` and `origin/main`, so a branch is linted against what it diverged from, not its own previous tip (lint exits 2 if that merge-base cannot be found); otherwise `$LINT_BASE` if set (CI passes the PR base on a pull request and `github.event.before` on a push to `main`; all zeros means no base), otherwise `HEAD`. Its only network use is for archive URLs that the diff adds, and only ones that pass L7: one HEAD request to the snapshot at `https://web.archive.org/web/<timestamp>/<url>`, and, if web.archive.org is unreachable, one request to `https://archive.org/wayback/available` to confirm that exact snapshot timestamp; and one HEAD request to each archive.today capture (`Archive URL 2`). At most 4 requests run at once, each with a 15 s timeout. Links already committed are never re-checked. Offline, lint exits 1 when the diff adds an archive URL; that is intended. `bun install` may use the network; `bun test` never does: tests that lint this repository lint a copy of its committed tree (never the working tree), and lint processes they spawn run with `OBM_NO_NETWORK` set, which makes lint refuse every request, so a new archive URL fails L8 as a network error. That variable can only take the network away; it never makes a URL pass. Research itself is not tested: `bun test` covers the software only.
