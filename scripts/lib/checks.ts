@@ -125,7 +125,7 @@ function checkTarget(ctx: Ctx, from: string, what: string, target: string, rootR
     );
 }
 
-type Machine = { ok: true; data: unknown; line: number } | { ok: false; error: string };
+type Machine = { ok: true; data: unknown; line: number; source: string } | { ok: false; error: string };
 
 /** Every ```yaml machine block, in order. A roll-up has one or more; each later one is an appended revision. */
 function machines(body: string): Machine[] {
@@ -135,7 +135,7 @@ function machines(body: string): Machine[] {
   if (blocks.length === 0) return [{ ok: false, error: "has no ```yaml machine block" }];
   return blocks.map((block): Machine => {
     try {
-      return { ok: true, data: Bun.YAML.parse(block.body), line: block.line };
+      return { ok: true, data: Bun.YAML.parse(block.body), line: block.line, source: block.body };
     } catch (e) {
       return { ok: false, error: `machine block (line ${block.line}) is not valid YAML: ${(e as Error).message}` };
     }
@@ -707,7 +707,7 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
           q,
           label,
           current ? rows.find((r) => quarterOf(r.date) === q) : undefined,
-          { baskets, fx, isNew: i >= committed },
+          { baskets, fx, isNew: i >= committed, source: m.source },
           e,
         );
     }
@@ -825,6 +825,8 @@ function referenceCover(refs: unknown[], excl: unknown[]): string[] {
 }
 
 const COVERAGE = /^\d+\.\d{2}$/;
+const BASKET_VERSION_LINE = /^basket_version:(.*)$/m;
+const PLAIN_INT = /^[1-9]\d*$/;
 const hundredths = (h: bigint) => {
   const t = h.toString().padStart(3, "0");
   return `${t.slice(0, -2)}.${t.slice(-2)}`;
@@ -836,7 +838,13 @@ function blockAggregation(
   q: string,
   label: string,
   row: Row | undefined,
-  ref: { readonly baskets: ReadonlyMap<number, Basket>; readonly fx: Set<string>; readonly isNew: boolean },
+  ref: {
+    readonly baskets: ReadonlyMap<number, Basket>;
+    readonly fx: Set<string>;
+    readonly isNew: boolean;
+    /** The block's YAML source, to check how basket_version is written. */
+    readonly source: string;
+  },
   e: (m: string) => void,
 ) {
   const { baskets, fx: fxHave } = ref;
@@ -852,8 +860,14 @@ function blockAggregation(
   let version = 1;
   if ("basket_version" in d) {
     const bv = d.basket_version;
-    if (typeof bv !== "number" || !Number.isInteger(bv) || bv < 1) {
-      errs.push(`basket_version ${show(bv)} must be a positive integer (unquoted)`);
+    // The value and its spelling: a plain YAML integer in the source (1, not "1", 1.0, 1e0, 0x1, 01, +1 or !!int 1).
+    const raw = BASKET_VERSION_LINE.exec(ref.source)?.[1]
+      ?.replace(/\s+#.*$/, "")
+      .trim();
+    if (typeof bv !== "number" || !Number.isInteger(bv) || bv < 1 || raw === undefined || !PLAIN_INT.test(raw)) {
+      errs.push(
+        `basket_version ${raw ?? show(bv)} must be written as a plain positive integer such as 1 (no quotes, sign, leading zero, decimal point, exponent, base prefix or tag)`,
+      );
       version = 0;
     } else version = bv;
   } else if (ref.isNew && baskets.size > 1)
