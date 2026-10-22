@@ -25,7 +25,9 @@ if (!args) {
 }
 const dir = process.cwd();
 const hasHead = Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", "HEAD"]).exitCode === 0;
-const base = args.base ?? (process.env.LINT_BASE || (hasHead ? "HEAD" : null));
+const requested = args.base ?? (process.env.LINT_BASE || (hasHead ? "HEAD" : null));
+// CI passes github.event.before, which is all zeros for a new branch: no base, every file is new.
+const base = requested && /^0+$/.test(requested) ? null : requested;
 let snapshot: ReturnType<typeof loadSnapshot>;
 try {
   snapshot = loadSnapshot(dir, base);
