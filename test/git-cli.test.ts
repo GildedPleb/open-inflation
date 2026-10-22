@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -295,12 +295,10 @@ describe("CLI", () => {
   ]);
   const major = append("major");
 
+  // Started when the file is collected, not in a beforeAll, so these lints overlap every other test in the file.
   const runs = new Map<unknown, ReturnType<typeof basketCase>>();
-  let unedited: Promise<[number, string]>;
-  beforeAll(() => {
-    unedited = lintIn(committedTree(ROOT), "--base", "HEAD");
-    for (const edit of [...cases.map((c) => c[1]), major]) runs.set(edit, basketCase(edit));
-  });
+  const unedited = lintIn(committedTree(ROOT), "--base", "HEAD");
+  for (const edit of [...cases.map((c) => c[1]), major]) runs.set(edit, basketCase(edit));
   for (const [name, edit, want] of cases)
     test(`CLI: ${name}, committed or not`, async () => {
       const re = want(baseSeries());
@@ -368,10 +366,8 @@ describe("CLI: fx_rate and As of on a fixture repo", () => {
       }),
     ),
   };
-  let bad: ReturnType<typeof lintCase>;
-  beforeAll(() => {
-    bad = lintCase(defects);
-  });
+  // Started at collection, like the basket lints, so it runs alongside them.
+  const bad = lintCase(defects);
   const wanted = [
     [
       "a block fx_rate that differs from the derived rate fails L9",
