@@ -540,8 +540,9 @@ const addDays = (date: string, n: number) =>
 
 /**
  * P2-m1 (Assay): an issuer, reference-only or confirming extract's As of is inside its quarter, inclusive, by day
- * or by month (YYYY-MM is in the quarter if its month is). A start_of_day issuer (catalog issuers[]) may also use
- * the next quarter's first day. An FX extract needs a full date from quarter-end minus 3 days to quarter-end.
+ * or by month (YYYY-MM is in the quarter if its month is). A start_of_day issuer (catalog issuers[]) must use exactly
+ * the next quarter's first day, the start-of-day stock that equals the quarter-end stock (Assay); nothing else passes.
+ * An FX extract needs a full date from quarter-end minus 3 days to quarter-end.
  */
 function asOfProblem(v: string, q: string, fx: boolean, startOfDay: boolean): string | null {
   const m = AS_OF.exec(v);
@@ -557,10 +558,13 @@ function asOfProblem(v: string, q: string, fx: boolean, startOfDay: boolean): st
       return `FX As of ${date} is outside ${from}..${end} (quarter-end minus ${FX_WINDOW_DAYS} days to quarter-end)`;
     return null;
   }
-  if (quarterOf(d === undefined ? `${date}-01` : date) === q) return null;
   const next = addDays(end, 1);
-  if (startOfDay && date === next) return null;
-  return `As of ${date} is outside its quarter heading ${q} (${start}..${end}${startOfDay ? `, or ${next} for a start_of_day issuer` : ""})`;
+  if (startOfDay)
+    return date === next
+      ? null
+      : `As of ${date} must be ${next}, the first day of the next quarter, for a start_of_day issuer (heading ${q})`;
+  if (quarterOf(d === undefined ? `${date}-01` : date) === q) return null;
+  return `As of ${date} is outside its quarter heading ${q} (${start}..${end})`;
 }
 
 interface ArchiveRef {
