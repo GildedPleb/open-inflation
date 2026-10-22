@@ -442,6 +442,42 @@ describe("L8 archive resolution (fake network)", () => {
     fails(onGood({ [FED]: added }), ["L8"], /no snapshot/, fake(DOWN, { kind: "ok", timestamp: null }).opts));
   test("both endpoints unreachable is a network error and fails", () =>
     fails(onGood({ [FED]: added }), ["L8"], /network error: .*ECONNREFUSED.*ETIMEDOUT/, fake(DOWN).opts));
+  test("archive.org availability HTTP 429 says rate-limited, retry later (not 'retry online')", async () => {
+    const fs = await lint(onGood({ [FED]: added }), fake(DOWN, { kind: "http", status: 429 }).opts);
+    expect(fs.map((f) => f.check)).toEqual(["L8"]);
+    expect(fs[0]?.message).toMatch(/HTTP 429 \(rate-limited; no verdict on the snapshot; retry later\)/);
+    expect(fs[0]?.message).not.toMatch(/retry online/);
+  });
+  test("archive.org availability HTTP 503 is no verdict; retry later", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /availability: HTTP 503 \(no verdict on the snapshot; retry later\)/,
+      fake(DOWN, { kind: "http", status: 503 }).opts,
+    ));
+  test("web.archive.org HEAD HTTP 429 says rate-limited, retry later", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /HTTP 429 \(rate-limited; retry later\)/,
+      fake({ kind: "http", status: 429 }).opts,
+    ));
+  test("offline network errors still say retry online", () =>
+    fails(onGood({ [FED]: added }), ["L8"], /retry online/, fake(DOWN).opts));
+  test("progress: one stderr line per checked URL, counted; none without new URLs", async () => {
+    const lines: string[] = [];
+    const f = fake({ kind: "http", status: 404 });
+    const second = extract({ title: "FED newer" }).replaceAll("FED-new", "FED-newer");
+    await lint(onGood({ [FED]: added + second }), { ...f.opts, progress: (l) => lines.push(l) });
+    expect(lines).toEqual([
+      "L8 checking 2 new archive URLs",
+      `L8 [1/2] fail ${NEW}`,
+      `L8 [2/2] fail ${NEW.replace("FED-new", "FED-newer")}`,
+    ]);
+    const quiet: string[] = [];
+    await lint(onGood({}), { ...f.opts, progress: (l) => quiet.push(l) });
+    expect(quiet).toEqual([]);
+  });
   test("a Re-archive note never excuses a network error", () =>
     fails(onGood({ [FED]: noted }), ["L8"], /network error/, fake(DOWN).opts));
   test("a Re-archive note does not excuse a timestamp mismatch", () =>
@@ -813,6 +849,14 @@ describe("L10 byte-order marks", () => {
   test("BOM on INDEX.md fails", () => fails(good({ "INDEX.md": `\uFEFF${index()}` }), ["L10"], /byte-order mark/));
 });
 
+describe("L11 catalog lists the base_money series (F2)", () => {
+  const entry = JSON.parse(catalog()).series[0];
+  test("empty series list fails", () =>
+    fails(good({ "catalog.json": '{"series": []}' }), ["L11"], /series has no "base_money" entry/));
+  test("a catalog without the base_money series fails", () =>
+    fails(good({ "catalog.json": catalog([{ ...entry, id: "cpi_u" }]) }), ["L11"], /series has no "base_money" entry/));
+});
+
 describe("L11 catalog basket", () => {
   const entry = JSON.parse(catalog()).series[0];
   const { basket: _, ...noBasket } = entry;
@@ -842,6 +886,15 @@ describe("L12 placement", () => {
     "evidence/base_money/2026Q5.md",
     "evidence/base_money/2026/2026Q3.md",
     "evidence/cpi_u/2026Q3.md",
+    // F1: any other file under issuers/ or evidence/, whatever its extension.
+    "issuers/FED/2025.MD",
+    "issuers/FED/2025.markdown",
+    "issuers/FED/notes",
+    "issuers/FED/data.csv",
+    "issuers/FED/2026.md.bak",
+    "evidence/base_money/2026Q4.json",
+    "evidence/base_money/2026Q3.MD",
+    "evidence/README",
   ])
     test(`${p} is misplaced`, async () => {
       const fs = await lint(good({ [p]: "# x\n" }), OFF);
@@ -860,6 +913,21 @@ describe("L12 placement", () => {
         "INDEX.md": index("- [BOJ 2026](issuers/BOJ/2026.md)"),
       }),
     ));
-  test("non-text files (.gitkeep) and files outside issuers/ and evidence/ are not placement-checked", () =>
-    passes(good({ "issuers/.gitkeep": "", "evidence/base_money/.gitkeep": "", "notes.md": "# n\n" })));
+  test(".gitkeep anywhere under issuers/ and evidence/, and files outside them, pass", () =>
+    passes(
+      good({
+        "issuers/.gitkeep": "",
+        "issuers/FED/.gitkeep": "",
+        "evidence/base_money/.gitkeep": "",
+        "notes.md": "# n\n",
+      }),
+    ));
+  test("a broken extract in a .MD file is not unchecked: L12 rejects the file", async () => {
+    const fs = await lint(good({ "issuers/FED/2025.MD": "# FED\n\n## 2025Q3\n\n### x\n- Retrieved: soon\n" }), OFF);
+    expect(fs.some((f) => f.check === "L12" && f.file === "issuers/FED/2025.MD")).toBe(true);
+  });
+  test("an empty catalog series list does not leave issuer folders unchecked (F2: L11 fails)", async () => {
+    const fs = await lint(good({ "catalog.json": '{"series": []}' }), OFF);
+    expect(fs.some((f) => f.check === "L11")).toBe(true);
+  });
 });

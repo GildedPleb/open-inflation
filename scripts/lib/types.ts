@@ -27,6 +27,7 @@ export type Head = (url: string) => Promise<HeadResult>;
 /** The archive.org availability API's closest snapshot: its timestamp, or null when there is none. */
 export type AvailResult =
   | { readonly kind: "ok"; readonly timestamp: string | null }
+  | { readonly kind: "http"; readonly status: number }
   | { readonly kind: "network"; readonly message: string };
 
 /** The network seam that keeps tests offline: everything L8 may ask of archive.org. */
@@ -43,4 +44,6 @@ export interface LintOptions {
   readonly net?: Net;
   /** The clock, in ms since the epoch: L7 rejects a Retrieved time after now + 10 min. */
   readonly now: number;
+  /** Per-URL progress lines while L8 checks the network (the CLI writes them to stderr). */
+  readonly progress?: (line: string) => void;
 }

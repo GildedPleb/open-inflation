@@ -133,8 +133,9 @@ describe("httpAvailable (fake fetch)", () => {
     });
     expect(await httpAvailable(reply(snap("1", false)).f, 1000)(ORIG, "1")).toEqual({ kind: "ok", timestamp: null });
   });
-  test("non-2xx, non-JSON, and thrown errors are network failures", async () => {
-    expect(await httpAvailable(reply("", 503).f, 1000)(ORIG, "1")).toEqual({ kind: "network", message: "HTTP 503" });
+  test("non-2xx is an HTTP reply; non-JSON and thrown errors are network failures", async () => {
+    expect(await httpAvailable(reply("", 503).f, 1000)(ORIG, "1")).toEqual({ kind: "http", status: 503 });
+    expect(await httpAvailable(reply("", 429).f, 1000)(ORIG, "1")).toEqual({ kind: "http", status: 429 });
     expect((await httpAvailable(reply("<html>").f, 1000)(ORIG, "1")).kind).toBe("network");
     const boom = (async () => {
       throw new TypeError("ENOTFOUND");

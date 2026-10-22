@@ -503,10 +503,10 @@ async function snapshotProblem(net: Net, url: string, ref: ArchiveRef): Promise<
   if (r.kind === "ok") return null;
   if (r.kind === "http") return { dead: DEAD.includes(r.status), message: `failed HEAD: HTTP ${r.status}` };
   const a = await net.available(ref.original, ref.ts);
-  if (a.kind === "network")
+  if (a.kind !== "ok")
     return {
       dead: false,
-      message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
+      message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.kind === "http" ? `HTTP ${a.status}` : a.message} (no verdict on the snapshot; retry online)`,
     };
   if (a.timestamp === ref.ts) return null;
   const why =
