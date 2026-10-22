@@ -57,4 +57,10 @@ export interface LintOptions {
   readonly now: number;
   /** Per-URL progress lines while L8 checks the network (the CLI writes them to stderr). */
   readonly progress?: (line: string) => void;
+  /**
+   * L8's archive.today summary, when any new archive.today URL got a verified or rate-limited answer:
+   * `archive.today: N verified, M unverified (rate-limited)`, then each unverified URL on its own line, sorted
+   * (the CLI writes them to stdout, unprefixed).
+   */
+  readonly summary?: (line: string) => void;
 }

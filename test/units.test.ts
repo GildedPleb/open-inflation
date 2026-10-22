@@ -439,7 +439,72 @@ describe("archive2Problem (Archive URL 2 value)", () => {
       bad(v, /YYYY-MM-DD/);
   });
   test("an attempt needs a reason", () => {
-    for (const v of ["attempted 2026-10-02:", "attempted 2026-10-02:   ", "attempted 2026-10-02"]) bad(v, /reason/);
+    for (const v of ["attempted 2026-10-02:", "attempted 2026-10-02"])
+      bad(v, /must read "attempted YYYY-MM-DD: <reason>"/);
+    bad("attempted 2026-10-02:   ", /needs a reason after the date/);
+  });
+  // Assay: the attempt date is on or after the UTC date of Retrieved, and not after the UTC date of now + 10 min.
+  const R = "2026-10-02T14:03:00Z";
+  const NOW = Date.parse("2026-10-22T16:00:00Z");
+  const at = (day: string, retrieved: string | undefined = R, now: number | undefined = NOW) =>
+    archive2Problem(`attempted ${day}: blocked by CAPTCHA`, ORIG, retrieved, now);
+  test("an attempt before Retrieved's UTC date fails; the same day and later days up to today pass", () => {
+    expect(at("2026-10-01") ?? "").toMatch(/before Retrieved 2026-10-02T14:03:00Z \(UTC date 2026-10-02\)/);
+    expect(at("2026-10-02")).toBeNull();
+    expect(at("2026-10-22")).toBeNull();
+  });
+  test("an attempt after today's UTC date fails", () => {
+    expect(at("2026-10-23") ?? "").toMatch(/in the future \(now 2026-10-22T16:00:00.000Z/);
+    expect(at("2099-01-01") ?? "").toMatch(/2099-01-01 is in the future/);
+  });
+  test("the 10 min skew past UTC midnight allows tomorrow's date, and no more", () => {
+    expect(at("2026-10-23", R, Date.parse("2026-10-22T23:50:00Z"))).toBeNull();
+    expect(at("2026-10-23", R, Date.parse("2026-10-22T23:49:59.999Z")) ?? "").toMatch(/in the future/);
+    expect(at("2026-10-24", R, Date.parse("2026-10-23T00:05:00Z")) ?? "").toMatch(/in the future/);
+  });
+  test("a Retrieved with a UTC offset is compared by its UTC date (both sides of midnight)", () => {
+    // 2026-10-02T23:30-02:00 is 2026-10-03T01:30Z: an attempt on the 2nd is before it, the 3rd is the same day.
+    expect(at("2026-10-02", "2026-10-02T23:30:00-02:00") ?? "").toMatch(/before .*UTC date 2026-10-03/);
+    expect(at("2026-10-03", "2026-10-02T23:30:00-02:00")).toBeNull();
+    // 2026-10-03T00:30+02:00 is 2026-10-02T22:30Z: an attempt on the 2nd is the same UTC day.
+    expect(at("2026-10-02", "2026-10-03T00:30:00+02:00")).toBeNull();
+    expect(at("2026-10-01", "2026-10-03T00:30:00+02:00") ?? "").toMatch(/UTC date 2026-10-02/);
+  });
+  test("an unreadable Retrieved skips the ordering (L7 reports Retrieved itself)", () => {
+    expect(at("2026-01-01", "soon")).toBeNull();
+    expect(at("2026-01-01", "2026-10-02T14:03:00+24:00")).toBeNull();
+    expect(at("2026-01-01", "2026-02-30T14:03:00Z")).toBeNull();
+  });
+  test("an attempt reason needs at least 3 whitespace-separated words", () => {
+    for (const r of ["-", "blocked", "blocked  by", "- -"]) bad(`attempted 2026-10-02: ${r}`, /too short/);
+    ok("attempted 2026-10-02: blocked by\tCAPTCHA");
+    ok("attempted 2026-10-02: - - -");
+  });
+  test("an attempt reason may not contain a URL (any http(s) scheme, any case, or a bare www.)", () => {
+    for (const r of [
+      "see https://raw.githubusercontent.com/a/b/x.html for it",
+      "see http://example.test for it",
+      "see HTTPS://EXAMPLE.TEST for it",
+      "see Www.example.test for it",
+    ])
+      bad(`attempted 2026-10-02: ${r}`, /contains a URL/);
+    ok("attempted 2026-10-02: archive.today returned a CAPTCHA (aawww.example is not a host)");
+  });
+  // Assay M-3: the dated form's timestamp is a real time, and its UTC date has the attempt window.
+  const datedAt = (ts: string, retrieved: string | undefined = R, now: number | undefined = NOW) =>
+    archive2Problem(`https://archive.ph/${ts}/${ORIG}`, ORIG, retrieved, now);
+  test("a dated capture's date is on or after Retrieved's UTC date and not after today", () => {
+    expect(datedAt("20261001235959") ?? "").toMatch(/date 2026-10-01 is before Retrieved/);
+    expect(datedAt("20261002000000")).toBeNull();
+    expect(datedAt("20261022235959")).toBeNull();
+    expect(datedAt("20261023000000") ?? "").toMatch(/date 2026-10-23 is in the future/);
+    expect(datedAt("20271231000000") ?? "").toMatch(/in the future/);
+    expect(datedAt("20261023000000", R, Date.parse("2026-10-22T23:50:00Z"))).toBeNull();
+    expect(datedAt("20261002000000", "2026-10-02T23:30:00-02:00") ?? "").toMatch(/UTC date 2026-10-03/);
+  });
+  test("a dated capture with an impossible timestamp fails", () => {
+    for (const ts of ["20261302140500", "20260230140500", "20261002250000", "20261002146000"])
+      expect(datedAt(ts) ?? "").toMatch(/is not a real time/);
   });
   test("blank or free text fails", () => {
     bad("", /archive\.today URL or "attempted/);

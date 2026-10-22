@@ -2150,10 +2150,52 @@ describe("L7 Archive URL 2", () => {
   ])
     test(`another host fails: ${v}`, () => fails(with2(v), ["L7"], /Archive URL 2 .*archive\.today/));
   test("an attempt with an impossible date fails", () =>
-    fails(with2("attempted 2026-02-30: blocked"), ["L7"], /YYYY-MM-DD/));
+    fails(with2("attempted 2026-02-30: blocked by CAPTCHA"), ["L7"], /YYYY-MM-DD/));
   test("an attempt with no reason fails", () => fails(with2("attempted 2026-10-02:"), ["L7"], /reason/));
   test("the dated form for another original fails", () =>
     fails(with2("https://archive.ph/20261002140500/https://example.test/other"), ["L7"], /not the Original URL/));
+  // Assay: an attempt is made at or after retrieval, and never in the future. The fixture's Retrieved is
+  // 2026-10-02T14:03:00Z and lint's clock (OFF.now) is 2026-10-22T16:00:00Z.
+  test("an attempt dated before Retrieved's UTC date fails", () =>
+    fails(
+      with2("attempted 2026-10-01: blocked by CAPTCHA"),
+      ["L7"],
+      /attempt date 2026-10-01 is before Retrieved .*2026-10-02/,
+    ));
+  test("an attempt on a later day, up to today, passes", () =>
+    passes(with2("attempted 2026-10-22: blocked by CAPTCHA")));
+  test("an attempt dated 2099-01-01 fails as in the future", () =>
+    fails(with2("attempted 2099-01-01: blocked by CAPTCHA"), ["L7"], /attempt date 2099-01-01 is in the future/));
+  // Probe M-1's cases.
+  for (const day of ["2027-01-01", "2099-12-31"])
+    test(`an attempt dated ${day} fails as in the future`, () =>
+      fails(with2(`attempted ${day}: blocked by CAPTCHA`), ["L7"], new RegExp(`attempt date ${day} is in the future`)));
+  test("an attempt dated 1999-01-01 fails as before Retrieved", () =>
+    fails(with2("attempted 1999-01-01: blocked by CAPTCHA"), ["L7"], /attempt date 1999-01-01 is before Retrieved/));
+  test("tomorrow's attempt passes only inside the 10 min skew past UTC midnight", async () => {
+    const tomorrow = with2("attempted 2026-10-23: blocked by CAPTCHA");
+    await passes(tomorrow, { ...OFF, now: Date.parse("2026-10-22T23:50:00Z") });
+    await fails(tomorrow, ["L7"], /in the future/, { ...OFF, now: Date.parse("2026-10-22T23:49:59Z") });
+  });
+  // Assay M-3: the dated form's timestamp date has the attempt date's window.
+  const dated = (ts: string) => with2(`https://archive.is/${ts}/https://example.test/FED-H.4.1`);
+  test("a dated capture before Retrieved's UTC date fails", () =>
+    fails(dated("20261001235959"), ["L7"], /timestamp 20261001235959 date 2026-10-01 is before Retrieved/));
+  test("a dated capture later the same day as now passes", () => passes(dated("20261022235959")));
+  test("a dated capture in the future fails", () =>
+    fails(dated("20991231000000"), ["L7"], /timestamp 20991231000000 date 2099-12-31 is in the future/));
+  test("a dated capture with month 13 fails", () =>
+    fails(dated("20261302140500"), ["L7"], /timestamp 20261302140500 is not a real time/));
+  // Assay: a reason is at least 3 words and contains no URL.
+  for (const r of ["-", "blocked", "CAPTCHA blocked"])
+    test(`an attempt reason ${JSON.stringify(r)} is too short`, () =>
+      fails(with2(`attempted 2026-10-02: ${r}`), ["L7"], /too short: say what failed in at least 3 words/));
+  test("an attempt reason with a link fails", () =>
+    fails(
+      with2("attempted 2026-10-02: copy at https://raw.githubusercontent.com/x/y/main/h41.html instead"),
+      ["L7"],
+      /contains a URL/,
+    ));
   test("Archive URL 2 is not read as the Archive URL", () =>
     fails(
       good(fed(extract({ title: "FED H.4.1" }).replace(/- Archive URL: .*\n/, ""))),
@@ -2243,6 +2285,55 @@ describe("L8 Archive URL 2 on archive.today (fake network)", () => {
     );
     expect(f.heads).toEqual([]);
   });
+  // Assay M-2: a summary of archive.today verdicts, with the unverified (403/429) URLs sorted, one per line.
+  const byUrl = (table: Record<string, HeadResult>) => {
+    const net: Net = {
+      head: async (u) =>
+        u.startsWith("https://web.archive.org/")
+          ? { kind: "ok", status: 200 }
+          : (table[u] ?? { kind: "http", status: 599 }),
+      available: async (_o, t) => ({ kind: "ok", timestamp: t }),
+    };
+    return { ...OFF, archive: "added", net } as LintOptions;
+  };
+  const summaryOf = async (snap: Snapshot, opts: LintOptions) => {
+    const lines: string[] = [];
+    const fs = await lint(snap, { ...opts, summary: (l) => lines.push(l) });
+    return { fs, lines };
+  };
+  const several = (urls: string[]) =>
+    onGood({ [FED]: fedText + urls.map((u, i) => extract({ title: `FED new ${i}`, archive2: u })).join("") });
+  const [A, M, Z, D] = [
+    "https://archive.ph/Aaaa1",
+    "https://archive.ph/Mmmm1",
+    "https://archive.ph/Zzzz1",
+    "https://archive.ph/Dead1",
+  ];
+  test("summary: verified and rate-limited counts, then the unverified URLs sorted; failures are findings, not counted", async () => {
+    const opts = byUrl({
+      [Z]: { kind: "http", status: 429 },
+      [A]: { kind: "ok", status: 200 },
+      [D]: { kind: "http", status: 404 },
+      [M]: { kind: "http", status: 403 },
+    });
+    const { fs, lines } = await summaryOf(several([Z, A, D, M]), opts);
+    expect(fs.map((f) => f.check)).toEqual(["L8"]);
+    expect(lines).toEqual(["archive.today: 1 verified, 2 unverified (rate-limited)", M, Z]);
+  });
+  test("summary: all verified prints the count line alone", async () => {
+    const { lines } = await summaryOf(
+      several([A, M]),
+      byUrl({ [A]: { kind: "ok", status: 200 }, [M]: { kind: "ok", status: 200 } }),
+    );
+    expect(lines).toEqual(["archive.today: 2 verified, 0 unverified (rate-limited)"]);
+  });
+  test("summary: none when no new archive.today URL got a verified or rate-limited answer", async () => {
+    expect((await summaryOf(several([D]), byUrl({ [D]: { kind: "http", status: 404 } }))).lines).toEqual([]);
+    expect((await summaryOf(onGood({}), byUrl({}))).lines).toEqual([]);
+    const committed = fedText + extract({ title: "FED new", archive2: TODAY });
+    const snap = { files: files(goodText(), { [FED]: committed }), base: files(goodText(), { [FED]: committed }) };
+    expect((await summaryOf(snap, byUrl({ [TODAY]: { kind: "http", status: 429 } }))).lines).toEqual([]);
+  });
   test("a Wayback 429 still fails (only archive.today blocks are excused)", () =>
     fails(onGood({ [FED]: added }), ["L8"], /HTTP 429 \(rate-limited; retry later\)/, {
       ...OFF,
@@ -2322,6 +2413,25 @@ describe("L9 whole-dollar USD", () => {
       /reference_values\[0\] \(BOJ\) local_value 0\.01 is USD more precise than \$1/,
     ));
   test("a non-USD local_value may carry its published decimals", () => passes(fedUsd("1001")));
+  // Assay: a USD figure is canonical: "0" or no leading zero.
+  test("a USD component with a leading zero fails", () =>
+    fails(fedUsd("01001"), ["L9"], /components\[0\] \(FED\) local_value 01001 has a leading zero/));
+  test("a USD reference value with a leading zero fails", () =>
+    fails(
+      good({
+        [ROLLUP]: rollup(machineBlock({ referenceValues: `reference_values:\n${entry("BOJ", "USD", "0123", "1")}` })),
+      }),
+      ["L9"],
+      /reference_values\[0\] \(BOJ\) local_value 0123 has a leading zero/,
+    ));
+  test("a plain USD 0 passes", () => passes(fedUsd("0", "220")));
+  test("a non-USD local_value is not held to the USD leading-zero rule", () =>
+    passes(
+      withFx(
+        { components: [entry("FED", "USD", "1001", "1"), entry("BOJ", "JPY", "0500", JPY_FX)].join("\n") },
+        "1001",
+      ),
+    ));
   /** Components FED `fed` USD + BOJ `jpy` JPY; ECB excluded with reference `eur` EUR at 1.1. */
   const cov = (fed: string, jpy: string, eur: string, total: string, coverage: string) =>
     withFx(
