@@ -134,11 +134,11 @@ describe("L4 append-only (no committed line changes)", () => {
   test("new block inserted under an existing dated heading passes", () =>
     passes(onGood({ [FED]: fedText.replace("## 2026Q3\n", `## 2026Q3\n\n${extract({ title: "FED revision" })}`) })));
   test("edited verbatim quote", () =>
-    fails(onGood({ [FED]: fedText.replace("synthetic): 1", "synthetic): 2") }), ["L4"], /line 11/));
+    fails(onGood({ [FED]: fedText.replace("synthetic): 1", "synthetic): 2") }), ["L4"], /line 12/));
   test("deleted line", () =>
     fails(onGood({ [FED]: fedText.replace("- Notes: synthetic fixture\n", "") }), ["L4"], /removed or changed/));
   test("edited roll-up table", () =>
-    fails(onGood({ [ROLLUP]: rollup().replace("| 1000.5 |", "| 1000.50 |") }), ["L4"], /removed or changed/));
+    fails(onGood({ [ROLLUP]: rollup().replace("| 1001 |", "| 1001.00 |") }), ["L4"], /removed or changed/));
   test("roll-up may append a revision block; the last block is authoritative", () =>
     passes(
       onGood({
@@ -147,7 +147,7 @@ describe("L4 append-only (no committed line changes)", () => {
             "  - issuer: FED",
             "    anchor: issuers/FED/2026.md#2026q3",
             "    local_currency: USD",
-            '    local_value: "1001.5"',
+            '    local_value: "1002"',
             '    fx_rate: "1"',
           ].join("\n"),
           total: "1002",
@@ -209,12 +209,12 @@ describe("L4 base_money.csv rows", () => {
     fails(onGood(csv(Q3("1222"))), ["L4", "L9"], /1221 -> 1222 without appending a revision block/));
   test("editing a value with a revision block whose total differs fails", () =>
     fails(
-      onGood({ [ROLLUP]: revised(fedOnly("1001.5", "1002")), ...csv(Q3("1003")) }),
+      onGood({ [ROLLUP]: revised(fedOnly("1002", "1002")), ...csv(Q3("1003")) }),
       ["L4", "L9"],
       /revision total_usd 1002/,
     ));
   test("editing a value with a matching revision block passes", () =>
-    passes(onGood({ [ROLLUP]: revised(fedOnly("1001.5", "1002")), ...csv(Q3("1002")) })));
+    passes(onGood({ [ROLLUP]: revised(fedOnly("1002", "1002")), ...csv(Q3("1002")) })));
   test("changing a committed row's evidence_id fails", () =>
     fails(
       onGood({
@@ -641,6 +641,7 @@ describe("L8 archive resolution (fake network)", () => {
 });
 
 describe("L9 aggregation", () => {
+  // One EUR component at the fixture's fx_rate 1.1 (USD may not carry a fraction, so the tie comes from the FX).
   const one = (local: string, total: string, value = total) =>
     good({
       [ROLLUP]: rollup(
@@ -648,9 +649,9 @@ describe("L9 aggregation", () => {
           components: [
             "  - issuer: FED",
             "    anchor: issuers/FED/2026.md#2026q3",
-            "    local_currency: USD",
+            "    local_currency: EUR",
             `    local_value: "${local}"`,
-            '    fx_rate: "1"',
+            '    fx_rate: "1.1"',
           ].join("\n"),
           total,
         }),
@@ -687,31 +688,32 @@ describe("L9 aggregation", () => {
       ...csv(`2026-09-30,${value},evidence/base_money/2026Q3.md`),
     });
   test("several valid blocks pass; the CSV value is the last block's total", () =>
-    passes(withRevision(machineBlock({}), fedOnly("1001.5", "1002"), "1002")));
+    passes(withRevision(machineBlock({}), fedOnly("1002", "1002"), "1002")));
   test("an earlier block with a wrong total fails", () =>
-    fails(withRevision(machineBlock({ total: "1220" }), fedOnly("1001.5", "1002"), "1002"), ["L9"], /recomputed 1221/));
+    fails(withRevision(machineBlock({ total: "1220" }), fedOnly("1002", "1002"), "1002"), ["L9"], /recomputed 1221/));
   test("an earlier block that is invalid in any other way fails", () =>
     fails(
-      withRevision(machineBlock({ quarter: "2026Q2" }), fedOnly("1001.5", "1002"), "1002"),
+      withRevision(machineBlock({ quarter: "2026Q2" }), fedOnly("1002", "1002"), "1002"),
       ["L9"],
       /quarter "2026Q2" differs/,
     ));
   test("an earlier unparseable block fails", () =>
-    fails(withRevision("```yaml\nquarter: [\n```\n", fedOnly("1001.5", "1002"), "1002"), ["L9"], /YAML/));
+    fails(withRevision("```yaml\nquarter: [\n```\n", fedOnly("1002", "1002"), "1002"), ["L9"], /YAML/));
   test("a CSV value that matches an earlier block but not the last one fails", () =>
     fails(
-      withRevision(machineBlock({}), fedOnly("1001.5", "1002"), "1221"),
+      withRevision(machineBlock({}), fedOnly("1002", "1002"), "1221"),
       ["L9"],
       /CSV value 1221 .* differs from total_usd 1002/,
     ));
-  test("rounds half to even (2.5 -> 2)", () => passes(one("2.5", "2")));
-  test("half-up is wrong (2.5 -> 3 fails)", () => fails(one("2.5", "3"), ["L9"], /recomputed 2/));
-  test("exact beyond float precision", () => passes(one("123456789012345678.5", "123456789012345678")));
+  test("rounds half to even (1015 x 1.1 = 1116.5 -> 1116)", () => passes(one("1015", "1116")));
+  test("half-up is wrong (1116.5 -> 1117 fails)", () => fails(one("1015", "1117"), ["L9"], /recomputed 1116/));
+  // 112233444556677889.5 x 1.1 = 123456789012345678.45 exactly; as a float it is 123456789012345680.
+  test("exact beyond float precision", () => passes(one("112233444556677889.5", "123456789012345678")));
   test("float result is rejected", () =>
-    fails(one("123456789012345678.5", "123456789012345680"), ["L9"], /recomputed 123456789012345678/));
+    fails(one("112233444556677889.5", "123456789012345680"), ["L9"], /recomputed 123456789012345678/));
   test("unquoted number is not a decimal string", () =>
     fails(
-      good({ [ROLLUP]: rollup(machineBlock({}).replace('local_value: "1000.5"', "local_value: 1000.5")) }),
+      good({ [ROLLUP]: rollup(machineBlock({}).replace('local_value: "1001"', "local_value: 1001")) }),
       ["L9"],
       /decimal string/,
     ));
@@ -766,12 +768,12 @@ describe("L9 aggregation", () => {
           "  - issuer: FED",
           "    anchor: issuers/FED/2026.md#2026q3",
           "    local_currency: USD",
-          '    local_value: "610.5"',
+          '    local_value: "610"',
           '    fx_rate: "1"',
           "  - issuer: FED",
           "    anchor: issuers/FED/2026.md#2026q3",
           "    local_currency: USD",
-          '    local_value: "610.5"',
+          '    local_value: "610"',
           '    fx_rate: "1"',
         ].join("\n"),
       }),
@@ -820,7 +822,7 @@ describe("L9 aggregation", () => {
     "  - issuer: FED",
     "    anchor: issuers/FED/2026.md#2026q3",
     "    local_currency: USD",
-    '    local_value: "1000.5"',
+    '    local_value: "1000"',
     '    fx_rate: "1"',
   ].join("\n");
   const ECB_JPY =
@@ -1413,7 +1415,7 @@ describe("L9 reference_values and coverage_pct", () => {
             "  - issuer: FED",
             "    anchor: issuers/FED/2026.md#2026q3",
             "    local_currency: USD",
-            '    local_value: "1000.5"',
+            '    local_value: "1001"',
             '    fx_rate: "1"',
             "  - issuer: ECB",
             "    anchor: issuers/ECB/2026.md#2026q3",
@@ -2111,4 +2113,232 @@ describe("L7 As of not after Retrieved (P6-n7)", () => {
       ["L7"],
       /As of 2026-09-30 is after Retrieved 2026-09-29/,
     ));
+});
+
+// Assay (3): "2 is 1 and 1 is none". Every extract carries exactly one Archive URL 2: an archive.today capture, or a
+// dated record of the attempt and why it failed.
+describe("L7 Archive URL 2", () => {
+  const TODAY = "https://archive.ph/AbC12";
+  const with2 = (archive2: string | null) => good(fed(extract({ title: "FED H.4.1", archive2 })));
+  test("an archive.today short id passes", () => passes(with2(TODAY)));
+  test("the dated archive.today form for the Original URL passes", () =>
+    passes(with2("https://archive.is/20261002140500/https://example.test/FED-H.4.1")));
+  test("a dated attempt with a reason passes", () => passes(with2("attempted 2026-10-02: blocked by a CAPTCHA")));
+  test("missing fails", () => fails(with2(null), ["L7"], /has no Archive URL 2/));
+  test("missing on an FX extract fails too", () =>
+    fails(
+      good({ "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR").replace(/- Archive URL 2: .*\n/, "")) }),
+      ["L7"],
+      /has no Archive URL 2/,
+    ));
+  test("repeated fails", () =>
+    fails(
+      good(fed(extract({ title: "FED H.4.1", fields: [`- Archive URL 2: ${TODAY}`] }))),
+      ["L7"],
+      /more than one Archive URL 2/,
+    ));
+  test("bold is the wrong form, not missing", () =>
+    fails(
+      good(fed(extract({ title: "FED H.4.1" }).replace("- Archive URL 2:", "- **Archive URL 2:**"))),
+      ["L7"],
+      /Archive URL 2 is in the wrong form/,
+    ));
+  for (const v of [
+    "https://web.archive.org/web/20261002140500/https://example.test/FED-H.4.1",
+    "https://mirror.example.test/FED-H.4.1.html",
+    "https://archive.ph.example.test/AbC12",
+  ])
+    test(`another host fails: ${v}`, () => fails(with2(v), ["L7"], /Archive URL 2 .*archive\.today/));
+  test("an attempt with an impossible date fails", () =>
+    fails(with2("attempted 2026-02-30: blocked"), ["L7"], /YYYY-MM-DD/));
+  test("an attempt with no reason fails", () => fails(with2("attempted 2026-10-02:"), ["L7"], /reason/));
+  test("the dated form for another original fails", () =>
+    fails(with2("https://archive.ph/20261002140500/https://example.test/other"), ["L7"], /not the Original URL/));
+  test("Archive URL 2 is not read as the Archive URL", () =>
+    fails(
+      good(fed(extract({ title: "FED H.4.1" }).replace(/- Archive URL: .*\n/, ""))),
+      ["L7"],
+      /has no Archive URL$/,
+    ));
+});
+
+describe("L8 Archive URL 2 on archive.today (fake network)", () => {
+  const ORIG = "https://example.test/FED-new";
+  const WAYBACK = `https://web.archive.org/web/20261002140500/${ORIG}`;
+  const TODAY = "https://archive.ph/AbC12";
+  const added = fedText + extract({ title: "FED new", archive2: TODAY });
+  const noted = `${added}- Re-archive: ${TODAY} (archive.today capture gone; recaptured)\n`;
+  /** Wayback answers 200; archive.today answers `r`. */
+  const fake = (r: HeadResult) => {
+    const heads: string[] = [];
+    const avail: string[] = [];
+    const net: Net = {
+      head: async (u) => {
+        heads.push(u);
+        return u.startsWith("https://web.archive.org/") ? { kind: "ok", status: 200 } : r;
+      },
+      available: async (o, t) => {
+        avail.push(`${o} ${t}`);
+        return { kind: "ok", timestamp: t };
+      },
+    };
+    return { heads, avail, opts: { ...OFF, archive: "added", net } as LintOptions };
+  };
+  const progressOf = async (snap: Snapshot, f: ReturnType<typeof fake>) => {
+    const lines: string[] = [];
+    const fs = await lint(snap, { ...f.opts, progress: (l) => lines.push(l) });
+    return { fs, lines };
+  };
+  test("a new archive.today URL is HEADed like a Wayback URL; 200 passes", async () => {
+    const f = fake({ kind: "ok", status: 200 });
+    const { fs, lines } = await progressOf(onGood({ [FED]: added }), f);
+    expect(fs).toEqual([]);
+    expect([f.heads, f.avail]).toEqual([[WAYBACK, TODAY], []]);
+    expect(lines).toEqual([
+      "L8 checking 2 new archive URLs",
+      `L8 [1/2] ok (HTTP 200, 20261002140500) ${WAYBACK}`,
+      `L8 [2/2] ok (HTTP 200, archive.today) ${TODAY}`,
+    ]);
+  });
+  for (const status of [403, 429])
+    test(`HTTP ${status} (an archive.today block or rate limit) is rate-limited, not a fail`, async () => {
+      const f = fake({ kind: "http", status });
+      const { fs, lines } = await progressOf(onGood({ [FED]: added }), f);
+      expect(fs).toEqual([]);
+      expect(lines.at(-1)).toBe(`L8 [2/2] rate-limited (HTTP ${status}, archive.today; no verdict) ${TODAY}`);
+      expect(f.avail).toEqual([]);
+    });
+  test("404 fails and names archive.today", () =>
+    fails(onGood({ [FED]: added }), ["L8"], /archive\.today .*HTTP 404/, fake({ kind: "http", status: 404 }).opts));
+  test("500 fails", () =>
+    fails(onGood({ [FED]: added }), ["L8"], /HTTP 500/, fake({ kind: "http", status: 500 }).opts));
+  for (const status of [404, 410])
+    test(`HTTP ${status} passes when the same diff adds a Re-archive note for it`, () =>
+      passes(onGood({ [FED]: noted }), fake({ kind: "http", status }).opts));
+  test("a network error fails, with no Wayback availability fallback", async () => {
+    const f = fake({ kind: "network", message: "ECONNREFUSED" });
+    await fails(onGood({ [FED]: added }), ["L8"], /network error: .*ECONNREFUSED/, f.opts);
+    expect(f.avail).toEqual([]);
+  });
+  test("a redirect off archive.today fails", () =>
+    fails(
+      onGood({ [FED]: added }),
+      ["L8"],
+      /redirected \(HTTP 302\) off archive\.today to https:\/\/example\.test\/x/,
+      fake({ kind: "redirect", status: 302, location: "https://example.test/x", reason: "off-snapshot" }).opts,
+    ));
+  test("a committed archive.today URL is not re-checked", async () => {
+    const f = fake({ kind: "http", status: 404 });
+    const base = fedText + extract({ title: "FED new", archive2: TODAY });
+    await passes({ files: files(goodText(), { [FED]: base }), base: files(goodText(), { [FED]: base }) }, f.opts);
+    expect(f.heads).toEqual([]);
+  });
+  test("an Archive URL 2 that fails L7 is never fetched", async () => {
+    const f = fake({ kind: "ok", status: 200 });
+    await fails(
+      onGood({ [FED]: fedText + extract({ title: "FED new", archive2: "https://archive.org/x" }) }),
+      ["L7"],
+      /Archive URL 2/,
+      f.opts,
+    );
+    expect(f.heads).toEqual([]);
+  });
+  test("a Wayback 429 still fails (only archive.today blocks are excused)", () =>
+    fails(onGood({ [FED]: added }), ["L8"], /HTTP 429 \(rate-limited; retry later\)/, {
+      ...OFF,
+      archive: "added",
+      net: {
+        head: async (u) => (u === TODAY ? { kind: "ok", status: 200 } : { kind: "http", status: 429 }),
+        available: async () => ({ kind: "ok", timestamp: null }),
+      },
+    }));
+});
+
+// Assay (2): USD is never recorded more precisely than $1. Each entry's USD is local_value x fx_rate rounded
+// half-to-even to a whole dollar; total_usd and coverage come from those whole dollars.
+describe("L9 whole-dollar USD", () => {
+  const FXF = "issuers/FX/2026.md";
+  const entry = (iss: string, cur: string, v: string, fx: string) =>
+    [
+      `  - issuer: ${iss}`,
+      `    anchor: issuers/${iss}/2026.md#2026q3`,
+      `    local_currency: ${cur}`,
+      `    local_value: "${v}"`,
+      `    fx_rate: "${fx}"`,
+    ].join("\n");
+  const JPY_FX = "0.00100000000000000000";
+  const withFx = (o: Parameters<typeof machineBlock>[0], total: string) =>
+    good({
+      [FXF]: issuerFile("FX", "2026Q3", fxExtract("EUR"), fxExtract("JPY")),
+      [ROLLUP]: rollup(machineBlock({ ...o, total })),
+      ...csv(`2026-09-30,${total},${ROLLUP}`),
+    });
+  /** FED 1001 USD + ECB 200.25 EUR (220.275 -> 220) + BOJ `jpy` JPY at 0.001. */
+  const three = (jpy: string, total: string) =>
+    withFx(
+      {
+        components: [
+          entry("FED", "USD", "1001", "1"),
+          entry("ECB", "EUR", "200.25", "1.1"),
+          entry("BOJ", "JPY", jpy, JPY_FX),
+        ].join("\n"),
+      },
+      total,
+    );
+  test("total_usd is the sum of rounded components (1001 + 220 + 0), not the rounded sum (1222)", async () => {
+    await passes(three("500", "1221"));
+    await fails(three("500", "1222"), ["L9"], /total_usd 1222 but recomputed 1221/);
+  });
+  test("a component's tie rounds down to even (0.5 -> 0, 2.5 -> 2)", async () => {
+    await passes(three("500", "1221"));
+    await passes(three("2500", "1223"));
+    await fails(three("2500", "1224"), ["L9"], /recomputed 1223/);
+  });
+  test("a component's tie rounds up to even (1.5 -> 2, 3.5 -> 4)", async () => {
+    await passes(three("1500", "1223"));
+    await passes(three("3500", "1225"));
+    await fails(three("3500", "1224"), ["L9"], /recomputed 1225/);
+  });
+  const fedUsd = (v: string, total = "1221") =>
+    good({
+      [ROLLUP]: rollup(
+        machineBlock({
+          components: [entry("FED", "USD", v, "1"), entry("ECB", "EUR", "200.25", "1.1")].join("\n"),
+          total,
+        }),
+      ),
+      ...csv(`2026-09-30,${total},${ROLLUP}`),
+    });
+  test("a USD component written x.5 fails as more precise than $1", () =>
+    fails(fedUsd("1000.5"), ["L9"], /components\[0\] \(FED\) local_value 1000\.5 is USD more precise than \$1/));
+  test("a USD component written with .0 still fails: no fractional part at all", () =>
+    fails(fedUsd("1001.0"), ["L9"], /local_value 1001\.0 is USD more precise than \$1/));
+  test("a USD reference value written with a fraction fails", () =>
+    fails(
+      good({
+        [ROLLUP]: rollup(machineBlock({ referenceValues: `reference_values:\n${entry("BOJ", "USD", "0.01", "1")}` })),
+      }),
+      ["L9"],
+      /reference_values\[0\] \(BOJ\) local_value 0\.01 is USD more precise than \$1/,
+    ));
+  test("a non-USD local_value may carry its published decimals", () => passes(fedUsd("1001")));
+  /** Components FED `fed` USD + BOJ `jpy` JPY; ECB excluded with reference `eur` EUR at 1.1. */
+  const cov = (fed: string, jpy: string, eur: string, total: string, coverage: string) =>
+    withFx(
+      {
+        components: [entry("FED", "USD", fed, "1"), entry("BOJ", "JPY", jpy, JPY_FX)].join("\n"),
+        referenceValues: `reference_values:\n${entry("ECB", "EUR", eur, "1.1")}`,
+        coverage: `"${coverage}"`,
+      },
+      total,
+    );
+  test("coverage_pct is computed from the whole-dollar figures (1001 / 1001 = 100.00)", async () => {
+    await passes(cov("1001", "500", "0.4", "1001", "100.00"));
+    // 1001.5 / (1001.5 + 0.44) = 99.956...: the unrounded figures, not the recorded ones.
+    await fails(cov("1001", "500", "0.4", "1001", "99.96"), ["L9"], /coverage_pct "99\.96" but recomputed 100\.00/);
+  });
+  test("the floor is compared on the whole-dollar figures: 940 / (940 + 60) = 94 passes (unrounded 93.95)", () =>
+    passes(cov("938", "1500", "55", "940", "94.00")));
+  test("the floor is compared on the whole-dollar figures: 93 / (93 + 6) fails (unrounded 94.44)", () =>
+    fails(cov("93", "500", "5", "93", "93.94"), ["L9"], /coverage 93\.93\d*…?% is below the basket 1 floor 94%/));
 });

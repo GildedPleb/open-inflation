@@ -1,7 +1,7 @@
 // All integrity checks (L1-L12 in WP1_REQUIREMENTS). Pure over a Snapshot; the only I/O is the injected Net.
 import { posix } from "node:path";
 import { MAX_HOPS } from "./archive.ts";
-import { type Decimal, parseDecimal, ratioHalfEven, roundHalfEven, sumOfProducts, usdPerUnit } from "./decimal.ts";
+import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, slugs } from "./markdown.ts";
 import type { CheckId, Files, Finding, LintOptions, Net, Snapshot } from "./types.ts";
 
@@ -354,13 +354,21 @@ function indexCompleteness(ctx: Ctx, emit: Emit) {
 
 // ---------- L7, L8 ----------
 
-const FIELDS = ["Retrieved", "Original URL", "Archive URL"] as const;
+const FIELDS = ["Retrieved", "Original URL", "Archive URL", "Archive URL 2"] as const;
 type Field = (typeof FIELDS)[number];
-const FIELD_LINE = /^\s*[-*]\s+(Retrieved|Original URL|Archive URL):\s*(.*?)\s*$/;
+const FIELD_LINE = /^\s*[-*]\s+(Retrieved|Original URL|Archive URL 2|Archive URL):\s*(.*?)\s*$/;
 /** A field label in another form: no list marker, or bold. Reported as the wrong form, not as missing. */
-const NEAR_FIELD = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(Retrieved|Original URL|Archive URL)(?::(?:\*\*|__)|(?:\*\*|__)?\s*:)/;
+const NEAR_FIELD =
+  /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(Retrieved|Original URL|Archive URL 2|Archive URL)(?::(?:\*\*|__)|(?:\*\*|__)?\s*:)/;
 const RETRIEVED = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?Z$/;
 const ARCHIVE = /^https:\/\/web\.archive\.org\/web\/(\d+)\/(.+)$/;
+/**
+ * Archive URL 2 on archive.today (Assay, "2 is 1 and 1 is none"): one of its three hosts, either a short id
+ * (/<id>) or the dated form (/<YYYYMMDDhhmmss>/<Original URL>). Any other host, self-hosted copies included, fails.
+ */
+const ARCHIVE_TODAY = /^https:\/\/archive\.(?:ph|today|is)\/(?:(\d{14})\/(\S+)|([A-Za-z0-9]+))$/;
+/** Or a dated record of the attempt: `attempted <YYYY-MM-DD>: <reason>`. */
+const ATTEMPTED = /^attempted (\S+): (.*)$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SKEW_MS = 10 * 60 * 1000;
 
@@ -459,6 +467,37 @@ function urlParts(u: string): string[] | null {
   }
 }
 
+/** Two URLs name the same resource: equal component by component after percent-decoding. null when unparseable. */
+const sameUrl = (a: string, b: string): boolean | null => {
+  const x = urlParts(a);
+  const y = urlParts(b);
+  return x === null || y === null ? null : x.join("\u0000") === y.join("\u0000");
+};
+const ts14Ms = (ts: string) =>
+  utcMs(ts.slice(0, 4), ts.slice(4, 6), ts.slice(6, 8), ts.slice(8, 10), ts.slice(10, 12), ts.slice(12, 14));
+
+/**
+ * L7 on one Archive URL 2 value: an archive.today URL (short id, or the dated form of the Original URL at a real
+ * time), or `attempted <YYYY-MM-DD>: <reason>` with a real date and a non-empty reason. null when it passes.
+ */
+export function archive2Problem(v: string, original: string | undefined): string | null {
+  if (v.startsWith("attempted")) {
+    const m = ATTEMPTED.exec(v);
+    if (!m) return `Archive URL 2 ${show(v)} must read "attempted YYYY-MM-DD: <reason>"`;
+    if (!isIsoDate(m[1] ?? "")) return `Archive URL 2 attempt date ${show(m[1])} is not a real YYYY-MM-DD date`;
+    if ((m[2] ?? "").trim() === "") return `Archive URL 2 ${show(v)} needs a reason after the date`;
+    return null;
+  }
+  const a = ARCHIVE_TODAY.exec(v);
+  if (!a)
+    return `Archive URL 2 ${show(v)} is not an archive.today URL or "attempted YYYY-MM-DD: <reason>" (archive.today: https://archive.ph/, https://archive.today/ or https://archive.is/, then <id> or <YYYYMMDDhhmmss>/<Original URL>)`;
+  if (a[1] === undefined) return null;
+  if (ts14Ms(a[1]) === null) return `Archive URL 2 timestamp ${a[1]} is not a real time`;
+  if (original !== undefined && sameUrl(a[2] ?? "", original) === false)
+    return `Archive URL 2 captures ${show(a[2])}, not the Original URL ${show(original)}`;
+  return null;
+}
+
 /** Everything L7 has to say about one extract block; empty means the block passes. */
 function blockProblems(b: Extract, now: number): string[] {
   const out: string[] = [];
@@ -474,7 +513,11 @@ function blockProblems(b: Extract, now: number): string[] {
     if (vs.length > 1) out.push(`has more than one ${f}`);
     return vs.length === 1 ? vs[0] : undefined;
   };
-  const [retrieved, original, archive] = FIELDS.map(one);
+  const [retrieved, original, archive, archive2] = FIELDS.map(one);
+  if (archive2 !== undefined) {
+    const m = archive2Problem(archive2, original);
+    if (m) out.push(m);
+  }
   if (!b.quote) out.push("has no verbatim quote (blockquote or fenced block)");
   let rMs: number | null = null;
   if (retrieved !== undefined) {
@@ -658,14 +701,16 @@ function asOfProblem(v: string, q: string, fx: boolean, startOfDay: boolean): st
 }
 
 interface ArchiveRef {
+  /** web.archive.org (Archive URL) or archive.today (Archive URL 2). */
+  readonly host: "wayback" | "today";
   readonly file: string;
   readonly ts: string;
   readonly original: string;
 }
 
 /**
- * Archive URLs (first file that cites each) and re-archive notes, over one tree. With `now`, only URLs of
- * extract blocks that pass L7: a malformed, blank or non-web.archive.org URL never reaches the network.
+ * Archive URLs, Wayback and archive.today (first file that cites each), and re-archive notes, over one tree. With
+ * `now`, only URLs of extract blocks that pass L7: a malformed, blank or off-host URL never reaches the network.
  */
 function archiveRefs(texts: Texts | null, now?: number): { urls: Map<string, ArchiveRef>; notes: Set<string> } {
   const urls = new Map<string, ArchiveRef>();
@@ -675,7 +720,12 @@ function archiveRefs(texts: Texts | null, now?: number): { urls: Map<string, Arc
       if (now !== undefined && blockProblems(b, now).length > 0) continue;
       for (const u of b.fields.get("Archive URL") ?? []) {
         const a = ARCHIVE.exec(u);
-        if (!urls.has(u)) urls.set(u, { file: p, ts: a?.[1] ?? "", original: a?.[2] ?? "" });
+        if (!urls.has(u)) urls.set(u, { host: "wayback", file: p, ts: a?.[1] ?? "", original: a?.[2] ?? "" });
+      }
+      // Archive URL 2: only archive.today URLs are fetched; a dated "attempted" record has nothing to HEAD.
+      for (const u of b.fields.get("Archive URL 2") ?? []) {
+        const a = ARCHIVE_TODAY.exec(u);
+        if (a && !urls.has(u)) urls.set(u, { host: "today", file: p, ts: a[1] ?? "", original: a[2] ?? "" });
       }
     }
     for (const m of body.matchAll(/Re-archive:\s*(\S+)/g)) if (m[1]) notes.add(m[1]);
@@ -689,12 +739,19 @@ const CONCURRENCY = 4;
 
 type Problem = { readonly dead: boolean; readonly message: string; readonly status?: number } | null;
 /** Why a URL passed, for the progress line: "HTTP 200, <timestamp>" or "archive.org availability, <timestamp>". */
-type Verdict = { readonly problem: Problem; readonly ok?: string };
+type Verdict = { readonly problem: Problem; readonly ok?: string; readonly limited?: string };
 
 /** HEAD the snapshot; when web.archive.org is unreachable, ask archive.org for the exact timestamp instead. */
 const RATE_LIMITED = 429;
 
+/**
+ * archive.today statuses that are a block, not a verdict: its CAPTCHA challenge (403) and rate limit (429). CI often
+ * gets them; they leave the capture unchecked, so they are logged as rate-limited and do not fail.
+ */
+const TODAY_BLOCKED = [403, RATE_LIMITED];
+
 async function snapshotVerdict(net: Net, url: string, ref: ArchiveRef): Promise<Verdict> {
+  if (ref.host === "today") return todayVerdict(net, url);
   const r = await net.head(url);
   if (r.kind === "ok") return { problem: null, ok: `HTTP ${r.status}, ${ref.ts}` };
   if (r.kind === "redirect")
@@ -742,6 +799,39 @@ async function snapshotVerdict(net: Net, url: string, ref: ArchiveRef): Promise<
   };
 }
 
+/** HEAD an archive.today capture. No availability fallback: archive.org knows nothing about it. */
+async function todayVerdict(net: Net, url: string): Promise<Verdict> {
+  const r = await net.head(url);
+  if (r.kind === "ok") return { problem: null, ok: `HTTP ${r.status}, archive.today` };
+  if (r.kind === "redirect")
+    return {
+      problem: {
+        dead: false,
+        message:
+          r.reason === "loop"
+            ? `HEAD redirected more than ${MAX_HOPS} times on archive.today (last to ${r.location})`
+            : `HEAD redirected (HTTP ${r.status}) off archive.today to ${r.location}`,
+      },
+    };
+  if (r.kind === "http") {
+    if (TODAY_BLOCKED.includes(r.status))
+      return { problem: null, limited: `HTTP ${r.status}, archive.today; no verdict` };
+    return {
+      problem: {
+        dead: DEAD.includes(r.status),
+        status: r.status,
+        message: `failed HEAD: archive.today answered HTTP ${r.status}`,
+      },
+    };
+  }
+  return {
+    problem: {
+      dead: false,
+      message: `could not be checked: network error: archive.today: ${r.message} (no verdict on the capture; retry online)`,
+    },
+  };
+}
+
 /** Check each archive URL once: when the diff first adds it. Committed URLs are never re-checked. */
 async function archiveResolution(ctx: Ctx, net: Net, emit: Emit, progress?: (line: string) => void) {
   const now = archiveRefs(ctx.text, ctx.now);
@@ -758,7 +848,13 @@ async function archiveResolution(ctx: Ctx, net: Net, emit: Emit, progress?: (lin
       const v = await snapshotVerdict(net, url, ref);
       results[i] = v.problem;
       const p = v.problem;
-      const word = !p ? `ok (${v.ok})` : p.dead && noted(url) ? `excused (HTTP ${p.status}, Re-archive note)` : "fail";
+      const word = v.limited
+        ? `rate-limited (${v.limited})`
+        : !p
+          ? `ok (${v.ok})`
+          : p.dead && noted(url)
+            ? `excused (HTTP ${p.status}, Re-archive note)`
+            : "fail";
       progress?.(`L8 [${++done}/${todo.length}] ${word} ${url}`);
     }
   };
@@ -948,6 +1044,11 @@ function valueEntry(key: string, i: number, c: unknown, q: string, fxHave: Set<s
   const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
   const fx = typeof c.fx_rate === "string" ? parseDecimal(c.fx_rate) : null;
   if (!v) errs.push(`${key}[${i}].local_value must be a decimal string (quoted), got ${show(c.local_value)}`);
+  // USD is never recorded more precisely than $1: a USD local_value has no decimal point at all.
+  else if (c.local_currency === "USD" && v.scale > 0)
+    errs.push(
+      `${key}[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_value ${c.local_value} is USD more precise than $1 (USD is recorded to the whole dollar, no decimal point)`,
+    );
   if (!fx || fx.digits === 0n)
     errs.push(`${key}[${i}].fx_rate must be a positive decimal string (quoted), got ${show(c.fx_rate)}`);
   return v && fx ? [v, fx] : null;
@@ -1090,16 +1191,15 @@ function blockAggregation(
   for (const x of errs) e(`${label}: ${x}`);
   if (errs.length > 0) return;
   const total = d.total_usd as string;
-  const compUsd = sumOfProducts(pairs);
-  const got = roundHalfEven(compUsd);
+  // Each entry's USD is rounded half-to-even to a whole dollar first; totals and coverage use only those dollars.
+  const comp = pairs.reduce((acc, [v, fx]) => acc + wholeUsd(v, fx), 0n);
   const where = label === "machine block" ? "" : `${label}: `;
-  if (got !== BigInt(total))
-    e(`${where}total_usd ${total} but recomputed ${got} (exact sum of local_value x fx_rate, rounded half-to-even)`);
-  // coverage = comp / (comp + ref) x 100, exact, rounded once half-to-even to 2 decimals.
-  const refUsd = sumOfProducts(refPairs);
-  const scale = Math.max(compUsd.scale, refUsd.scale);
-  const comp = compUsd.digits * 10n ** BigInt(scale - compUsd.scale);
-  const den = comp + refUsd.digits * 10n ** BigInt(scale - refUsd.scale);
+  if (comp !== BigInt(total))
+    e(
+      `${where}total_usd ${total} but recomputed ${comp} (sum of each component's local_value x fx_rate, exact, rounded half-to-even to a whole dollar)`,
+    );
+  // coverage = comp / (comp + ref) x 100 over the whole-dollar figures, rounded once half-to-even to 2 decimals.
+  const den = comp + refPairs.reduce((acc, [v, fx]) => acc + wholeUsd(v, fx), 0n);
   if (den === 0n) {
     e(`${where}coverage is undefined: components and reference_values sum to 0 USD`);
   } else {
@@ -1107,9 +1207,10 @@ function blockAggregation(
     const stated = d.coverage_pct as string;
     if (BigInt(stated.replace(".", "")) !== coverage)
       e(
-        `${where}coverage_pct "${stated}" but recomputed ${hundredths(coverage)} (components USD / (components + reference_values USD) x 100, rounded once half-to-even)`,
+        `${where}coverage_pct "${stated}" but recomputed ${hundredths(coverage)} (whole-dollar components USD / (components + reference_values USD) x 100, rounded once half-to-even)`,
       );
-    // The floor is a true floor (Assay): compared against the exact, unrounded coverage, not coverage_pct.
+    // The floor is a true floor (Assay): compared against the exact, unrounded coverage of the whole-dollar figures,
+    // not coverage_pct.
     if (basket?.floor !== undefined && comp * 10000n < basket.floor * den)
       e(
         `${where}coverage ${exactPct(comp, den)}% is below the basket ${version} floor ${basket.floorText}% (compared unrounded; coverage_pct ${stated}; an exclusion this large needs a new basket)`,
