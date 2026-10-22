@@ -1,8 +1,8 @@
-// All integrity checks (L1-L11 in WP1_REQUIREMENTS). Pure over a Snapshot; the only I/O is the injected Head.
+// All integrity checks (L1-L12 in WP1_REQUIREMENTS). Pure over a Snapshot; the only I/O is the injected Net.
 import { posix } from "node:path";
 import { parseDecimal, roundHalfEven, sumOfProducts } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, slugs } from "./markdown.ts";
-import type { CheckId, Files, Finding, Head, LintOptions, Snapshot } from "./types.ts";
+import type { CheckId, Files, Finding, LintOptions, Net, Snapshot } from "./types.ts";
 
 /** The series with a CSV and a roll-up schema today. A series id names its CSV and its evidence folder. */
 export const SERIES = "base_money";
@@ -11,9 +11,9 @@ export const CSV_HEADER = "date,value,evidence_id";
 export const MAX_BYTES = 1024 * 1024;
 /** evidence/<series>/YYYYQn.md -> [series, quarter]. */
 const ROLLUP = /^evidence\/([a-z][a-z0-9_]*)\/(\d{4}Q[1-4])\.md$/;
-const IN_SERIES = /^evidence\/[^/]+\/[^/]+\.md$/;
 const ISSUER_YEAR = /^issuers\/[^/]+\/\d{4}\.md$/;
 const QUARTER_ENDS = ["03-31", "06-30", "09-30", "12-31"];
+const BOM = "\uFEFF";
 
 type Texts = ReadonlyMap<string, string>;
 interface Row {
@@ -26,6 +26,7 @@ interface Ctx {
   readonly files: Files;
   readonly text: Texts;
   readonly base: Texts | null;
+  readonly now: number;
 }
 type Emit = (check: CheckId, file: string, message: string) => void;
 
@@ -33,25 +34,28 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   const out: Finding[] = [];
   const emit: Emit = (check, file, message) => out.push({ check, file, message });
   const text = noBinaries(snap.files, emit);
-  const ctx: Ctx = { files: snap.files, text, base: snap.base && decodeAll(snap.base) };
+  const ctx: Ctx = { files: snap.files, text, base: snap.base && decodeAll(snap.base), now: opts.now };
   const rows = csvContract(ctx, emit);
   evidenceExistence(ctx, rows, emit);
   headingImmutability(ctx, emit);
   appendOnly(ctx, emit);
   csvAppendOnly(ctx, rows, emit);
   linkIntegrity(ctx, emit);
+  quarterHeadings(ctx, emit);
   indexCompleteness(ctx, emit);
   extractSchema(ctx, emit);
-  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net.head, emit);
+  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net, emit);
   aggregation(ctx, rows, emit);
   catalog(ctx, emit);
+  placement(ctx, emit);
   const order = (c: CheckId) => Number(c.slice(1));
   return out.sort((a, b) => order(a.check) - order(b.check));
 }
 
 // ---------- shared helpers ----------
 
-const utf8 = new TextDecoder("utf-8", { fatal: true });
+// ignoreBOM keeps a leading U+FEFF in the text: the default decoder strips it, which hid it from every check.
+const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const decode = (b: Uint8Array): string | null => {
   if (b.includes(0)) return null;
   try {
@@ -119,6 +123,8 @@ type Machine = { ok: true; data: unknown; line: number } | { ok: false; error: s
 
 /** The authoritative machine block: the last ```yaml block (earlier ones are superseded revisions). */
 function machine(body: string): Machine {
+  if (/^---\r?\n/.test(body))
+    return { ok: false, error: "front-matter is not a machine block; use a fenced ```yaml block only" };
   const block = fencedBlocks(body, ["yaml", "yml"]).at(-1);
   if (!block) return { ok: false, error: "has no ```yaml machine block" };
   try {
@@ -135,6 +141,8 @@ function noBinaries(files: Files, emit: Emit): Texts {
     if (b.length > MAX_BYTES) emit("L10", p, `is ${b.length} bytes, over the 1 MB limit (${MAX_BYTES} bytes)`);
     if (b.includes(0)) emit("L10", p, "contains a NUL byte (binary)");
     else if (decode(b) === null) emit("L10", p, "is not valid UTF-8 text (binary)");
+    else if (p !== CSV && decode(b)?.startsWith(BOM))
+      emit("L10", p, "starts with a UTF-8 byte-order mark (U+FEFF); save without a BOM");
   }
   return decodeAll(files);
 }
@@ -163,7 +171,10 @@ function fileProblem(ctx: Ctx): string | null {
   if (!ctx.files.has(CSV)) return `${CSV} is missing`;
   const t = ctx.text.get(CSV);
   if (t === undefined) return "";
+  if (t.startsWith(BOM))
+    return 'starts with a UTF-8 byte-order mark (U+FEFF); save without a BOM so CSV readers find the "date" column';
   if (t.includes("\r")) return "CR (\\r) line endings are not allowed; use LF";
+  if (t !== "" && !t.endsWith("\n")) return "has no final newline; every line, the last included, ends with LF";
   const header = t.split("\n")[0] ?? "";
   return header === CSV_HEADER ? null : `header must be exactly "${CSV_HEADER}", got ${show(header)}`;
 }
@@ -252,13 +263,16 @@ function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
   if (old === undefined || (ctx.files.has(CSV) && !ctx.text.has(CSV))) return;
   const e = (m: string) => emit("L4", CSV, m);
   const now = new Map(rows.map((r) => [r.date, r]));
+  // A row L1 rejects is still present: L1 reports it. Only a date absent from the raw lines was deleted.
+  const present = new Set((ctx.text.get(CSV) ?? "").split("\n").map((l) => l.replace(BOM, "").split(",")[0]));
   const blocks = (body: string | undefined) => (body === undefined ? 0 : fencedBlocks(body, ["yaml", "yml"]).length);
   for (const line of old.split("\n").slice(1)) {
     const [date, value, evidenceId, ...rest] = line.split(",");
     if (!date || value === undefined || evidenceId === undefined || rest.length > 0) continue;
     const r = now.get(date);
-    if (!r) e(`committed row for ${date} was deleted (or is no longer valid); rows are append-only`);
-    else if (r.evidenceId !== evidenceId) e(`row for ${date}: evidence_id changed ${evidenceId} -> ${r.evidenceId}`);
+    if (!r) {
+      if (!present.has(date)) e(`committed row for ${date} was deleted; rows are append-only`);
+    } else if (r.evidenceId !== evidenceId) e(`row for ${date}: evidence_id changed ${evidenceId} -> ${r.evidenceId}`);
     else if (r.value !== value) {
       const after = ctx.text.get(r.evidenceId);
       const m = after === undefined ? null : machine(after);
@@ -295,6 +309,24 @@ function linkIntegrity(ctx: Ctx, emit: Emit) {
   }
 }
 
+/** One `## YYYYQn` section per issuer-year file: a second one would anchor as #yyyyqn-1. */
+function quarterHeadings(ctx: Ctx, emit: Emit) {
+  for (const [p, body] of md(ctx, ISSUER_YEAR)) {
+    const seen = new Map<string, number>();
+    for (const h of headings(body)) {
+      if (h.level !== 2 || !/^\d{4}Q[1-4]$/.test(h.text)) continue;
+      const first = seen.get(h.text);
+      if (first === undefined) seen.set(h.text, h.line);
+      else
+        emit(
+          "L5",
+          p,
+          `duplicate heading "## ${h.text}" (lines ${first} and ${h.line}): anchors become ambiguous; one section per quarter`,
+        );
+    }
+  }
+}
+
 function indexCompleteness(ctx: Ctx, emit: Emit) {
   if (!ctx.files.has("INDEX.md")) return emit("L6", "INDEX.md", "INDEX.md is missing");
   const body = ctx.text.get("INDEX.md");
@@ -311,14 +343,18 @@ function indexCompleteness(ctx: Ctx, emit: Emit) {
 const FIELDS = ["Retrieved", "Original URL", "Archive URL"] as const;
 type Field = (typeof FIELDS)[number];
 const FIELD_LINE = /^\s*[-*]\s+(Retrieved|Original URL|Archive URL):\s*(.*?)\s*$/;
+/** A field label in another form: no list marker, or bold. Reported as the wrong form, not as missing. */
+const NEAR_FIELD = /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(Retrieved|Original URL|Archive URL)(?::(?:\*\*|__)|(?:\*\*|__)?\s*:)/;
 const RETRIEVED = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?Z$/;
 const ARCHIVE = /^https:\/\/web\.archive\.org\/web\/(\d+)\/(.+)$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const SKEW_MS = 10 * 60 * 1000;
 
 interface Extract {
   readonly title: string;
   readonly line: number;
   readonly fields: Map<Field, string[]>;
+  readonly wrongForm: Map<Field, number>;
   quote: boolean;
 }
 
@@ -333,7 +369,7 @@ function extracts(body: string): { blocks: Extract[]; stray: number[] } {
       if (h?.[1]) {
         cur =
           h[1].length === 3
-            ? { title: h[2] ?? "", line: l.line, fields: new Map(), quote: false }
+            ? { title: h[2] ?? "", line: l.line, fields: new Map(), wrongForm: new Map(), quote: false }
             : h[1].length < 3
               ? null
               : cur;
@@ -341,10 +377,12 @@ function extracts(body: string): { blocks: Extract[]; stray: number[] } {
         continue;
       }
       const f = FIELD_LINE.exec(l.text);
+      const near = f ? null : NEAR_FIELD.exec(l.text);
       if (f) {
         if (!cur) stray.push(l.line);
         else cur.fields.set(f[1] as Field, [...(cur.fields.get(f[1] as Field) ?? []), f[2] ?? ""]);
-      } else if (cur && /^\s*>\s*\S/.test(l.text)) cur.quote = true;
+      } else if (near && cur) cur.wrongForm.set(near[1] as Field, l.line);
+      else if (cur && /^\s*>\s*\S/.test(l.text)) cur.quote = true;
     } else if (cur && l.fence === "body" && l.text.trim() !== "") cur.quote = true;
   }
   return { blocks, stray };
@@ -363,86 +401,144 @@ const utcMs = (y: string, mo: string, d: string, h: string, mi: string, s: strin
   return same ? ms : null;
 };
 
+/** Everything L7 has to say about one extract block; empty means the block passes. */
+function blockProblems(b: Extract, now: number): string[] {
+  const out: string[] = [];
+  const one = (f: Field) => {
+    const vs = b.fields.get(f) ?? [];
+    const wrong = b.wrongForm.get(f);
+    if (vs.length === 0)
+      out.push(
+        wrong === undefined
+          ? `has no ${f}`
+          : `${f} is in the wrong form (line ${wrong}); expected "- ${f}: <value>" (a list item, no bold)`,
+      );
+    if (vs.length > 1) out.push(`has more than one ${f}`);
+    return vs.length === 1 ? vs[0] : undefined;
+  };
+  const [retrieved, original, archive] = FIELDS.map(one);
+  if (!b.quote) out.push("has no verbatim quote (blockquote or fenced block)");
+  let rMs: number | null = null;
+  if (retrieved !== undefined) {
+    const m = RETRIEVED.exec(retrieved);
+    rMs = m ? utcMs(m[1] ?? "", m[2] ?? "", m[3] ?? "", m[4] ?? "", m[5] ?? "", m[6] ?? "0") : null;
+    if (rMs === null) out.push(`Retrieved ${show(retrieved)} is not a UTC ISO 8601 time (YYYY-MM-DDTHH:MM:SSZ)`);
+    else if (rMs > now + SKEW_MS)
+      out.push(`Retrieved ${retrieved} is in the future (now ${new Date(now).toISOString()}; 10 min skew allowed)`);
+  }
+  if (original !== undefined && !/^https?:\/\/\S+$/.test(original))
+    out.push(`Original URL ${show(original)} is not an http(s) URL`);
+  if (archive === undefined) return out;
+  const a = ARCHIVE.exec(archive);
+  const ts = a?.[1] ?? "";
+  if (!a || ts.length !== 14) {
+    out.push(`Archive URL ${show(archive)} is not https://web.archive.org/web/<14-digit timestamp>/<Original URL>`);
+    return out;
+  }
+  if (original !== undefined && a[2] !== original)
+    out.push(`Archive URL snapshots ${show(a[2])}, not the Original URL ${show(original)}`);
+  const sMs = utcMs(
+    ts.slice(0, 4),
+    ts.slice(4, 6),
+    ts.slice(6, 8),
+    ts.slice(8, 10),
+    ts.slice(10, 12),
+    ts.slice(12, 14),
+  );
+  if (sMs === null) out.push(`Archive URL timestamp ${ts} is not a real time`);
+  else if (rMs !== null && Math.abs(sMs - rMs) > DAY_MS)
+    out.push(`snapshot ${ts} is more than 24h from Retrieved ${retrieved}`);
+  return out;
+}
+
+const issuerTexts = (texts: Texts | null) =>
+  [...(texts ?? [])]
+    .filter(([p]) => p.startsWith("issuers/") && p.endsWith(".md"))
+    .sort(([a], [b]) => a.localeCompare(b));
+
 function extractSchema(ctx: Ctx, emit: Emit) {
-  for (const [p, body] of md(ctx, /^issuers\//)) {
+  for (const [p, body] of issuerTexts(ctx.text)) {
     const { blocks, stray } = extracts(body);
     for (const line of stray) emit("L7", p, `line ${line}: extract field outside an ### extract block`);
-    for (const b of blocks) {
-      const e = (m: string) => emit("L7", p, `extract "${b.title}" (line ${b.line}) ${m}`);
-      const one = (f: Field) => {
-        const vs = b.fields.get(f) ?? [];
-        if (vs.length === 0) e(`has no ${f}`);
-        if (vs.length > 1) e(`has more than one ${f}`);
-        return vs.length === 1 ? vs[0] : undefined;
-      };
-      const [retrieved, original, archive] = FIELDS.map(one);
-      if (!b.quote) e("has no verbatim quote (blockquote or fenced block)");
-      let rMs: number | null = null;
-      if (retrieved !== undefined) {
-        const m = RETRIEVED.exec(retrieved);
-        rMs = m ? utcMs(m[1] ?? "", m[2] ?? "", m[3] ?? "", m[4] ?? "", m[5] ?? "", m[6] ?? "0") : null;
-        if (rMs === null) e(`Retrieved ${show(retrieved)} is not a UTC ISO 8601 time (YYYY-MM-DDTHH:MM:SSZ)`);
-      }
-      if (original !== undefined && !/^https?:\/\/\S+$/.test(original))
-        e(`Original URL ${show(original)} is not an http(s) URL`);
-      if (archive === undefined) continue;
-      const a = ARCHIVE.exec(archive);
-      const ts = a?.[1] ?? "";
-      if (!a || ts.length !== 14) {
-        e(`Archive URL ${show(archive)} is not https://web.archive.org/web/<14-digit timestamp>/<Original URL>`);
-        continue;
-      }
-      if (original !== undefined && a[2] !== original)
-        e(`Archive URL snapshots ${show(a[2])}, not the Original URL ${show(original)}`);
-      const sMs = utcMs(
-        ts.slice(0, 4),
-        ts.slice(4, 6),
-        ts.slice(6, 8),
-        ts.slice(8, 10),
-        ts.slice(10, 12),
-        ts.slice(12, 14),
-      );
-      if (sMs === null) e(`Archive URL timestamp ${ts} is not a real time`);
-      else if (rMs !== null && Math.abs(sMs - rMs) > DAY_MS)
-        e(`snapshot ${ts} is more than 24h from Retrieved ${retrieved}`);
-    }
+    for (const b of blocks)
+      for (const m of blockProblems(b, ctx.now)) emit("L7", p, `extract "${b.title}" (line ${b.line}) ${m}`);
   }
 }
 
-/** Archive URLs (first file that cites each) and re-archive notes, over one tree. */
-function archiveRefs(texts: Texts | null): { urls: Map<string, string>; notes: Set<string> } {
-  const urls = new Map<string, string>();
+interface ArchiveRef {
+  readonly file: string;
+  readonly ts: string;
+  readonly original: string;
+}
+
+/**
+ * Archive URLs (first file that cites each) and re-archive notes, over one tree. With `now`, only URLs of
+ * extract blocks that pass L7: a malformed, blank or non-web.archive.org URL never reaches the network.
+ */
+function archiveRefs(texts: Texts | null, now?: number): { urls: Map<string, ArchiveRef>; notes: Set<string> } {
+  const urls = new Map<string, ArchiveRef>();
   const notes = new Set<string>();
-  for (const [p, body] of [...(texts ?? [])].sort(([a], [b]) => a.localeCompare(b))) {
-    if (!p.startsWith("issuers/") || !p.endsWith(".md")) continue;
-    for (const b of extracts(body).blocks)
-      for (const u of b.fields.get("Archive URL") ?? []) if (!urls.has(u)) urls.set(u, p);
+  for (const [p, body] of issuerTexts(texts)) {
+    for (const b of extracts(body).blocks) {
+      if (now !== undefined && blockProblems(b, now).length > 0) continue;
+      for (const u of b.fields.get("Archive URL") ?? []) {
+        const a = ARCHIVE.exec(u);
+        if (!urls.has(u)) urls.set(u, { file: p, ts: a?.[1] ?? "", original: a?.[2] ?? "" });
+      }
+    }
     for (const m of body.matchAll(/Re-archive:\s*(\S+)/g)) if (m[1]) notes.add(m[1]);
   }
   return { urls, notes };
 }
 
-/** HEAD each archive URL once: when the diff first adds it. Committed URLs are never re-checked. */
-async function archiveResolution(ctx: Ctx, head: Head, emit: Emit) {
-  const now = archiveRefs(ctx.text);
+/** HTTP statuses that confirm a dead snapshot. Only these can be excused by a Re-archive note. */
+const DEAD = [404, 410];
+const CONCURRENCY = 4;
+
+type Problem = { readonly dead: boolean; readonly message: string } | null;
+
+/** HEAD the snapshot; when web.archive.org is unreachable, ask archive.org for the exact timestamp instead. */
+async function snapshotProblem(net: Net, url: string, ref: ArchiveRef): Promise<Problem> {
+  const r = await net.head(url);
+  if (r.kind === "ok") return null;
+  if (r.kind === "http") return { dead: DEAD.includes(r.status), message: `failed HEAD: HTTP ${r.status}` };
+  const a = await net.available(ref.original, ref.ts);
+  if (a.kind === "network")
+    return {
+      dead: false,
+      message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
+    };
+  if (a.timestamp === ref.ts) return null;
+  const why =
+    a.timestamp === null ? "has no snapshot" : `returns closest snapshot ${a.timestamp}, not the recorded ${ref.ts}`;
+  return { dead: false, message: `web.archive.org unreachable (${r.message}) and archive.org availability ${why}` };
+}
+
+/** Check each archive URL once: when the diff first adds it. Committed URLs are never re-checked. */
+async function archiveResolution(ctx: Ctx, net: Net, emit: Emit) {
+  const now = archiveRefs(ctx.text, ctx.now);
   const was = archiveRefs(ctx.base);
-  for (const [url, file] of now.urls) {
-    if (was.urls.has(url)) continue;
-    const r = await head(url);
-    if (r.kind === "ok") continue;
-    if (now.notes.has(url) && !was.notes.has(url)) continue;
-    if (r.kind === "http")
-      emit(
-        "L8",
-        file,
-        `archive URL ${url} failed HEAD: HTTP ${r.status}; the commit must add a "Re-archive: ${url}" note`,
-      );
-    else
-      emit(
-        "L8",
-        file,
-        `archive URL ${url} could not be checked: network error: ${r.message} (no verdict on the snapshot; retry)`,
-      );
+  const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
+  const results: Problem[] = [];
+  let next = 0;
+  const worker = async () => {
+    for (let i = next++; i < todo.length; i = next++) {
+      const [url, ref] = todo[i] as [string, ArchiveRef];
+      results[i] = await snapshotProblem(net, url, ref);
+    }
+  };
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  for (const [i, [url, ref]] of todo.entries()) {
+    const p = results[i];
+    if (!p) continue;
+    const noted = now.notes.has(url) && !was.notes.has(url);
+    if (p.dead && noted) continue;
+    const fix = p.dead
+      ? `; the commit must add a "Re-archive: ${url}" note`
+      : noted
+        ? `; a Re-archive note excuses only a dead snapshot (HTTP ${DEAD.join("/")})`
+        : "";
+    emit("L8", ref.file, `archive URL ${url} ${p.message}${fix}`);
   }
 }
 
@@ -452,18 +548,7 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
   for (const [p, body] of md(ctx, /^evidence\//)) {
     const e = (m: string) => emit("L9", p, m);
     const r = ROLLUP.exec(p);
-    if (!IN_SERIES.test(p)) {
-      e("roll-ups live in a series folder: evidence/<series>/YYYYQn.md");
-      continue;
-    }
-    if (!r) {
-      e("is not a roll-up name (evidence/<series>/YYYYQn.md)");
-      continue;
-    }
-    if (r[1] !== SERIES) {
-      e(`no roll-up schema for series ${r[1]} yet (lint knows: ${SERIES})`);
-      continue;
-    }
+    if (r?.[1] !== SERIES) continue; // L12 reports misplaced files
     const q = r[2] as string;
     const m = machine(body);
     if (!m.ok) {
@@ -489,6 +574,11 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
       }
       if (!nonEmpty(c.issuer)) errs.push(`components[${i}].issuer is required`);
       if (!nonEmpty(c.anchor)) errs.push(`components[${i}].anchor is required`);
+      else if (nonEmpty(c.issuer)) {
+        const want = `issuers/${c.issuer}/${q.slice(0, 4)}.md#${q.toLowerCase()}`;
+        if (c.anchor !== want)
+          errs.push(`components[${i}].anchor ${c.anchor} must be ${want} (the issuer's ${q} section)`);
+      }
       if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
         errs.push(`components[${i}].local_currency must be an ISO 4217 code`);
       const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
@@ -583,7 +673,8 @@ function crossChecks(v: unknown): string[] {
 
 // ---------- L11 ----------
 
-const SERIES_KEYS = ["id", "path", "unit", "frequency", "methodology", "last_updated", "version", "license"];
+const SERIES_KEYS = ["id", "path", "unit", "frequency", "methodology", "last_updated", "version", "license", "basket"];
+const ISSUER_ID = /^[A-Z][A-Z0-9]*$/;
 /** SPDX ids lint accepts for a series' data. Extend deliberately. */
 const DATA_LICENSES = ["CC-BY-4.0"];
 /** semver.org 2.0.0 grammar. */
@@ -627,5 +718,47 @@ function catalog(ctx: Ctx, emit: Emit) {
       e(`series[${i}].version ${show(s.version)} is not a semver string (MAJOR.MINOR.PATCH)`);
     if ("license" in s && !(typeof s.license === "string" && DATA_LICENSES.includes(s.license)))
       e(`series[${i}].license ${show(s.license)} is not a known data license (${DATA_LICENSES.join(", ")})`);
+    if ("basket" in s && !isBasket(s.basket))
+      e(`series[${i}].basket ${show(s.basket)} is not a non-empty list of unique issuer ids (e.g. ["FED", "ECB"])`);
+  }
+}
+
+const isBasket = (v: unknown): v is string[] =>
+  Array.isArray(v) &&
+  v.length > 0 &&
+  v.every((x) => typeof x === "string" && ISSUER_ID.test(x)) &&
+  new Set(v).size === v.length;
+
+// ---------- L12 ----------
+
+/** issuers/FX/ holds the FX-rate sources fx_source_anchor cites. It is not a basket issuer. */
+const FX_FOLDER = "FX";
+
+/** Issuers named by any valid catalog basket. Lenient: L11 reports a bad catalog, and an empty set skips membership. */
+function catalogBasket(ctx: Ctx): Set<string> {
+  try {
+    const j: unknown = JSON.parse(ctx.text.get("catalog.json") ?? "");
+    const series = isObj(j) && Array.isArray(j.series) ? j.series : [];
+    return new Set(series.flatMap((x) => (isObj(x) && isBasket(x.basket) ? x.basket : [])));
+  } catch {
+    return new Set();
+  }
+}
+
+function placement(ctx: Ctx, emit: Emit) {
+  const basket = catalogBasket(ctx);
+  for (const p of [...ctx.files.keys()].sort()) {
+    if (!/\.(md|txt)$/.test(p)) continue;
+    if (p.startsWith("issuers/")) {
+      const iss = /^issuers\/([^/]+)\/\d{4}\.md$/.exec(p)?.[1];
+      if (iss === undefined) emit("L12", p, "issuer files live only at issuers/<ISS>/<YYYY>.md");
+      else if (iss !== FX_FOLDER && basket.size > 0 && !basket.has(iss))
+        emit(
+          "L12",
+          p,
+          `${iss} is not in the catalog basket (${[...basket].join(", ")}); issuers/<ISS>/ needs a basket issuer`,
+        );
+    } else if (p.startsWith("evidence/") && ROLLUP.exec(p)?.[1] !== SERIES)
+      emit("L12", p, `roll-ups live only at evidence/${SERIES}/YYYYQn.md`);
   }
 }

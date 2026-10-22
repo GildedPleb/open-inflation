@@ -247,7 +247,7 @@ describe("L5 link integrity", () => {
           machineBlock({}).replace("anchor: issuers/FED/2026.md#2026q3", "anchor: issuers/FED/2026.md#2026Q3"),
         ),
       }),
-      ["L5"],
+      ["L5", "L9"],
       /machine block.*#2026Q3/,
     ));
   test("machine-block fx anchor must resolve", () =>
@@ -700,6 +700,7 @@ describe("L11 catalog.json", () => {
     last_updated: "2026-10-02",
     version: "0.1.0",
     license: "CC-BY-4.0",
+    basket: ["FED", "ECB", "BOJ"],
   };
   const without = (k: keyof typeof entry) => Object.fromEntries(Object.entries(entry).filter(([x]) => x !== k));
   test("version missing", () =>
@@ -815,8 +816,7 @@ describe("L10 byte-order marks", () => {
 describe("L11 catalog basket", () => {
   const entry = JSON.parse(catalog()).series[0];
   const { basket: _, ...noBasket } = entry;
-  test("basket missing", () =>
-    fails(good({ "catalog.json": catalog([noBasket]) }), ["L11", "L12"], /missing "basket"/));
+  test("basket missing", () => fails(good({ "catalog.json": catalog([noBasket]) }), ["L11"], /missing "basket"/));
   for (const b of [[], ["fed"], ["FED", "FED"], "FED", [1]])
     test(`basket ${JSON.stringify(b)} is not a non-empty list of unique issuer ids`, async () => {
       const fs = await lint(good({ "catalog.json": catalog([{ ...entry, basket: b }]) }), OFF);

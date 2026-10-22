@@ -95,7 +95,7 @@ describe("repository identity", () => {
   test("README: git is a requirement, the rule table covers L1-L12, the network claim names both endpoints", async () => {
     const readme = await Bun.file(join(ROOT, "README.md")).text();
     expect(readme).toMatch(/^Requires Bun 1\.4 and git\b/m);
-    for (let i = 1; i <= 12; i++) expect(readme).toMatch(new RegExp(`^\\| L${i} \\|`, "m"));
+    for (let i = 1; i <= 12; i++) expect(readme).toMatch(new RegExp(`^\\| L${i} +\\|`, "m"));
     expect(readme).toContain("https://web.archive.org/web/");
     expect(readme).toContain("https://archive.org/wayback/available");
   });

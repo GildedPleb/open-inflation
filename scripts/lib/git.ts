@@ -17,7 +17,21 @@ export class UnknownBase extends Error {
   }
 }
 
-export class NotGitCheckout extends Error {}
+export class NotGitCheckout extends Error {
+  constructor() {
+    super("not a git checkout; clone the repo (git is required)");
+  }
+}
+
+/** True inside a git work tree. False when git is missing too: either way lint cannot list the files. */
+export function isGitCheckout(dir: string): boolean {
+  try {
+    const r = Bun.spawnSync(["git", "-C", dir, "rev-parse", "--is-inside-work-tree"]);
+    return r.exitCode === 0 && new TextDecoder().decode(r.stdout).trim() === "true";
+  } catch {
+    return false;
+  }
+}
 
 const zsplit = (b: Uint8Array) => new TextDecoder().decode(b).split("\0").filter(Boolean);
 
@@ -26,6 +40,7 @@ const zsplit = (b: Uint8Array) => new TextDecoder().decode(b).split("\0").filter
  * and, unless `base` is null or the all-zero SHA, the base commit's append-only files.
  */
 export function loadSnapshot(dir: string, base: string | null): Snapshot {
+  if (!isGitCheckout(dir)) throw new NotGitCheckout();
   const files = new Map<string, Uint8Array>();
   for (const p of zsplit(git(dir, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]))) {
     const abs = join(dir, p);
