@@ -31,7 +31,18 @@ const git = (dir: string, ...args: string[]) => {
  * repository" use it, never the live working tree, so uncommitted evidence cannot change their result or reach the
  * network.
  */
-const committedTree = (src: string): string => src;
+const committedTree = (src: string): string => {
+  const dir = mkdtempSync(join(tmpdir(), "obm-tree-"));
+  dirs.push(dir);
+  const tar = Bun.spawnSync(["git", "-C", src, "archive", "--format=tar", "HEAD"]);
+  if (tar.exitCode !== 0) throw new Error(dec.decode(tar.stderr));
+  const x = Bun.spawnSync(["tar", "-x", "-C", dir], { stdin: tar.stdout });
+  if (x.exitCode !== 0) throw new Error(dec.decode(x.stderr));
+  git(dir, "init", "-q");
+  git(dir, "add", "-A");
+  git(dir, "commit", "-qm", "committed tree", "--allow-empty");
+  return dir;
+};
 const text = (m: ReadonlyMap<string, Uint8Array> | null, p: string) => {
   const b = m?.get(p);
   return b ? dec.decode(b) : undefined;

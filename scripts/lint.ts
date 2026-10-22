@@ -36,9 +36,13 @@ try {
   console.error(`lint: ${e.message}`);
   process.exit(2);
 }
+// OBM_NO_NETWORK (set by the test suite for spawned lints) can only take the network away: every fetch is refused,
+// so each new archive URL fails L8 as a network error. It never makes a URL pass.
+const offline = Boolean(process.env.OBM_NO_NETWORK);
+const refuse = (() => Promise.reject(new Error("network disabled (OBM_NO_NETWORK)"))) as unknown as typeof fetch;
 const findings = await lint(snapshot, {
   archive: "added",
-  net: archiveNet(fetch, 15_000),
+  net: archiveNet(offline ? refuse : fetch, 15_000),
   now: Date.now(),
   progress: (line) => console.error(`lint: ${line}`),
 });
