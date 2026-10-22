@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { lint } from "../scripts/lib/checks.ts";
 import { loadSnapshot, NotGitCheckout } from "../scripts/lib/git.ts";
+import { extract, fxExtract, goodText, issuerFile } from "./fixture.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 const dec = new TextDecoder();
@@ -275,13 +276,29 @@ describe("CLI", () => {
       }),
     ],
   ];
+  // P10-n1: the series version never goes down. The lower version is derived from the base catalog's own version.
+  const lowerOf = (v: string) => {
+    const [maj, min, pat] = semver(v);
+    if (maj > 0) return `${maj - 1}.${min}.${pat}`;
+    if (min > 0) return `0.${min - 1}.${pat}`;
+    return pat > 0 ? `0.0.${pat - 1}` : `${v}-0`;
+  };
+  cases.push([
+    "lowering the series version fails (L11, P10-n1)",
+    (s) => {
+      s.version = lowerOf(s.version);
+    },
+    (s) =>
+      new RegExp(
+        `^L11 catalog\\.json: series ${s.id} version ${esc(lowerOf(s.version))} is lower than ${esc(s.version)} in the base`,
+      ),
+  ]);
   const major = append("major");
+
+  // Started when the file is collected, not in a beforeAll, so these lints overlap every other test in the file.
   const runs = new Map<unknown, ReturnType<typeof basketCase>>();
-  let unedited: Promise<[number, string]>;
-  beforeAll(() => {
-    unedited = lintIn(committedTree(ROOT), "--base", "HEAD");
-    for (const edit of [...cases.map((c) => c[1]), major]) runs.set(edit, basketCase(edit));
-  });
+  const unedited = lintIn(committedTree(ROOT), "--base", "HEAD");
+  for (const edit of [...cases.map((c) => c[1]), major]) runs.set(edit, basketCase(edit));
   for (const [name, edit, want] of cases)
     test(`CLI: ${name}, committed or not`, async () => {
       const re = want(baseSeries());
@@ -308,4 +325,73 @@ describe("CLI", () => {
     expect(u.out).toContain("not implemented (Waypoint 3)");
     expect(b.out).toContain("not implemented (Waypoint 4)");
   });
+});
+
+// The fx_rate check (Rate line, derived fx_rate) and P6-n7 (As of not after Retrieved) through the real CLI, on a
+// committed temp copy of the lint fixture repo. Each case is committed and linted with --base HEAD, so only the
+// committed content is judged (no L4 edit, no new archive URL). Nothing here names the catalog version (P6-m3).
+describe("CLI: fx_rate and As of on a fixture repo", () => {
+  const FXF = "issuers/FX/2026.md";
+  const lintCase = async (patch: Record<string, string>) => {
+    const dir = repo({ ...goodText(), ...patch });
+    git(dir, "init", "-q");
+    git(dir, "add", "-A");
+    git(dir, "commit", "-qm", "case");
+    const { LINT_BASE: _, ...rest } = process.env;
+    const p = Bun.spawn(["bun", join(ROOT, "scripts", "lint.ts"), "--base", "HEAD"], {
+      cwd: dir,
+      env: { ...rest, OBM_NO_NETWORK: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return Promise.all([p.exited, new Response(p.stdout).text()]);
+  };
+  // One run keeps the suite fast: a repo carrying a block fx_rate mismatch (L9), an FX extract with no Rate (L7) in
+  // another currency and an As of after Retrieved (L7), and no other finding (so the rest of the fixture is clean).
+  const defects = {
+    [FXF]: issuerFile(
+      "FX",
+      "2026Q3",
+      fxExtract("EUR", { quote: "1.2", fx: "1.2" }),
+      fxExtract("JPY", { title: "FX JPY confirming", rate: null, adopted: "no, confirming" }),
+    ),
+    "issuers/FED/2026.md": issuerFile(
+      "FED",
+      "2026Q3",
+      extract({
+        title: "FED H.4.1",
+        retrieved: "2026-09-29T12:00:00Z",
+        archive: "https://web.archive.org/web/20260929120000/https://example.test/FED-H.4.1",
+        fields: ["- As of: 2026-09"],
+      }),
+    ),
+  };
+  // Started at collection, like the basket lints, so it runs alongside them.
+  const bad = lintCase(defects);
+  const wanted = [
+    [
+      "a block fx_rate that differs from the derived rate fails L9",
+      /^L9 evidence\/base_money\/2026Q3\.md: .*components\[1\] \(ECB\) fx_rate 1\.1 does not equal 1\.2 derived/m,
+    ],
+    [
+      "an FX extract with no Rate fails L7",
+      /^L7 issuers\/FX\/2026\.md: .*extract "FX JPY confirming" \(line \d+\) has no - Rate: line/m,
+    ],
+    [
+      "an As of after Retrieved fails L7",
+      /^L7 issuers\/FED\/2026\.md: .*As of 2026-09 \(taken as its last day, 2026-09-30\) is after Retrieved 2026-09-29/m,
+    ],
+  ] as const;
+  test("CLI: the fixture with Rate lines reports only the three planted defects", async () => {
+    const [, out = ""] = await bad;
+    const found = out.split("\n").filter((l) => /^L\d+ /.test(l));
+    expect(found.length).toBe(wanted.length);
+    for (const l of found) expect(wanted.some(([, re]) => re.test(l))).toBe(true);
+  });
+  for (const [name, re] of wanted)
+    test(`CLI: ${name}`, async () => {
+      const [c, out = ""] = await bad;
+      expect(out).toMatch(re);
+      expect(c).toBe(1);
+    });
 });

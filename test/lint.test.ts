@@ -846,7 +846,8 @@ describe("L9 aggregation", () => {
       good({
         [FX]: `# FX 2026\n\n## 2026Q3\n\n- Currency: EUR\n\n${extract({ title: "FX note" })}\n\`\`\`\n- Currency: EUR\n\`\`\`\n`,
       }),
-      ["L9"],
+      // The "FX note" extract has no FX fields, so L7 reports it too.
+      ["L9", "L7"],
       /local_currency EUR has no FX extract/,
     ));
   test("no FX file at all fails for a non-USD component", () =>
@@ -1197,6 +1198,39 @@ describe("L11 catalog issuers (as_of_convention)", () => {
       ["L11"],
       /issuers\[0\] has unknown key "tz"/,
     ));
+});
+
+// Assay P10-n1: the catalog series version never goes down against the base (semver precedence; L11).
+describe("L11 catalog version never decreases (P10-n1)", () => {
+  const at = (version: string) => ({ "catalog.json": withSeries({ version }) });
+  const moved = (from: string, to: string) => onBase(at(from), at(to));
+  const lower = (from: string, to: string) =>
+    fails(
+      moved(from, to),
+      ["L11"],
+      new RegExp(
+        `series base_money version ${to.replace(/[.+]/g, "\\$&")} is lower than ${from.replace(/[.+]/g, "\\$&")} in the base`,
+      ),
+    );
+  test("1.0.0 to 0.1.0 fails", () => lower("1.0.0", "0.1.0"));
+  test("a lower patch fails", () => lower("1.2.3", "1.2.2"));
+  test("numbers compare numerically: 1.10.0 to 1.9.0 fails", () => lower("1.10.0", "1.9.0"));
+  test("a release to its own pre-release fails", () => lower("1.0.0", "1.0.0-rc.1"));
+  test("pre-release identifiers: beta to alpha fails", () => lower("1.0.0-beta", "1.0.0-alpha"));
+  test("pre-release numeric identifiers compare numerically: alpha.10 to alpha.9 fails", () =>
+    lower("1.0.0-alpha.10", "1.0.0-alpha.9"));
+  test("fewer pre-release fields is lower: alpha.1 to alpha fails", () => lower("1.0.0-alpha.1", "1.0.0-alpha"));
+  test("an equal version passes", () => passes(moved("1.0.0", "1.0.0")));
+  test("a higher patch, minor or major passes", async () => {
+    await passes(moved("1.0.0", "1.0.1"));
+    await passes(moved("1.9.0", "1.10.0"));
+    await passes(moved("0.9.9", "1.0.0"));
+  });
+  test("a pre-release to its release passes", () => passes(moved("1.0.0-rc.1", "1.0.0")));
+  test("build metadata is ignored: 1.0.0+b to 1.0.0+a passes", () => passes(moved("1.0.0+b", "1.0.0+a")));
+  test("an invalid base version is not compared", () => passes(moved("v1", "0.1.0")));
+  test("no base catalog: nothing to compare", () =>
+    passes({ files: files(goodText(), at("0.0.1")), base: new Map() } as Snapshot));
 });
 
 describe("L4/L11 basket history", () => {
@@ -1596,7 +1630,7 @@ describe("L9 reference_values and coverage_pct", () => {
     ));
   test("a non-USD reference needs an FX extract for its currency", () =>
     fails(
-      blk({ referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.001")}` }),
+      blk({ referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.00100000000000000000")}` }),
       ["L9"],
       /reference_values\[0\] \(BOJ\) local_currency JPY has no FX extract/,
     ));
@@ -1605,7 +1639,9 @@ describe("L9 reference_values and coverage_pct", () => {
       good({
         "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR"), fxExtract("JPY")),
         [ROLLUP]: rollup(
-          machineBlock({ referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.001")}` }),
+          machineBlock({
+            referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.00100000000000000000")}`,
+          }),
         ),
       }),
     ));
@@ -1623,7 +1659,7 @@ describe("L9 reference_values and coverage_pct", () => {
               '    fx_rate: "1"',
             ].join("\n"),
             exclusions: 'exclusions:\n  - issuer: ECB\n    reason: "x"\n  - issuer: BOJ\n    reason: "y"',
-            referenceValues: `reference_values:\n${ref("ECB", "1")}\n${ref("BOJ", "10", "JPY", "0.001")}`,
+            referenceValues: `reference_values:\n${ref("ECB", "1")}\n${ref("BOJ", "10", "JPY", "0.00100000000000000000")}`,
             total: "1000",
           }).replace("fx_source_anchor: issuers/FX/2026.md#2026q3\n", ""),
         ),
@@ -1639,8 +1675,7 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
     good({ [path]: `${goodText()[path] ?? issuerFile(iss, "2026Q3")}\n## 2026Q2\n\n${block}`, ...patch });
   const issuer = (asOf: string, title = "FED H.4.1 Q2", extra: string[] = []) =>
     q2(FED, "FED", extract({ title, fields: [`- As of: ${asOf}`, ...extra] }));
-  const fx = (asOf: string) =>
-    q2("issuers/FX/2026.md", "FX", extract({ title: "FX EUR Q2", fields: ["- Currency: EUR", `- As of: ${asOf}`] }));
+  const fx = (asOf: string) => q2("issuers/FX/2026.md", "FX", fxExtract("EUR", { title: "FX EUR Q2", asOf }));
   test("issuer As of 2026-06-30 (quarter end) under Q2 passes", () => passes(issuer("2026-06-30")));
   test("issuer As of 2026-04-01 under Q2 passes", () => passes(issuer("2026-04-01")));
   test("issuer As of with a parenthetical note passes", () => passes(issuer("2026-06-30 (end of period)")));
@@ -1681,7 +1716,7 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
   test("FX window for Q1 ends 03-31 and starts 03-28", async () => {
     const q1 = (asOf: string) =>
       good({
-        "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q1\n\n${extract({ title: "FX EUR Q1", fields: ["- Currency: EUR", `- As of: ${asOf}`] })}`,
+        "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q1\n\n${fxExtract("EUR", { title: "FX EUR Q1", asOf })}`,
       });
     await passes(q1("2026-03-28"));
     await fails(q1("2026-03-27"), ["L7"], /outside 2026-03-28\.\.2026-03-31/);
@@ -1851,4 +1886,229 @@ describe("L12 placement", () => {
     const fs = await lint(good({ "catalog.json": '{"series": []}' }), OFF);
     expect(fs.some((f) => f.check === "L11")).toBe(true);
   });
+});
+
+describe("L7/L9 fx_rate from the adopted FX extract", () => {
+  const FXF = "issuers/FX/2026.md";
+  const fxFile = (...blocks: string[]) => ({ [FXF]: issuerFile("FX", "2026Q3", ...blocks) });
+  /** The default good repo with only the EUR FX extract replaced. */
+  const eur = (o: Parameters<typeof fxExtract>[1]) => good(fxFile(fxExtract("EUR", o)));
+  const refEntry = (cur: string, fx: string, value = "10000") =>
+    [
+      "  - issuer: BOJ",
+      "    anchor: issuers/BOJ/2026.md#2026q3",
+      `    local_currency: ${cur}`,
+      `    local_value: "${value}"`,
+      `    fx_rate: "${fx}"`,
+    ].join("\n");
+  /** BOJ (excluded) as a reference value in `cur` at `fx`, with `extra` FX extracts beside the EUR one. */
+  const withRef = (cur: string, fx: string, extra: string[], value = "10000") =>
+    good({
+      ...fxFile(fxExtract("EUR"), ...extra),
+      [ROLLUP]: rollup(machineBlock({ referenceValues: `reference_values:\n${refEntry(cur, fx, value)}` })),
+    });
+  const ecbFx = (fx: string) =>
+    good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1.1"', `fx_rate: "${fx}"`)) });
+
+  // Block fx_rate against the derived value.
+  test("a component fx_rate that differs from the adopted extract's derived value fails", () =>
+    fails(
+      eur({ quote: "1.2", fx: "1.2" }),
+      ["L9"],
+      /components\[1\] \(ECB\) fx_rate 1\.1 does not equal 1\.2 derived from the adopted FX extract "FX EUR" \(Rate 1\.2, USD per EUR\)/,
+    ));
+  test("fx_rate is compared as a string: 1.10 is not the derived 1.1", () =>
+    fails(ecbFx("1.10"), ["L9"], /components\[1\] \(ECB\) fx_rate 1\.10 does not equal 1\.1 derived/));
+  test("a USD-per-unit quote passes with fx_rate equal to the quote, digit for digit", () =>
+    passes(
+      good({
+        ...fxFile(fxExtract("EUR", { quote: "1.1000", fx: "1.1000" })),
+        [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1.1"', 'fx_rate: "1.1000"')),
+      }),
+    ));
+  test("a per-USD quote passes with fx_rate 1 / Rate at 20 decimal places", () =>
+    passes(withRef("JPY", "0.00100000000000000000", [fxExtract("JPY")])));
+  test("a per-USD fx_rate not written at 20 decimal places fails", () =>
+    fails(
+      withRef("JPY", "0.001", [fxExtract("JPY")]),
+      ["L9"],
+      /reference_values\[0\] \(BOJ\) fx_rate 0\.001 does not equal 0\.00100000000000000000 derived/,
+    ));
+  test("a reference value fx_rate that differs from the derived value fails", () =>
+    fails(
+      withRef("JPY", "0.00100000000000000001", [fxExtract("JPY")]),
+      ["L9"],
+      /reference_values\[0\] \(BOJ\) fx_rate 0\.00100000000000000001 does not equal 0\.00100000000000000000/,
+    ));
+  test("RUB quoted with a decimal comma passes (Rate is the quote with a point)", () =>
+    passes(
+      withRef(
+        "RUB",
+        "0.01286109121214498565",
+        [fxExtract("RUB", { quote: "77,7539", direction: "RUB per USD", fx: "0.01286109121214498565" })],
+        "10",
+      ),
+    ));
+  test("1 / Rate rounds half-to-even at 20 decimal places: an exact tie keeps the even digit", () =>
+    // 1 / 8000000000000000000 = 0.000000000000000000125: the 21st decimal is an exact 5 after an even 2.
+    passes(
+      withRef("CHF", "0.00000000000000000012", [
+        fxExtract("CHF", { quote: "8000000000000000000", fx: "0.00000000000000000012" }),
+      ]),
+    ));
+  test("rounding a tie up (half-up) at 20 decimal places fails", () =>
+    fails(
+      withRef("CHF", "0.00000000000000000013", [
+        fxExtract("CHF", { quote: "8000000000000000000", fx: "0.00000000000000000013" }),
+      ]),
+      ["L7", "L9"],
+      /fx_rate \(USD per unit\) 0\.00000000000000000013 does not equal 0\.00000000000000000012 derived from Rate 8000000000000000000 \(CHF per USD\)/,
+    ));
+  test("a USD-per-unit fx_rate is the Rate itself, never rounded, even past 20 decimals", () =>
+    passes(
+      withRef(
+        "GBP",
+        "1.000000000000000000015",
+        [
+          fxExtract("GBP", {
+            quote: "1.000000000000000000015",
+            direction: "USD per GBP",
+            fx: "1.000000000000000000015",
+          }),
+        ],
+        "10",
+      ),
+    ));
+  test("a USD entry needs fx_rate exactly 1", () =>
+    fails(
+      good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1"', 'fx_rate: "1.0"')) }),
+      ["L9"],
+      /components\[0\] \(FED\) local_currency USD needs fx_rate "1", not 1\.0/,
+    ));
+  // Probe R1-37: USD is exactly "1" in components and reference_values alike; no other value passes.
+  test("a USD component at fx_rate 1.1 fails", () =>
+    fails(
+      good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1"', 'fx_rate: "1.1"')) }),
+      ["L9"],
+      /components\[0\] \(FED\) local_currency USD needs fx_rate "1", not 1\.1/,
+    ));
+  test("a USD reference value at fx_rate 0.1935 fails", () =>
+    fails(
+      withRef("USD", "0.1935", [], "10"),
+      ["L9"],
+      /reference_values\[0\] \(BOJ\) local_currency USD needs fx_rate "1", not 0\.1935/,
+    ));
+  test("a USD reference value at fx_rate 1 passes", () => passes(withRef("USD", "1", [], "10")));
+
+  // The FX extract itself (L7).
+  test("a missing Rate fails, and the roll-up cannot be verified", async () => {
+    const fs = await fails(eur({ rate: null }), ["L7", "L9"], /extract "FX EUR" \(line \d+\) has no - Rate: line/);
+    expect(fs.some((f) => f.check === "L9" && /cannot verify fx_rate/.test(f.message))).toBe(true);
+  });
+  test("a Rate that differs from the Quote as published fails", () =>
+    fails(
+      eur({ rate: "1.10", fx: "1.10" }),
+      ["L7", "L9"],
+      /Rate 1\.10 is not the Quote as published 1\.1 normalized \(1\.1\)/,
+    ));
+  test("a Rate with a decimal comma fails (Rate is normalized)", () =>
+    fails(eur({ quote: "1,1", rate: "1,1" }), ["L7", "L9"], /Rate "1,1" must match/));
+  test("a grouped quote cannot be normalized: 1,000.5 is not Rate 1000.5", () =>
+    fails(
+      eur({ quote: "1,000.5", rate: "1000.5", fx: "1000.5" }),
+      ["L7", "L9"],
+      /Rate 1000\.5 is not the Quote as published 1,000\.5 normalized \(1\.000\.5\)/,
+    ));
+  test("a zero Rate fails", () => fails(eur({ quote: "0", fx: "0" }), ["L7", "L9"], /Rate 0 must be positive/));
+  test("a missing Quote as published fails", () =>
+    fails(eur({ quote: null, rate: "1.1" }), ["L7", "L9"], /has no - Quote as published:/));
+  test("a second Rate line fails", () =>
+    fails(
+      good(fxFile(fxExtract("EUR").replace("- Rate: 1.1\n", "- Rate: 1.1\n- Rate: 1.1\n"))),
+      ["L7", "L9"],
+      /has more than one - Rate:/,
+    ));
+  test("a Quote direction that does not parse fails", () =>
+    fails(eur({ direction: "EUR/USD" }), ["L7", "L9"], /Quote direction "EUR\/USD" must be/));
+  test("a Quote direction naming another currency fails", () =>
+    fails(
+      eur({ direction: "USD per GBP" }),
+      ["L7", "L9"],
+      /Quote direction USD per GBP names GBP, not the extract's Currency EUR/,
+    ));
+  test("an extract fx_rate (USD per unit) that differs from the derived value fails", () =>
+    fails(
+      eur({ fx: "1.10" }),
+      ["L7", "L9"],
+      /fx_rate \(USD per unit\) 1\.10 does not equal 1\.1 derived from Rate 1\.1 \(USD per EUR\)/,
+    ));
+  test("a missing fx_rate (USD per unit) fails", () =>
+    fails(eur({ fx: null }), ["L7", "L9"], /has no - fx_rate \(USD per unit\):/));
+
+  // Which extract is adopted.
+  test("a confirming extract with another rate does not change the derivation", () =>
+    passes(
+      good(
+        fxFile(
+          fxExtract("EUR", { title: "FX EUR confirming", quote: "1.2", fx: "1.2", adopted: "no, confirming" }),
+          fxExtract("EUR"),
+        ),
+      ),
+    ));
+  test("no adopted extract for a currency fails", () =>
+    fails(
+      eur({ adopted: "no, confirming" }),
+      ["L9"],
+      /components\[1\] \(ECB\) cannot verify fx_rate: no adopted FX extract \("- Adopted: yes"\) for EUR under ## 2026Q3/,
+    ));
+  test("two adopted extracts for a currency fail", () =>
+    fails(
+      good(fxFile(fxExtract("EUR"), fxExtract("EUR", { title: "FX EUR again" }))),
+      ["L9"],
+      /cannot verify fx_rate: 2 adopted FX extracts for EUR under ## 2026Q3/,
+    ));
+});
+
+describe("L7 As of not after Retrieved (P6-n7)", () => {
+  /** A FED extract under 2026Q3 retrieved on `day` (UTC) with the given As of. */
+  const at = (asOf: string, day: string, time = "12:00:00") =>
+    good(
+      fed(
+        extract({
+          title: "FED H.4.1",
+          retrieved: `${day}T${time}Z`,
+          archive: `https://web.archive.org/web/${day.replaceAll("-", "")}${time.replaceAll(":", "")}/https://example.test/FED-H.4.1`,
+          fields: [`- As of: ${asOf}`],
+        }),
+      ),
+    );
+  test("As of after Retrieved fails", () =>
+    fails(at("2026-09-30", "2026-09-29"), ["L7"], /As of 2026-09-30 is after Retrieved 2026-09-29/));
+  test("As of on the Retrieved day passes (date parts are compared)", () =>
+    passes(at("2026-09-29", "2026-09-29", "00:00:00")));
+  test("As of before Retrieved passes", () => passes(at("2026-09-28 (end of week)", "2026-09-29")));
+  test("a YYYY-MM As of counts as the month's last day: retrieved on that day passes", () =>
+    passes(at("2026-09 (monthly average)", "2026-09-30")));
+  test("a YYYY-MM As of retrieved earlier in that month fails", () =>
+    fails(
+      at("2026-09", "2026-09-29"),
+      ["L7"],
+      /As of 2026-09 \(taken as its last day, 2026-09-30\) is after Retrieved 2026-09-29/,
+    ));
+  test("an FX extract As of after Retrieved fails", () =>
+    fails(
+      good({
+        "issuers/FX/2026.md": issuerFile(
+          "FX",
+          "2026Q3",
+          fxExtract("EUR", {
+            asOf: "2026-09-30",
+            retrieved: "2026-09-29T12:00:00Z",
+            archive: "https://web.archive.org/web/20260929120000/https://example.test/FX-EUR",
+          }),
+        ),
+      }),
+      ["L7"],
+      /As of 2026-09-30 is after Retrieved 2026-09-29/,
+    ));
 });
