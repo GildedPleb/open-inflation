@@ -2,7 +2,7 @@
 
 The Open Base-Money Evidence Repository ([GildedPleb/open-inflation](https://github.com/GildedPleb/open-inflation)).
 
-Simple time-series CSVs of global base money, where every observation is backed by a human-traversable, append-only Markdown evidence chain. Heavy artifacts stay external (archive.org); this repository holds only text.
+Simple time-series CSVs of global base money, where every observation is backed by a human-traversable, append-only Markdown evidence chain. Heavy artifacts stay external (archive.org and archive.today); this repository holds only text, and no source is ever self-hosted.
 
 Status: Waypoint 1, the skeleton and lint suite. There is no data yet.
 
