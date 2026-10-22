@@ -1200,6 +1200,39 @@ describe("L11 catalog issuers (as_of_convention)", () => {
     ));
 });
 
+// Assay P10-n1: the catalog series version never goes down against the base (semver precedence; L11).
+describe("L11 catalog version never decreases (P10-n1)", () => {
+  const at = (version: string) => ({ "catalog.json": withSeries({ version }) });
+  const moved = (from: string, to: string) => onBase(at(from), at(to));
+  const lower = (from: string, to: string) =>
+    fails(
+      moved(from, to),
+      ["L11"],
+      new RegExp(
+        `series base_money version ${to.replace(/[.+]/g, "\\$&")} is lower than ${from.replace(/[.+]/g, "\\$&")} in the base`,
+      ),
+    );
+  test("1.0.0 to 0.1.0 fails", () => lower("1.0.0", "0.1.0"));
+  test("a lower patch fails", () => lower("1.2.3", "1.2.2"));
+  test("numbers compare numerically: 1.10.0 to 1.9.0 fails", () => lower("1.10.0", "1.9.0"));
+  test("a release to its own pre-release fails", () => lower("1.0.0", "1.0.0-rc.1"));
+  test("pre-release identifiers: beta to alpha fails", () => lower("1.0.0-beta", "1.0.0-alpha"));
+  test("pre-release numeric identifiers compare numerically: alpha.10 to alpha.9 fails", () =>
+    lower("1.0.0-alpha.10", "1.0.0-alpha.9"));
+  test("fewer pre-release fields is lower: alpha.1 to alpha fails", () => lower("1.0.0-alpha.1", "1.0.0-alpha"));
+  test("an equal version passes", () => passes(moved("1.0.0", "1.0.0")));
+  test("a higher patch, minor or major passes", async () => {
+    await passes(moved("1.0.0", "1.0.1"));
+    await passes(moved("1.9.0", "1.10.0"));
+    await passes(moved("0.9.9", "1.0.0"));
+  });
+  test("a pre-release to its release passes", () => passes(moved("1.0.0-rc.1", "1.0.0")));
+  test("build metadata is ignored: 1.0.0+b to 1.0.0+a passes", () => passes(moved("1.0.0+b", "1.0.0+a")));
+  test("an invalid base version is not compared", () => passes(moved("v1", "0.1.0")));
+  test("no base catalog: nothing to compare", () =>
+    passes({ files: files(goodText(), at("0.0.1")), base: new Map() } as Snapshot));
+});
+
 describe("L4/L11 basket history", () => {
   const cat = (patch: Record<string, unknown>) => ({ "catalog.json": withSeries(patch) });
   // R1-19: appending a basket never invalidates a roll-up published under an earlier one.

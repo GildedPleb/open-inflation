@@ -276,12 +276,33 @@ describe("CLI", () => {
       }),
     ],
   ];
+  // P10-n1: the series version never goes down. The lower version is derived from the base catalog's own version.
+  const lowerOf = (v: string) => {
+    const [maj, min, pat] = semver(v);
+    if (maj > 0) return `${maj - 1}.${min}.${pat}`;
+    if (min > 0) return `0.${min - 1}.${pat}`;
+    return pat > 0 ? `0.0.${pat - 1}` : `${v}-0`;
+  };
+  cases.push([
+    "lowering the series version fails (L11, P10-n1)",
+    (s) => {
+      s.version = lowerOf(s.version);
+    },
+    (s) =>
+      new RegExp(
+        `^L11 catalog\\.json: series ${s.id} version ${esc(lowerOf(s.version))} is lower than ${esc(s.version)} in the base`,
+      ),
+  ]);
   const major = append("major");
+  const patch = (s: Series) => {
+    const [maj, min, pat] = semver(s.version);
+    s.version = `${maj}.${min}.${pat + 1}`;
+  };
   const runs = new Map<unknown, ReturnType<typeof basketCase>>();
   let unedited: Promise<[number, string]>;
   beforeAll(() => {
     unedited = lintIn(committedTree(ROOT), "--base", "HEAD");
-    for (const edit of [...cases.map((c) => c[1]), major]) runs.set(edit, basketCase(edit));
+    for (const edit of [...cases.map((c) => c[1]), major, patch]) runs.set(edit, basketCase(edit));
   });
   for (const [name, edit, want] of cases)
     test(`CLI: ${name}, committed or not`, async () => {
@@ -297,6 +318,14 @@ describe("CLI", () => {
   test("CLI: appending a basket with a major bump adds no finding (lints clean on a clean tree)", async () => {
     const [code0, out0] = await unedited;
     for (const [code, out] of (await runs.get(major)) ?? []) {
+      expect(findings(out)).toEqual(findings(out0));
+      expect(code).toBe(code0);
+    }
+  });
+
+  test("CLI: raising the series patch version adds no finding (P10-n1)", async () => {
+    const [code0, out0] = await unedited;
+    for (const [code, out] of (await runs.get(patch)) ?? []) {
       expect(findings(out)).toEqual(findings(out0));
       expect(code).toBe(code0);
     }
