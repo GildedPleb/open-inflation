@@ -120,7 +120,9 @@ describe("CLI", () => {
     expect(run("lint.ts", dir, "--nope").code).toBe(2);
     const unknown = run("lint.ts", dir, "--base", "no-such-ref");
     expect([unknown.code, unknown.out.trim()]).toEqual([2, 'lint: unknown base ref "no-such-ref"']);
-    expect(run("lint.ts", ROOT).code).toBe(0);
+    // --base HEAD: nothing is newly added, so L8 makes no network call (with no base, every archive URL in the
+    // repo would be HEADed from this subprocess, which the no-network preload does not cover).
+    expect(run("lint.ts", ROOT, "--base", "HEAD").code).toBe(0);
   });
   test("lint outside a git checkout prints one line and exits 2", () => {
     const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
