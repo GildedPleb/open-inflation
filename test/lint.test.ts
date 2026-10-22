@@ -1448,7 +1448,7 @@ describe("L9 reference_values and coverage_pct", () => {
         '"94.00"',
       ),
       ["L9"],
-      /coverage 93\.995% is below the basket 1 floor 94% \(compared unrounded; coverage_pct 94\.00\)/,
+      /coverage 93\.995% is below the basket 1 floor 94% \(compared unrounded; coverage_pct 94\.00;/,
     ));
   test("true floor: unrounded 93.9999 (stated 94.00) is below the 94 floor", () =>
     fails(
@@ -1526,7 +1526,7 @@ describe("L9 reference_values and coverage_pct", () => {
         ),
       }),
       ["L9"],
-      /coverage 19\.5\d% is below the basket 1 floor 94%/,
+      /coverage 19\.5\d+…?% is below the basket 1 floor 94%/,
     ));
   test("reference values never count toward total_usd", () =>
     fails(blk({ referenceValues: boj10, total: "1231" }), ["L9"], /recomputed 1221/));

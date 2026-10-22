@@ -829,6 +829,13 @@ function referenceCover(refs: unknown[], excl: unknown[]): string[] {
 }
 
 const COVERAGE = /^\d+\.\d{2}$/;
+/** comp / den x 100 as a decimal: exact when it ends within 6 decimals, else 6 decimals truncated and "…". */
+const exactPct = (comp: bigint, den: bigint) => {
+  const scaled = comp * 100_000_000n;
+  const t = (scaled / den).toString().padStart(7, "0");
+  const frac = t.slice(-6).replace(/0+$/, "").padEnd(2, "0");
+  return `${t.slice(0, -6)}.${frac}${scaled % den === 0n ? "" : "…"}`;
+};
 const BASKET_VERSION_LINE = /^basket_version:(.*)$/m;
 const PLAIN_INT = /^[1-9]\d*$/;
 const hundredths = (h: bigint) => {
@@ -952,9 +959,10 @@ function blockAggregation(
       e(
         `${where}coverage_pct "${stated}" but recomputed ${hundredths(coverage)} (components USD / (components + reference_values USD) x 100, rounded once half-to-even)`,
       );
-    if (basket?.floor !== undefined && coverage < basket.floor)
+    // The floor is a true floor (Assay): compared against the exact, unrounded coverage, not coverage_pct.
+    if (basket?.floor !== undefined && comp * 10000n < basket.floor * den)
       e(
-        `${where}coverage ${hundredths(coverage)}% is below the basket ${version} floor ${basket.floorText}% (an exclusion this large needs a new basket)`,
+        `${where}coverage ${exactPct(comp, den)}% is below the basket ${version} floor ${basket.floorText}% (compared unrounded; coverage_pct ${stated}; an exclusion this large needs a new basket)`,
       );
   }
   if (row && row.value !== total) e(`CSV value ${row.value} (${CSV} line ${row.line}) differs from total_usd ${total}`);
