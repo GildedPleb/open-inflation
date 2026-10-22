@@ -22,6 +22,14 @@ function repo(files: Record<string, string>): string {
   }
   return dir;
 }
+/**
+ * The test process's env without what selects lint's base (LINT_BASE; on a GitHub push GITHUB_EVENT_NAME and
+ * GITHUB_REF): CI sets them for the whole job, and a spawned lint must not pick them up.
+ */
+const childEnv = () => {
+  const { LINT_BASE: _b, GITHUB_EVENT_NAME: _e, GITHUB_REF: _r, ...rest } = process.env;
+  return { ...rest, OBM_NO_NETWORK: "1" };
+};
 const git = (dir: string, ...args: string[]) => {
   const r = Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", dir, ...args]);
   if (r.exitCode !== 0) throw new Error(dec.decode(r.stderr));
@@ -147,11 +155,10 @@ describe("repository identity", () => {
 });
 
 describe("CLI", () => {
+  let extra: Record<string, string> = {};
   const run = (script: string, cwd: string, ...args: string[]) => {
     // The no-network preload does not reach a child process: OBM_NO_NETWORK makes the CLI refuse every fetch.
-    const { LINT_BASE: _, ...rest } = process.env;
-    const env = { ...rest, OBM_NO_NETWORK: "1" };
-    const r = Bun.spawnSync(["bun", join(ROOT, "scripts", script), ...args], { cwd, env });
+    const r = Bun.spawnSync(["bun", join(ROOT, "scripts", script), ...args], { cwd, env: { ...childEnv(), ...extra } });
     return { code: r.exitCode, out: dec.decode(r.stdout) + dec.decode(r.stderr) };
   };
   test("lint: 0 on clean, 1 with findings, 2 on bad usage", () => {
@@ -184,6 +191,7 @@ describe("CLI", () => {
         "- Retrieved: 2026-10-22T17:00:00Z",
         `- Original URL: ${original}`,
         `- Archive URL: https://web.archive.org/web/20261022170100/${original}`,
+        "- Archive URL 2: https://archive.ph/AbC12",
         "",
         "> Monetary base 1",
         "",
@@ -194,7 +202,35 @@ describe("CLI", () => {
     expect(performance.now() - t0).toBeLessThan(3000);
     expect(r.code).toBe(1);
     expect(r.out).toContain("network disabled (OBM_NO_NETWORK)");
-    expect(r.out).toMatch(/L8 issuers\/FED\/2026\.md: .*could not be checked/);
+    expect(r.out).toMatch(/L8 issuers\/FED\/2026\.md: .*web\.archive\.org.*could not be checked/);
+    expect(r.out).toMatch(/L8 issuers\/FED\/2026\.md: archive URL https:\/\/archive\.ph\/AbC12 could not be checked/);
+  });
+  test("a push to a branch lints against merge-base(HEAD, origin/main), not event.before", () => {
+    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
+    git(dir, "init", "-q");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "main");
+    const main = git(dir, "rev-parse", "HEAD");
+    git(dir, "commit", "-q", "--allow-empty", "-m", "branch tip before the push");
+    const before = git(dir, "rev-parse", "HEAD");
+    git(dir, "commit", "-q", "--allow-empty", "-m", "pushed");
+    extra = { GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/feature", LINT_BASE: before };
+    try {
+      const lost = run("lint.ts", dir);
+      expect([lost.code, lost.out.trim()]).toEqual([
+        2,
+        "lint: push to refs/heads/feature: cannot find the merge-base of HEAD and origin/main (fetch origin/main; CI checks out with fetch-depth: 0)",
+      ]);
+      git(dir, "update-ref", "refs/remotes/origin/main", main);
+      // The bare repo has no INDEX.md or catalog.json (L6, L11 findings); only the base it reports matters here.
+      const r = run("lint.ts", dir);
+      expect(r.code).toBe(1);
+      expect(r.out).toContain(`lint: base ${main} (merge-base of HEAD and origin/main (push to refs/heads/feature))\n`);
+      extra = { GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/main", LINT_BASE: before };
+      expect(run("lint.ts", dir).out).toContain(`lint: base ${before} (LINT_BASE)\n`);
+    } finally {
+      extra = {};
+    }
   });
   test("lint outside a git checkout prints one line and exits 2", () => {
     const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
@@ -209,10 +245,9 @@ describe("CLI", () => {
   type Basket = { version: number; issuers: string[]; floor_pct: string };
   type Series = Record<string, unknown> & { id: string; version: string; baskets: Basket[] };
   const lintIn = (dir: string, ...args: string[]) => {
-    const { LINT_BASE: _, ...rest } = process.env;
     const p = Bun.spawn(["bun", join(ROOT, "scripts", "lint.ts"), ...args], {
       cwd: dir,
-      env: { ...rest, OBM_NO_NETWORK: "1" },
+      env: childEnv(),
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -337,10 +372,9 @@ describe("CLI: fx_rate and As of on a fixture repo", () => {
     git(dir, "init", "-q");
     git(dir, "add", "-A");
     git(dir, "commit", "-qm", "case");
-    const { LINT_BASE: _, ...rest } = process.env;
     const p = Bun.spawn(["bun", join(ROOT, "scripts", "lint.ts"), "--base", "HEAD"], {
       cwd: dir,
-      env: { ...rest, OBM_NO_NETWORK: "1" },
+      env: childEnv(),
       stdout: "pipe",
       stderr: "pipe",
     });

@@ -29,6 +29,14 @@ export function roundHalfEven({ digits, scale }: Decimal): bigint {
   return q;
 }
 
+/**
+ * One entry's USD: local_value x fx_rate, exact, rounded half-to-even to a whole dollar. USD is never recorded more
+ * precisely than $1, so every total and ratio is built from these whole dollars.
+ */
+export function wholeUsd(value: Decimal, fx: Decimal): bigint {
+  return roundHalfEven({ digits: value.digits * fx.digits, scale: value.scale + fx.scale });
+}
+
 /** num / den (den > 0) rounded half-to-even to an integer. */
 export function ratioHalfEven(num: bigint, den: bigint): bigint {
   const q = num / den;

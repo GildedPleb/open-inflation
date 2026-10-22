@@ -1,9 +1,12 @@
 // bun run lint [--base <ref>]
-// Checks the working tree against a base commit (default: $LINT_BASE, else HEAD if it exists).
-// Network: only archive URLs the diff adds that pass L7, once each: HEAD on web.archive.org, else archive.org availability. Committed links are never re-swept.
+// Checks the working tree against a base commit: --base; on a GitHub push to any ref but main, merge-base(HEAD,
+// origin/main); else $LINT_BASE (all zeros: none); else HEAD if it exists. See lib/lint-base.ts.
+// Network: only archive URLs the diff adds that pass L7, once each: HEAD on web.archive.org, else archive.org availability;
+// HEAD on archive.today (Archive URL 2; HTTP 403/429 is rate-limited, no verdict). Committed links are never re-swept.
 import { archiveNet } from "./lib/archive.ts";
 import { lint } from "./lib/checks.ts";
-import { isGitCheckout, loadSnapshot, NotGitCheckout, UnknownBase } from "./lib/git.ts";
+import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, UnknownBase } from "./lib/git.ts";
+import { chooseBase } from "./lib/lint-base.ts";
 
 const USAGE = "usage: bun run lint [--base <ref>]";
 
@@ -25,9 +28,21 @@ if (!args) {
 const dir = process.cwd();
 const hasHead =
   isGitCheckout(dir) && Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", "HEAD"]).exitCode === 0;
-const requested = args.base ?? (process.env.LINT_BASE || (hasHead ? "HEAD" : null));
-// CI passes github.event.before, which is all zeros for a new branch: no base, every file is new.
-const base = requested && /^0+$/.test(requested) ? null : requested;
+const choice = chooseBase({
+  cliBase: args.base,
+  envBase: process.env.LINT_BASE,
+  eventName: process.env.GITHUB_EVENT_NAME,
+  ref: process.env.GITHUB_REF,
+  hasHead,
+  mergeBase: () => mergeBase(dir, "HEAD", "origin/main"),
+});
+if ("error" in choice) {
+  console.error(`lint: ${choice.error}`);
+  process.exit(2);
+}
+const { base } = choice;
+if (base !== null && choice.why !== "HEAD" && choice.why !== "--base")
+  console.error(`lint: base ${base} (${choice.why})`);
 let snapshot: ReturnType<typeof loadSnapshot>;
 try {
   snapshot = loadSnapshot(dir, base);

@@ -23,6 +23,13 @@ export class NotGitCheckout extends Error {
   }
 }
 
+/** merge-base(a, b) as a full sha, or null when either ref is unknown or they share no history. */
+export function mergeBase(dir: string, a: string, b: string): string | null {
+  const r = Bun.spawnSync(["git", "-C", dir, "merge-base", a, b]);
+  const sha = new TextDecoder().decode(r.stdout).trim();
+  return r.exitCode === 0 && sha !== "" ? sha : null;
+}
+
 /** True inside a git work tree. False when git is missing too: either way lint cannot list the files. */
 export function isGitCheckout(dir: string): boolean {
   try {
