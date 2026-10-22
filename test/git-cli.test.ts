@@ -203,76 +203,103 @@ describe("CLI", () => {
   });
   // P6-M1: basket immutability (L4) and the major bump (L11) through the real CLI, on a temp copy of the committed
   // tree, both uncommitted (base HEAD) and committed (base = the earlier commit). Runs in parallel to stay fast.
-  const basketCase = async (edit: (s: Record<string, unknown>) => void) => {
+  // P6-m3: every expectation is derived from that tree's own base catalog (its version, baskets and issuers), and
+  // each case is compared with a lint of the same tree unedited, so the tests hold at any catalog version and
+  // whatever else the tree carries (a data branch's own findings appear in both runs and cancel out).
+  type Basket = { version: number; issuers: string[]; floor_pct: string };
+  type Series = Record<string, unknown> & { id: string; version: string; baskets: Basket[] };
+  const lintIn = (dir: string, ...args: string[]) => {
+    const { LINT_BASE: _, ...rest } = process.env;
+    const p = Bun.spawn(["bun", join(ROOT, "scripts", "lint.ts"), ...args], {
+      cwd: dir,
+      env: { ...rest, OBM_NO_NETWORK: "1" },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return Promise.all([p.exited, new Response(p.stdout).text()]);
+  };
+  const findings = (out: string) => out.split("\n").filter((l) => /^L\d+ /.test(l));
+  const basketCase = async (edit: (s: Series) => void) => {
     const dir = committedTree(ROOT);
     const base = git(dir, "rev-parse", "HEAD");
     const path = join(dir, "catalog.json");
     const cat = JSON.parse(await Bun.file(path).text());
     edit(cat.series[0]);
     writeFileSync(path, `${JSON.stringify(cat, null, 2)}\n`);
-    const spawn = (...args: string[]) => {
-      const { LINT_BASE: _, ...rest } = process.env;
-      const p = Bun.spawn(["bun", join(ROOT, "scripts", "lint.ts"), ...args], {
-        cwd: dir,
-        env: { ...rest, OBM_NO_NETWORK: "1" },
-        stdout: "pipe",
-        stderr: "pipe",
-      });
-      return Promise.all([p.exited, new Response(p.stdout).text()]);
-    };
-    const uncommitted = await spawn("--base", "HEAD");
+    const uncommitted = await lintIn(dir, "--base", "HEAD");
     git(dir, "commit", "-qam", "case");
-    const committed = await spawn("--base", base);
+    const committed = await lintIn(dir, "--base", base);
     return [uncommitted, committed];
   };
-  type Series = Record<string, unknown> & { baskets: { issuers: string[]; floor_pct: string }[] };
-  const append = (version?: string) => (s: Record<string, unknown>) => {
-    const b = (s as Series).baskets;
-    b.push({ version: 2, issuers: [...(b[0]?.issuers ?? []), "HKMA"], floor_pct: "94" } as never);
-    if (version) s.version = version;
+  const baseSeries = (): Series => JSON.parse(git(ROOT, "show", "HEAD:catalog.json")).series[0];
+  const semver = (v: string) => v.split(".").map(Number) as [number, number, number];
+  const append = (bump: "none" | "minor" | "major") => (s: Series) => {
+    const [maj, min] = semver(s.version);
+    const last = s.baskets.at(-1) as Basket;
+    const known = new Set(s.baskets.flatMap((b) => b.issuers));
+    let added = "QQFIXTURE";
+    while (known.has(added)) added += "Q";
+    s.baskets.push({ version: s.baskets.length + 1, issuers: [...last.issuers, added], floor_pct: last.floor_pct });
+    s.version = { none: s.version, minor: `${maj}.${min + 1}.0`, major: `${maj + 1}.0.0` }[bump];
   };
-  const cases: [string, (s: Record<string, unknown>) => void, RegExp][] = [
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const noBump = (to: (v: string) => string) => (s: Series) =>
+    new RegExp(
+      `^L11 catalog\\.json: series ${s.id} appends basket version ${s.baskets.length + 1} but version ${esc(to(s.version))} does not bump the major of ${esc(s.version)}`,
+    );
+  const changed = (s: Series) => new RegExp(`^L4 catalog\\.json: basket version 1 of ${s.id} was changed`);
+  const cases: [string, (s: Series) => void, (s: Series) => RegExp][] = [
     [
-      "editing basket 1's floor_pct 94 -> 90 fails (L4)",
+      "editing basket 1's floor_pct fails (L4)",
       (s) => {
-        ((s as Series).baskets[0] as { floor_pct: string }).floor_pct = "90";
+        const b = s.baskets[0] as Basket;
+        b.floor_pct = b.floor_pct === "90" ? "91" : "90";
       },
-      /^L4 catalog\.json: basket version 1 of base_money was changed/m,
+      changed,
     ],
     [
       "reordering basket 1's issuers fails (L4)",
       (s) => {
-        (s as Series).baskets[0]?.issuers.reverse();
+        const b = s.baskets[0] as Basket;
+        if (b.issuers.length < 2) throw new Error("basket 1 needs two issuers to reorder");
+        b.issuers.reverse();
       },
-      /^L4 catalog\.json: basket version 1 of base_money was changed/m,
+      changed,
     ],
-    [
-      "appending a basket with no version bump fails (L11)",
-      append(),
-      /^L11 catalog\.json: series base_money appends basket version 2 but version 0\.1\.0 does not bump the major/m,
-    ],
+    ["appending a basket with no version bump fails (L11)", append("none"), noBump((v) => v)],
     [
       "appending a basket with a minor bump fails (L11)",
-      append("0.2.0"),
-      /^L11 catalog\.json: series base_money appends basket version 2 but version 0\.2\.0 does not bump the major/m,
+      append("minor"),
+      noBump((v) => {
+        const [maj, min] = semver(v);
+        return `${maj}.${min + 1}.0`;
+      }),
     ],
   ];
-  // The five fixture repos lint in parallel (each case's two lints stay in order), keeping the suite near 1 s.
-  const major = append("1.0.0");
+  const major = append("major");
   const runs = new Map<unknown, ReturnType<typeof basketCase>>();
+  let unedited: Promise<[number, string]>;
   beforeAll(() => {
+    unedited = lintIn(committedTree(ROOT), "--base", "HEAD");
     for (const edit of [...cases.map((c) => c[1]), major]) runs.set(edit, basketCase(edit));
   });
-  for (const [name, edit, re] of cases)
+  for (const [name, edit, want] of cases)
     test(`CLI: ${name}, committed or not`, async () => {
+      const re = want(baseSeries());
+      const before = new Set(findings((await unedited)[1]));
       for (const [code, out] of (await runs.get(edit)) ?? []) {
-        expect(out).toMatch(re);
+        const added = findings(out).filter((l) => !before.has(l));
+        expect(added.length).toBeGreaterThan(0);
+        for (const l of added) expect(l).toMatch(re);
         expect(code).toBe(1);
       }
     });
-  test("CLI: appending a basket with a major bump lints clean", async () => {
-    for (const [code, out] of (await runs.get(major)) ?? [])
-      expect([code, out.trim().split("\n").at(-1)]).toEqual([0, expect.stringMatching(/^lint: clean/)]);
+  test("CLI: appending a basket with a major bump adds no finding (lints clean on a clean tree)", async () => {
+    const [code0, out0] = await unedited;
+    for (const [code, out] of (await runs.get(major)) ?? []) {
+      expect(findings(out)).toEqual(findings(out0));
+      expect(code).toBe(code0);
+    }
   });
 
   test("update and backfill are stubs that exit 1", () => {
