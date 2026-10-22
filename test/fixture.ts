@@ -28,6 +28,20 @@ export const extract = (o: {
 export const issuerFile = (iss: string, quarter: string, ...blocks: string[]): string =>
   [`# ${iss} 2026`, "", `## ${quarter}`, "", ...blocks].join("\n");
 
+/** The fixture catalog's basket. */
+export const BASKET = ["FED", "ECB", "BOJ"];
+
+/** Exclusions that make components + exclusions equal the basket (Assay c): each missing issuer, with a reason. */
+const defaultExclusions = (components?: string): string => {
+  const present = new Set([...(components ?? "issuer: FED\nissuer: ECB").matchAll(/issuer: (\S+)/g)].map((m) => m[1]));
+  const missing = BASKET.filter((i) => !present.has(i));
+  return missing.length === 0
+    ? "exclusions: []"
+    : ["exclusions:", ...missing.flatMap((i) => [`  - issuer: ${i}`, '    reason: "not evidenced this quarter"'])].join(
+        "\n",
+      );
+};
+
 export const machineBlock = (o: {
   quarter?: string;
   asOf?: string;
@@ -35,6 +49,8 @@ export const machineBlock = (o: {
   total?: string;
   extra?: string;
   crossChecks?: string;
+  /** The whole `exclusions` entry; by default every basket issuer that is not a component, with a reason. */
+  exclusions?: string;
 }): string =>
   [
     "```yaml",
@@ -57,7 +73,7 @@ export const machineBlock = (o: {
         '    fx_rate: "1.1"',
       ].join("\n"),
     ...(o.crossChecks ? [o.crossChecks] : []),
-    "exclusions: []",
+    o.exclusions ?? defaultExclusions(o.components),
     "adopted_conflicts: []",
     ...(o.extra ? [o.extra] : []),
     `total_usd: "${o.total ?? "1221"}"`,
@@ -104,7 +120,7 @@ export const catalog = (series?: unknown): string =>
           last_updated: "2026-10-02",
           version: "0.1.0",
           license: "CC-BY-4.0",
-          basket: ["FED", "ECB", "BOJ"],
+          basket: BASKET,
         },
       ],
     },

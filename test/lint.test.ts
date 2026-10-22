@@ -673,19 +673,72 @@ describe("L9 aggregation", () => {
     fails(good({ [ROLLUP]: rollup(machineBlock({}).replace("unit: USD", "unit: EUR")) }), ["L9"], /unit/));
   test("no components", () =>
     fails(good({ [ROLLUP]: rollup(machineBlock({ components: "  []" })) }), ["L9"], /components/));
+  // Assay (c): exclusions are {issuer, reason}; components + exclusions are the basket, each issuer exactly once.
+  const excl = (exclusions: string, o: Parameters<typeof machineBlock>[0] = {}) =>
+    good({ [ROLLUP]: rollup(machineBlock({ ...o, exclusions })) });
   test("exclusion needs a reason", () =>
+    fails(excl("exclusions:\n  - issuer: BOJ"), ["L9"], /exclusions\[0\]\.reason is required/));
+  test("exclusion needs an issuer", () =>
+    fails(excl('exclusions:\n  - reason: "not final"'), ["L9"], /exclusions\[0\]\.issuer is required/));
+  test("stated exclusion with issuer and reason passes", () =>
+    passes(excl('exclusions:\n  - issuer: BOJ\n    reason: "no primary source"')));
+  test("the methodology template's flow form passes", () =>
+    passes(excl("exclusions: [{issuer: BOJ, reason: SGS 20306 convention unconfirmed from a BOJ primary page}]")));
+  test("an excluded issuer must be in the catalog basket", () =>
     fails(
-      good({ [ROLLUP]: rollup(machineBlock({}).replace("exclusions: []", "exclusions:\n  - issuer: PBOC")) }),
+      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: PBOC\n    reason: "x"'),
       ["L9"],
-      /exclusions\[0\].reason/,
+      /exclusions\[1\]\.issuer PBOC is not in the catalog basket/,
     ));
-  test("stated exclusion with reason passes", () =>
-    passes(
-      good({
-        [ROLLUP]: rollup(
-          machineBlock({}).replace("exclusions: []", 'exclusions:\n  - issuer: PBOC\n    reason: "no primary source"'),
-        ),
+  test("an issuer excluded twice fails", () =>
+    fails(
+      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: BOJ\n    reason: "y"'),
+      ["L9"],
+      /BOJ is listed 2 times in exclusions/,
+    ));
+  test("an issuer in both components and exclusions fails", () =>
+    fails(
+      excl('exclusions:\n  - issuer: BOJ\n    reason: "x"\n  - issuer: FED\n    reason: "y"'),
+      ["L9"],
+      /FED is in both components and exclusions/,
+    ));
+  test("a basket issuer in neither components nor exclusions fails", () =>
+    fails(excl("exclusions: []"), ["L9"], /basket issuer BOJ is neither a component nor excluded/));
+  test("an issuer listed twice in components fails", () =>
+    fails(
+      excl('exclusions:\n  - issuer: ECB\n    reason: "x"\n  - issuer: BOJ\n    reason: "y"', {
+        components: [
+          "  - issuer: FED",
+          "    anchor: issuers/FED/2026.md#2026q3",
+          "    local_currency: USD",
+          '    local_value: "610.5"',
+          '    fx_rate: "1"',
+          "  - issuer: FED",
+          "    anchor: issuers/FED/2026.md#2026q3",
+          "    local_currency: USD",
+          '    local_value: "610.5"',
+          '    fx_rate: "1"',
+        ].join("\n"),
       }),
+      ["L9"],
+      /FED is listed 2 times in components/,
+    ));
+  test("a component issuer must be in the catalog basket", () =>
+    fails(
+      good({
+        "catalog.json": catalog([{ ...JSON.parse(catalog()).series[0], basket: ["FED", "BOJ"] }]),
+        [ROLLUP]: rollup(machineBlock({ exclusions: 'exclusions:\n  - issuer: BOJ\n    reason: "x"' })),
+      }),
+      ["L9", "L12"],
+      /components\[1\]\.issuer ECB is not in the catalog basket/,
+    ));
+  test("an earlier block that breaks the exclusion rules fails too", () =>
+    fails(
+      good({
+        [ROLLUP]: `${rollup(machineBlock({ exclusions: "exclusions: []" }))}\n## Revision 1\n\n${machineBlock({})}`,
+      }),
+      ["L9"],
+      /machine block 1 of 2 .*basket issuer BOJ is neither a component nor excluded/,
     ));
   test("adopted conflict needs adopted_anchor", () =>
     fails(
