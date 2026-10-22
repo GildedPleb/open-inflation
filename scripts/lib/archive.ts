@@ -32,7 +32,7 @@ export function httpAvailable(fetchImpl: typeof fetch, timeoutMs: number): Net["
     bounded<AvailResult>(timeoutMs, async (signal) => {
       const url = `${AVAILABILITY_API}?url=${encodeURIComponent(original)}&timestamp=${timestamp}`;
       const res = await fetchImpl(url, { method: "GET", redirect: "follow", signal });
-      if (!res.ok) return { kind: "network", message: `HTTP ${res.status}` };
+      if (!res.ok) return { kind: "http", status: res.status };
       const closest = ((await res.json()) as { archived_snapshots?: { closest?: Record<string, unknown> } })
         ?.archived_snapshots?.closest;
       const ts = closest?.available === true ? closest.timestamp : undefined;

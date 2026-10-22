@@ -40,6 +40,7 @@ const findings = await lint(snapshot, {
   archive: "added",
   net: archiveNet(fetch, 15_000),
   now: Date.now(),
+  progress: (line) => console.error(`lint: ${line}`),
 });
 for (const f of findings) console.log(`${f.check} ${f.file}: ${f.message}`);
 console.log(findings.length === 0 ? `lint: clean (base ${base ?? "none"})` : `lint: ${findings.length} finding(s)`);

@@ -44,7 +44,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   quarterHeadings(ctx, emit);
   indexCompleteness(ctx, emit);
   extractSchema(ctx, emit);
-  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net, emit);
+  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net, emit, opts.progress);
   aggregation(ctx, rows, emit);
   catalog(ctx, emit);
   placement(ctx, emit);
@@ -498,15 +498,28 @@ const CONCURRENCY = 4;
 type Problem = { readonly dead: boolean; readonly message: string } | null;
 
 /** HEAD the snapshot; when web.archive.org is unreachable, ask archive.org for the exact timestamp instead. */
+const RATE_LIMITED = 429;
+
 async function snapshotProblem(net: Net, url: string, ref: ArchiveRef): Promise<Problem> {
   const r = await net.head(url);
   if (r.kind === "ok") return null;
-  if (r.kind === "http") return { dead: DEAD.includes(r.status), message: `failed HEAD: HTTP ${r.status}` };
+  if (r.kind === "http")
+    return {
+      dead: DEAD.includes(r.status),
+      message: `failed HEAD: HTTP ${r.status}${r.status === RATE_LIMITED ? " (rate-limited; retry later)" : ""}`,
+    };
   const a = await net.available(ref.original, ref.ts);
-  if (a.kind !== "ok")
+  if (a.kind === "http") {
+    const why = a.status === RATE_LIMITED ? "rate-limited; " : "";
     return {
       dead: false,
-      message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.kind === "http" ? `HTTP ${a.status}` : a.message} (no verdict on the snapshot; retry online)`,
+      message: `could not be checked: web.archive.org: ${r.message}; archive.org availability: HTTP ${a.status} (${why}no verdict on the snapshot; retry later)`,
+    };
+  }
+  if (a.kind === "network")
+    return {
+      dead: false,
+      message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
     };
   if (a.timestamp === ref.ts) return null;
   const why =
@@ -515,16 +528,19 @@ async function snapshotProblem(net: Net, url: string, ref: ArchiveRef): Promise<
 }
 
 /** Check each archive URL once: when the diff first adds it. Committed URLs are never re-checked. */
-async function archiveResolution(ctx: Ctx, net: Net, emit: Emit) {
+async function archiveResolution(ctx: Ctx, net: Net, emit: Emit, progress?: (line: string) => void) {
   const now = archiveRefs(ctx.text, ctx.now);
   const was = archiveRefs(ctx.base);
   const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
   const results: Problem[] = [];
+  if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
   let next = 0;
+  let done = 0;
   const worker = async () => {
     for (let i = next++; i < todo.length; i = next++) {
       const [url, ref] = todo[i] as [string, ArchiveRef];
       results[i] = await snapshotProblem(net, url, ref);
+      progress?.(`L8 [${++done}/${todo.length}] ${results[i] ? "fail" : "ok"} ${url}`);
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
@@ -696,6 +712,7 @@ function catalog(ctx: Ctx, emit: Emit) {
   if (!isObj(j)) return e("top level must be an object");
   for (const k of Object.keys(j)) if (k !== "series") e(`unknown top-level key "${k}"`);
   if (!Array.isArray(j.series)) return e('"series" must be a list');
+  if (!j.series.some((s) => isObj(s) && s.id === SERIES)) e(`series has no "${SERIES}" entry`);
   const ids = new Set<unknown>();
   for (const [i, s] of (j.series as unknown[]).entries()) {
     if (!isObj(s)) {
@@ -748,7 +765,7 @@ function catalogBasket(ctx: Ctx): Set<string> {
 function placement(ctx: Ctx, emit: Emit) {
   const basket = catalogBasket(ctx);
   for (const p of [...ctx.files.keys()].sort()) {
-    if (!/\.(md|txt)$/.test(p)) continue;
+    if (p.endsWith("/.gitkeep")) continue;
     if (p.startsWith("issuers/")) {
       const iss = /^issuers\/([^/]+)\/\d{4}\.md$/.exec(p)?.[1];
       if (iss === undefined) emit("L12", p, "issuer files live only at issuers/<ISS>/<YYYY>.md");

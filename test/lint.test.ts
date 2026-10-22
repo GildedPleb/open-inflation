@@ -467,7 +467,7 @@ describe("L8 archive resolution (fake network)", () => {
   test("progress: one stderr line per checked URL, counted; none without new URLs", async () => {
     const lines: string[] = [];
     const f = fake({ kind: "http", status: 404 });
-    const second = extract({ title: "FED newer" }).replaceAll("FED-new", "FED-newer");
+    const second = extract({ title: "FED newer" }); // archive URL .../FED-newer
     await lint(onGood({ [FED]: added + second }), { ...f.opts, progress: (l) => lines.push(l) });
     expect(lines).toEqual([
       "L8 checking 2 new archive URLs",
