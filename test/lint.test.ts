@@ -582,6 +582,42 @@ describe("L9 aggregation", () => {
     ));
   test("CSV value differs from total_usd", () =>
     fails(good(csv("2026-09-30,1222,evidence/base_money/2026Q3.md")), ["L9"], /CSV value 1222/));
+  // Assay (b, revised): a roll-up has one or more machine blocks; L9 validates every block on its own, and only
+  // the last (current) block's total_usd must equal the CSV value.
+  const fedOnly = (local: string, total: string) =>
+    machineBlock({
+      components: [
+        "  - issuer: FED",
+        "    anchor: issuers/FED/2026.md#2026q3",
+        "    local_currency: USD",
+        `    local_value: "${local}"`,
+        '    fx_rate: "1"',
+      ].join("\n"),
+      total,
+    });
+  const withRevision = (first: string, last: string, value: string) =>
+    good({
+      [ROLLUP]: `${rollup(first)}\n## Revision 1\n\n${last}`,
+      ...csv(`2026-09-30,${value},evidence/base_money/2026Q3.md`),
+    });
+  test("several valid blocks pass; the CSV value is the last block's total", () =>
+    passes(withRevision(machineBlock({}), fedOnly("1001.5", "1002"), "1002")));
+  test("an earlier block with a wrong total fails", () =>
+    fails(withRevision(machineBlock({ total: "1220" }), fedOnly("1001.5", "1002"), "1002"), ["L9"], /recomputed 1221/));
+  test("an earlier block that is invalid in any other way fails", () =>
+    fails(
+      withRevision(machineBlock({ quarter: "2026Q2" }), fedOnly("1001.5", "1002"), "1002"),
+      ["L9"],
+      /quarter "2026Q2" differs/,
+    ));
+  test("an earlier unparseable block fails", () =>
+    fails(withRevision("```yaml\nquarter: [\n```\n", fedOnly("1001.5", "1002"), "1002"), ["L9"], /YAML/));
+  test("a CSV value that matches an earlier block but not the last one fails", () =>
+    fails(
+      withRevision(machineBlock({}), fedOnly("1001.5", "1002"), "1221"),
+      ["L9"],
+      /CSV value 1221 .* differs from total_usd 1002/,
+    ));
   test("rounds half to even (2.5 -> 2)", () => passes(one("2.5", "2")));
   test("half-up is wrong (2.5 -> 3 fails)", () => fails(one("2.5", "3"), ["L9"], /recomputed 2/));
   test("exact beyond float precision", () => passes(one("123456789012345678.5", "123456789012345678")));
@@ -929,12 +965,41 @@ describe("L12 placement", () => {
       const fs = await lint(good({ "catalog.json": '{"series": []}', [p]: "# x\n" }), OFF);
       expect(fs.filter((f) => f.check === "L12").map((f) => f.file)).toEqual([p]);
     });
-  test(".gitkeep anywhere under issuers/ and evidence/, and files outside them, pass", () =>
+  // Assay: research/base_money/<YYYY>Q<n>.md is the research log; the pattern is exact and case-sensitive.
+  test("research/base_money/<YYYY>Q<n>.md (the research log) passes", () =>
+    passes(good({ "research/base_money/2026Q3.md": "# 2026Q3 research log\n" })));
+  for (const p of [
+    "research/notes.md",
+    "research/base_money/notes.md",
+    "research/base_money/2026q3.md",
+    "research/base_money/2026Q3.MD",
+    "research/base_money/2026Q5.md",
+    "research/base_money/2026Q3.txt",
+    "research/base_money/2026/2026Q3.md",
+    "research/Base_Money/2026Q3.md",
+    "research/cpi_u/2026Q3.md",
+    "research/README",
+  ])
+    test(`${p} is misplaced`, async () => {
+      const fs = await lint(good({ [p]: "# x\n" }), OFF);
+      expect(fs.filter((f) => f.check === "L12").map((f) => f.file)).toEqual([p]);
+    });
+  test("issuers/FX/<YYYY>.md passes with research logs alongside", () =>
+    passes(
+      good({
+        "issuers/FX/2025.md": issuerFile("FX", "2025Q4"),
+        "research/base_money/2025Q4.md": "# 2025Q4 research log\n",
+        "INDEX.md": index("- [FX 2025](issuers/FX/2025.md)"),
+      }),
+    ));
+  test(".gitkeep anywhere under issuers/, evidence/ and research/, and files outside them, pass", () =>
     passes(
       good({
         "issuers/.gitkeep": "",
         "issuers/FED/.gitkeep": "",
         "evidence/base_money/.gitkeep": "",
+        "research/.gitkeep": "",
+        "research/base_money/.gitkeep": "",
         "notes.md": "# n\n",
       }),
     ));
