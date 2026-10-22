@@ -1,5 +1,17 @@
 import type { Head } from "./types.ts";
 
-export function httpHead(_fetchImpl: typeof fetch, _timeoutMs: number): Head {
-  throw new Error("not implemented");
+/** A real HEAD over `fetchImpl`, following redirects, bounded by `timeoutMs`. */
+export function httpHead(fetchImpl: typeof fetch, timeoutMs: number): Head {
+  return async (url) => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(new Error(`timed out after ${timeoutMs} ms`)), timeoutMs);
+    try {
+      const res = await fetchImpl(url, { method: "HEAD", redirect: "follow", signal: ctl.signal });
+      return res.ok ? { kind: "ok", status: res.status } : { kind: "http", status: res.status };
+    } catch (e) {
+      return { kind: "network", message: e instanceof Error ? e.message : String(e) };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
 }
