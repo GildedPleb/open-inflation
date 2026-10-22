@@ -1952,6 +1952,20 @@ describe("L7/L9 fx_rate from the adopted FX extract", () => {
       ["L9"],
       /components\[0\] \(FED\) local_currency USD needs fx_rate "1", not 1\.0/,
     ));
+  // Probe R1-37: USD is exactly "1" in components and reference_values alike; no other value passes.
+  test("a USD component at fx_rate 1.1 fails", () =>
+    fails(
+      good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1"', 'fx_rate: "1.1"')) }),
+      ["L9"],
+      /components\[0\] \(FED\) local_currency USD needs fx_rate "1", not 1\.1/,
+    ));
+  test("a USD reference value at fx_rate 0.1935 fails", () =>
+    fails(
+      withRef("USD", "0.1935", [], "10"),
+      ["L9"],
+      /reference_values\[0\] \(BOJ\) local_currency USD needs fx_rate "1", not 0\.1935/,
+    ));
+  test("a USD reference value at fx_rate 1 passes", () => passes(withRef("USD", "1", [], "10")));
 
   // The FX extract itself (L7).
   test("a missing Rate fails, and the roll-up cannot be verified", async () => {
