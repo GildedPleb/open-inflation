@@ -1,5 +1,6 @@
 // All integrity checks (L1-L12 in WP1_REQUIREMENTS). Pure over a Snapshot; the only I/O is the injected Net.
 import { posix } from "node:path";
+import { MAX_HOPS } from "./archive.ts";
 import { parseDecimal, roundHalfEven, sumOfProducts } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, slugs } from "./markdown.ts";
 import type { CheckId, Files, Finding, LintOptions, Net, Snapshot } from "./types.ts";
@@ -11,6 +12,8 @@ export const CSV_HEADER = "date,value,evidence_id";
 export const MAX_BYTES = 1024 * 1024;
 /** evidence/<series>/YYYYQn.md -> [series, quarter]. */
 const ROLLUP = /^evidence\/([a-z][a-z0-9_]*)\/(\d{4}Q[1-4])\.md$/;
+/** The research log for one roll-up quarter (exact, case-sensitive). */
+const RESEARCH_LOG = /^research\/base_money\/\d{4}Q[1-4]\.md$/;
 const ISSUER_YEAR = /^issuers\/[^/]+\/\d{4}\.md$/;
 const QUARTER_ENDS = ["03-31", "06-30", "09-30", "12-31"];
 const BOM = "\uFEFF";
@@ -44,7 +47,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   quarterHeadings(ctx, emit);
   indexCompleteness(ctx, emit);
   extractSchema(ctx, emit);
-  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net, emit);
+  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net, emit, opts.progress);
   aggregation(ctx, rows, emit);
   catalog(ctx, emit);
   placement(ctx, emit);
@@ -121,18 +124,23 @@ function checkTarget(ctx: Ctx, from: string, what: string, target: string, rootR
 
 type Machine = { ok: true; data: unknown; line: number } | { ok: false; error: string };
 
-/** The authoritative machine block: the last ```yaml block (earlier ones are superseded revisions). */
-function machine(body: string): Machine {
+/** Every ```yaml machine block, in order. A roll-up has one or more; each later one is an appended revision. */
+function machines(body: string): Machine[] {
   if (/^---\r?\n/.test(body))
-    return { ok: false, error: "front-matter is not a machine block; use a fenced ```yaml block only" };
-  const block = fencedBlocks(body, ["yaml", "yml"]).at(-1);
-  if (!block) return { ok: false, error: "has no ```yaml machine block" };
-  try {
-    return { ok: true, data: Bun.YAML.parse(block.body), line: block.line };
-  } catch (e) {
-    return { ok: false, error: `machine block (line ${block.line}) is not valid YAML: ${(e as Error).message}` };
-  }
+    return [{ ok: false, error: "front-matter is not a machine block; use a fenced ```yaml block only" }];
+  const blocks = fencedBlocks(body, ["yaml", "yml"]);
+  if (blocks.length === 0) return [{ ok: false, error: "has no ```yaml machine block" }];
+  return blocks.map((block): Machine => {
+    try {
+      return { ok: true, data: Bun.YAML.parse(block.body), line: block.line };
+    } catch (e) {
+      return { ok: false, error: `machine block (line ${block.line}) is not valid YAML: ${(e as Error).message}` };
+    }
+  });
 }
+
+/** The current machine block: the last one (earlier ones are superseded revisions, still validated by L9). */
+const machine = (body: string): Machine => machines(body).at(-1) as Machine;
 
 // ---------- L10 ----------
 
@@ -401,6 +409,24 @@ const utcMs = (y: string, mo: string, d: string, h: string, mi: string, s: strin
   return same ? ms : null;
 };
 
+/**
+ * A URL as its components, each percent-decoded: path segments split on "/", then the query and fragment split on
+ * "?", "&", "=" and "#", delimiters kept as tokens. Wayback writes "/" inside a query as %2F, so decoded components
+ * match; an encoded delimiter (%26 in a value, %2F in a path segment) stays inside its component and does not.
+ * null when a component has a malformed percent-escape.
+ */
+function urlParts(u: string): string[] | null {
+  const q = u.search(/[?#]/);
+  const path = q < 0 ? u : u.slice(0, q);
+  const rest = q < 0 ? "" : u.slice(q);
+  const raw = [...path.split(/(\/)/), ...rest.split(/([?&=#])/)];
+  try {
+    return raw.map((c) => decodeURIComponent(c));
+  } catch {
+    return null;
+  }
+}
+
 /** Everything L7 has to say about one extract block; empty means the block passes. */
 function blockProblems(b: Extract, now: number): string[] {
   const out: string[] = [];
@@ -435,8 +461,14 @@ function blockProblems(b: Extract, now: number): string[] {
     out.push(`Archive URL ${show(archive)} is not https://web.archive.org/web/<14-digit timestamp>/<Original URL>`);
     return out;
   }
-  if (original !== undefined && a[2] !== original)
-    out.push(`Archive URL snapshots ${show(a[2])}, not the Original URL ${show(original)}`);
+  if (original !== undefined) {
+    const want = urlParts(original);
+    const got = urlParts(a[2] ?? "");
+    if (want === null) out.push(`Original URL ${show(original)} has a malformed percent-escape`);
+    if (got === null) out.push(`Archive URL ${show(archive)} has a malformed percent-escape`);
+    if (want !== null && got !== null && want.join("\u0000") !== got.join("\u0000"))
+      out.push(`Archive URL snapshots ${show(a[2])}, not the Original URL ${show(original)}`);
+  }
   const sMs = utcMs(
     ts.slice(0, 4),
     ts.slice(4, 6),
@@ -495,47 +527,89 @@ function archiveRefs(texts: Texts | null, now?: number): { urls: Map<string, Arc
 const DEAD = [404, 410];
 const CONCURRENCY = 4;
 
-type Problem = { readonly dead: boolean; readonly message: string } | null;
+type Problem = { readonly dead: boolean; readonly message: string; readonly status?: number } | null;
+/** Why a URL passed, for the progress line: "HTTP 200, <timestamp>" or "archive.org availability, <timestamp>". */
+type Verdict = { readonly problem: Problem; readonly ok?: string };
 
 /** HEAD the snapshot; when web.archive.org is unreachable, ask archive.org for the exact timestamp instead. */
-async function snapshotProblem(net: Net, url: string, ref: ArchiveRef): Promise<Problem> {
+const RATE_LIMITED = 429;
+
+async function snapshotVerdict(net: Net, url: string, ref: ArchiveRef): Promise<Verdict> {
   const r = await net.head(url);
-  if (r.kind === "ok") return null;
-  if (r.kind === "http") return { dead: DEAD.includes(r.status), message: `failed HEAD: HTTP ${r.status}` };
+  if (r.kind === "ok") return { problem: null, ok: `HTTP ${r.status}, ${ref.ts}` };
+  if (r.kind === "redirect")
+    return {
+      problem: {
+        dead: false,
+        message:
+          r.reason === "other-capture"
+            ? `snapshot ${ref.ts} does not exist; Wayback redirected (HTTP ${r.status}) to nearest capture ${r.timestamp}`
+            : r.reason === "off-snapshot"
+              ? `HEAD redirected (HTTP ${r.status}) off the snapshot to ${r.location}`
+              : `HEAD redirected more than ${MAX_HOPS} times (last to ${r.location})`,
+      },
+    };
+  if (r.kind === "http")
+    return {
+      problem: {
+        dead: DEAD.includes(r.status),
+        status: r.status,
+        message: `failed HEAD: HTTP ${r.status}${r.status === RATE_LIMITED ? " (rate-limited; retry later)" : ""}`,
+      },
+    };
   const a = await net.available(ref.original, ref.ts);
+  if (a.kind === "http") {
+    const why = a.status === RATE_LIMITED ? "rate-limited; " : "";
+    return {
+      problem: {
+        dead: false,
+        message: `could not be checked: web.archive.org: ${r.message}; archive.org availability: HTTP ${a.status} (${why}no verdict on the snapshot; retry later)`,
+      },
+    };
+  }
   if (a.kind === "network")
     return {
-      dead: false,
-      message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
+      problem: {
+        dead: false,
+        message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
+      },
     };
-  if (a.timestamp === ref.ts) return null;
+  if (a.timestamp === ref.ts) return { problem: null, ok: `archive.org availability, ${a.timestamp}` };
   const why =
     a.timestamp === null ? "has no snapshot" : `returns closest snapshot ${a.timestamp}, not the recorded ${ref.ts}`;
-  return { dead: false, message: `web.archive.org unreachable (${r.message}) and archive.org availability ${why}` };
+  return {
+    problem: { dead: false, message: `web.archive.org unreachable (${r.message}) and archive.org availability ${why}` },
+  };
 }
 
 /** Check each archive URL once: when the diff first adds it. Committed URLs are never re-checked. */
-async function archiveResolution(ctx: Ctx, net: Net, emit: Emit) {
+async function archiveResolution(ctx: Ctx, net: Net, emit: Emit, progress?: (line: string) => void) {
   const now = archiveRefs(ctx.text, ctx.now);
   const was = archiveRefs(ctx.base);
   const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
   const results: Problem[] = [];
+  const noted = (url: string) => now.notes.has(url) && !was.notes.has(url);
+  if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
   let next = 0;
+  let done = 0;
   const worker = async () => {
     for (let i = next++; i < todo.length; i = next++) {
       const [url, ref] = todo[i] as [string, ArchiveRef];
-      results[i] = await snapshotProblem(net, url, ref);
+      const v = await snapshotVerdict(net, url, ref);
+      results[i] = v.problem;
+      const p = v.problem;
+      const word = !p ? `ok (${v.ok})` : p.dead && noted(url) ? `excused (HTTP ${p.status}, Re-archive note)` : "fail";
+      progress?.(`L8 [${++done}/${todo.length}] ${word} ${url}`);
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   for (const [i, [url, ref]] of todo.entries()) {
     const p = results[i];
     if (!p) continue;
-    const noted = now.notes.has(url) && !was.notes.has(url);
-    if (p.dead && noted) continue;
+    if (p.dead && noted(url)) continue;
     const fix = p.dead
       ? `; the commit must add a "Re-archive: ${url}" note`
-      : noted
+      : noted(url)
         ? `; a Re-archive note excuses only a dead snapshot (HTTP ${DEAD.join("/")})`
         : "";
     emit("L8", ref.file, `archive URL ${url} ${p.message}${fix}`);
@@ -550,80 +624,166 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     const r = ROLLUP.exec(p);
     if (r?.[1] !== SERIES) continue; // L12 reports misplaced files
     const q = r[2] as string;
-    const m = machine(body);
-    if (!m.ok) {
-      e(m.error);
-      continue;
+    const all = machines(body);
+    const basket = catalogBasket(ctx);
+    const fx = fxCurrencies(ctx, q);
+    for (const [i, m] of all.entries()) {
+      const current = i === all.length - 1;
+      const label =
+        all.length === 1 || !m.ok ? "machine block" : `machine block ${i + 1} of ${all.length} (line ${m.line})`;
+      if (!m.ok) e(m.error);
+      else
+        blockAggregation(
+          m.data,
+          q,
+          label,
+          current ? rows.find((r) => quarterOf(r.date) === q) : undefined,
+          { basket, fx },
+          e,
+        );
     }
-    const d = m.data;
-    if (!isObj(d)) {
-      e("machine block is not a mapping");
-      continue;
-    }
-    const errs: string[] = [];
-    if (d.quarter !== q) errs.push(`quarter ${show(d.quarter)} differs from filename quarter ${q}`);
-    if (d.as_of !== quarterEnd(q)) errs.push(`as_of ${show(d.as_of)} must be the quarter-end ${quarterEnd(q)}`);
-    if (d.unit !== "USD") errs.push(`unit must be "USD", got ${show(d.unit)}`);
-    const comps = Array.isArray(d.components) ? d.components : [];
-    if (comps.length === 0) errs.push("components must be a non-empty list");
-    const pairs: [NonNullable<ReturnType<typeof parseDecimal>>, NonNullable<ReturnType<typeof parseDecimal>>][] = [];
-    for (const [i, c] of comps.entries()) {
-      if (!isObj(c)) {
-        errs.push(`components[${i}] must be a mapping`);
-        continue;
-      }
-      if (!nonEmpty(c.issuer)) errs.push(`components[${i}].issuer is required`);
-      if (!nonEmpty(c.anchor)) errs.push(`components[${i}].anchor is required`);
-      else if (nonEmpty(c.issuer)) {
-        const want = `issuers/${c.issuer}/${q.slice(0, 4)}.md#${q.toLowerCase()}`;
-        if (c.anchor !== want)
-          errs.push(`components[${i}].anchor ${c.anchor} must be ${want} (the issuer's ${q} section)`);
-      }
-      if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
-        errs.push(`components[${i}].local_currency must be an ISO 4217 code`);
-      const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
-      const fx = typeof c.fx_rate === "string" ? parseDecimal(c.fx_rate) : null;
-      if (!v) errs.push(`components[${i}].local_value must be a decimal string (quoted), got ${show(c.local_value)}`);
-      if (!fx || fx.digits === 0n)
-        errs.push(`components[${i}].fx_rate must be a positive decimal string (quoted), got ${show(c.fx_rate)}`);
-      if (v && fx) pairs.push([v, fx]);
-    }
-    if (comps.some((c) => isObj(c) && c.local_currency !== "USD") && !nonEmpty(d.fx_source_anchor))
-      errs.push("fx_source_anchor is required when any component is not USD");
-    const list = (key: string, need: string[]) => {
-      const v = d[key];
-      if (!Array.isArray(v)) {
-        errs.push(`${key} must be a list`);
-        return;
-      }
-      for (const [i, x] of v.entries())
-        for (const k of need) if (!isObj(x) || !nonEmpty(x[k])) errs.push(`${key}[${i}].${k} is required`);
-    };
-    for (const k of Object.keys(d)) if (!MACHINE_KEYS.includes(k)) errs.push(`unknown key "${k}"`);
-    if (d.cross_checks !== undefined) errs.push(...crossChecks(d.cross_checks));
-    list("exclusions", ["reason"]);
-    list("adopted_conflicts", ["adopted_anchor", "reason"]);
-    if (Array.isArray(d.adopted_conflicts))
-      for (const [i, c] of d.adopted_conflicts.entries()) {
-        const ra = isObj(c) ? c.rejected_anchors : undefined;
-        if (!Array.isArray(ra) || ra.length === 0)
-          errs.push(`adopted_conflicts[${i}].rejected_anchors must be a non-empty list of anchors`);
-        else
-          for (const [j, a] of ra.entries())
-            if (!nonEmpty(a)) errs.push(`adopted_conflicts[${i}].rejected_anchors[${j}] must be an anchor string`);
-      }
-    if (typeof d.total_usd !== "string" || !/^(0|[1-9]\d*)$/.test(d.total_usd))
-      errs.push(`total_usd must be an integer string (quoted), got ${show(d.total_usd)}`);
-    for (const x of errs) e(`machine block: ${x}`);
-    if (errs.length > 0) continue;
-    const total = d.total_usd as string;
-    const got = roundHalfEven(sumOfProducts(pairs));
-    if (got !== BigInt(total))
-      e(`total_usd ${total} but recomputed ${got} (exact sum of local_value x fx_rate, rounded half-to-even)`);
-    const row = rows.find((r) => quarterOf(r.date) === q);
-    if (row && row.value !== total)
-      e(`CSV value ${row.value} (${CSV} line ${row.line}) differs from total_usd ${total}`);
   }
+}
+
+const FX_CURRENCY = /^\s*[-*]\s+Currency:\s*(\S+)\s*$/;
+
+/**
+ * R1-11: the currencies with an FX extract for quarter `q`: a "- Currency: <ISO>" field line inside an ### extract
+ * under "## <q>" in issuers/FX/<YYYY>.md (methodology FX extract format). Fenced lines do not count.
+ */
+function fxCurrencies(ctx: Ctx, q: string): Set<string> {
+  const out = new Set<string>();
+  let inQuarter = false;
+  let inExtract = false;
+  for (const l of lines(ctx.text.get(fxFile(q)) ?? "")) {
+    if (l.fence !== "none") continue;
+    const h = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/.exec(l.text);
+    const level = h?.[1]?.length;
+    if (level !== undefined && level <= 2) {
+      inQuarter = level === 2 && h?.[2] === q;
+      inExtract = false;
+    } else if (level === 3) inExtract = inQuarter;
+    else if (inExtract) {
+      const c = FX_CURRENCY.exec(l.text)?.[1];
+      if (c) out.add(c);
+    }
+  }
+  return out;
+}
+
+const fxFile = (q: string) => `issuers/${FX_FOLDER}/${q.slice(0, 4)}.md`;
+
+/**
+ * Assay (c): components + exclusions are exactly the catalog basket, each issuer once. Skipped when the
+ * catalog has no basket (L11 reports that). Entries with no issuer are reported by the field checks.
+ */
+function basketCover(comps: unknown[], excl: unknown[], basket: Set<string>): string[] {
+  if (basket.size === 0) return [];
+  const errs: string[] = [];
+  const ids = (key: string, xs: unknown[]) => {
+    const out: string[] = [];
+    for (const [i, x] of xs.entries()) {
+      const iss = isObj(x) ? x.issuer : undefined;
+      if (!nonEmpty(iss)) continue;
+      out.push(iss);
+      if (!basket.has(iss)) errs.push(`${key}[${i}].issuer ${iss} is not in the catalog basket`);
+    }
+    for (const iss of new Set(out)) {
+      const n = out.filter((x) => x === iss).length;
+      if (n > 1) errs.push(`${iss} is listed ${n} times in ${key}`);
+    }
+    return new Set(out);
+  };
+  const c = ids("components", comps);
+  const x = ids("exclusions", excl);
+  for (const iss of c) if (x.has(iss)) errs.push(`${iss} is in both components and exclusions`);
+  for (const iss of basket)
+    if (!c.has(iss) && !x.has(iss))
+      errs.push(`basket issuer ${iss} is neither a component nor excluded (list it under exclusions with a reason)`);
+  return errs;
+}
+
+/** L9 on one machine block of roll-up quarter `q`; `row` is the CSV row to match, given only for the last block. */
+function blockAggregation(
+  d: unknown,
+  q: string,
+  label: string,
+  row: Row | undefined,
+  ref: { readonly basket: Set<string>; readonly fx: Set<string> },
+  e: (m: string) => void,
+) {
+  const { basket, fx: fxHave } = ref;
+  if (!isObj(d)) {
+    e(`${label} is not a mapping`);
+    return;
+  }
+  const errs: string[] = [];
+  if (d.quarter !== q) errs.push(`quarter ${show(d.quarter)} differs from filename quarter ${q}`);
+  if (d.as_of !== quarterEnd(q)) errs.push(`as_of ${show(d.as_of)} must be the quarter-end ${quarterEnd(q)}`);
+  if (d.unit !== "USD") errs.push(`unit must be "USD", got ${show(d.unit)}`);
+  const comps = Array.isArray(d.components) ? d.components : [];
+  if (comps.length === 0) errs.push("components must be a non-empty list");
+  const pairs: [NonNullable<ReturnType<typeof parseDecimal>>, NonNullable<ReturnType<typeof parseDecimal>>][] = [];
+  for (const [i, c] of comps.entries()) {
+    if (!isObj(c)) {
+      errs.push(`components[${i}] must be a mapping`);
+      continue;
+    }
+    if (!nonEmpty(c.issuer)) errs.push(`components[${i}].issuer is required`);
+    if (!nonEmpty(c.anchor)) errs.push(`components[${i}].anchor is required`);
+    else if (nonEmpty(c.issuer)) {
+      const want = `issuers/${c.issuer}/${q.slice(0, 4)}.md#${q.toLowerCase()}`;
+      if (c.anchor !== want)
+        errs.push(`components[${i}].anchor ${c.anchor} must be ${want} (the issuer's ${q} section)`);
+    }
+    if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
+      errs.push(`components[${i}].local_currency must be an ISO 4217 code`);
+    else if (c.local_currency !== "USD" && !fxHave.has(c.local_currency))
+      errs.push(
+        `components[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_currency ${c.local_currency} has no FX extract for ${q}: no ### extract with "- Currency: ${c.local_currency}" under ## ${q} in ${fxFile(q)}`,
+      );
+    const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
+    const fx = typeof c.fx_rate === "string" ? parseDecimal(c.fx_rate) : null;
+    if (!v) errs.push(`components[${i}].local_value must be a decimal string (quoted), got ${show(c.local_value)}`);
+    if (!fx || fx.digits === 0n)
+      errs.push(`components[${i}].fx_rate must be a positive decimal string (quoted), got ${show(c.fx_rate)}`);
+    if (v && fx) pairs.push([v, fx]);
+  }
+  if (comps.some((c) => isObj(c) && c.local_currency !== "USD") && !nonEmpty(d.fx_source_anchor))
+    errs.push("fx_source_anchor is required when any component is not USD");
+  const list = (key: string, need: string[]) => {
+    const v = d[key];
+    if (!Array.isArray(v)) {
+      errs.push(`${key} must be a list`);
+      return;
+    }
+    for (const [i, x] of v.entries())
+      for (const k of need) if (!isObj(x) || !nonEmpty(x[k])) errs.push(`${key}[${i}].${k} is required`);
+  };
+  for (const k of Object.keys(d)) if (!MACHINE_KEYS.includes(k)) errs.push(`unknown key "${k}"`);
+  if (d.cross_checks !== undefined) errs.push(...crossChecks(d.cross_checks));
+  list("exclusions", ["issuer", "reason"]);
+  errs.push(...basketCover(comps, Array.isArray(d.exclusions) ? d.exclusions : [], basket));
+  list("adopted_conflicts", ["adopted_anchor", "reason"]);
+  if (Array.isArray(d.adopted_conflicts))
+    for (const [i, c] of d.adopted_conflicts.entries()) {
+      const ra = isObj(c) ? c.rejected_anchors : undefined;
+      if (!Array.isArray(ra) || ra.length === 0)
+        errs.push(`adopted_conflicts[${i}].rejected_anchors must be a non-empty list of anchors`);
+      else
+        for (const [j, a] of ra.entries())
+          if (!nonEmpty(a)) errs.push(`adopted_conflicts[${i}].rejected_anchors[${j}] must be an anchor string`);
+    }
+  if (typeof d.total_usd !== "string" || !/^(0|[1-9]\d*)$/.test(d.total_usd))
+    errs.push(`total_usd must be an integer string (quoted), got ${show(d.total_usd)}`);
+  for (const x of errs) e(`${label}: ${x}`);
+  if (errs.length > 0) return;
+  const total = d.total_usd as string;
+  const got = roundHalfEven(sumOfProducts(pairs));
+  const where = label === "machine block" ? "" : `${label}: `;
+  if (got !== BigInt(total))
+    e(`${where}total_usd ${total} but recomputed ${got} (exact sum of local_value x fx_rate, rounded half-to-even)`);
+  if (row && row.value !== total) e(`CSV value ${row.value} (${CSV} line ${row.line}) differs from total_usd ${total}`);
 }
 
 const MACHINE_KEYS = [
@@ -696,6 +856,7 @@ function catalog(ctx: Ctx, emit: Emit) {
   if (!isObj(j)) return e("top level must be an object");
   for (const k of Object.keys(j)) if (k !== "series") e(`unknown top-level key "${k}"`);
   if (!Array.isArray(j.series)) return e('"series" must be a list');
+  if (!j.series.some((s) => isObj(s) && s.id === SERIES)) e(`series has no "${SERIES}" entry`);
   const ids = new Set<unknown>();
   for (const [i, s] of (j.series as unknown[]).entries()) {
     if (!isObj(s)) {
@@ -748,10 +909,11 @@ function catalogBasket(ctx: Ctx): Set<string> {
 function placement(ctx: Ctx, emit: Emit) {
   const basket = catalogBasket(ctx);
   for (const p of [...ctx.files.keys()].sort()) {
-    if (!/\.(md|txt)$/.test(p)) continue;
+    if (p.endsWith("/.gitkeep")) continue;
     if (p.startsWith("issuers/")) {
-      const iss = /^issuers\/([^/]+)\/\d{4}\.md$/.exec(p)?.[1];
-      if (iss === undefined) emit("L12", p, "issuer files live only at issuers/<ISS>/<YYYY>.md");
+      const iss = /^issuers\/([A-Z][A-Z0-9]*)\/\d{4}\.md$/.exec(p)?.[1]; // upper-case issuer ids; FX exactly
+      if (iss === undefined)
+        emit("L12", p, "issuer files live only at issuers/<ISS>/<YYYY>.md (<ISS> an upper-case issuer id, or FX)");
       else if (iss !== FX_FOLDER && basket.size > 0 && !basket.has(iss))
         emit(
           "L12",
@@ -760,5 +922,7 @@ function placement(ctx: Ctx, emit: Emit) {
         );
     } else if (p.startsWith("evidence/") && ROLLUP.exec(p)?.[1] !== SERIES)
       emit("L12", p, `roll-ups live only at evidence/${SERIES}/YYYYQn.md`);
+    else if (p.startsWith("research/") && !RESEARCH_LOG.test(p))
+      emit("L12", p, `research logs live only at research/${SERIES}/YYYYQn.md`);
   }
 }
