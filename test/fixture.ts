@@ -28,9 +28,54 @@ export const extract = (o: {
   ].join("\n");
 };
 
-/** An FX extract for one currency (methodology FX extract format: "- Currency: <ISO>"). */
-export const fxExtract = (currency: string): string =>
-  extract({ title: `FX ${currency}`, fields: [`- Currency: ${currency}`], quote: `${currency} (synthetic): 1` });
+/** Synthetic FX quotes: EUR is quoted USD per EUR (so fx_rate is the quote), JPY is JPY per USD (1 / quote). */
+const FX_QUOTES: Record<string, { quote: string; direction: "per USD" | "USD per"; fx: string }> = {
+  EUR: { quote: "1.1", direction: "USD per", fx: "1.1" },
+  JPY: { quote: "1000", direction: "per USD", fx: "0.00100000000000000000" },
+};
+
+/**
+ * An FX extract for one currency in the methodology FX extract format: Currency, Quote as published, Quote
+ * direction, Rate (the quote normalized), fx_rate (USD per unit) and Adopted. Each field can be overridden, or
+ * dropped with null.
+ */
+export const fxExtract = (
+  currency: string,
+  o: {
+    title?: string;
+    quote?: string | null;
+    direction?: string | null;
+    rate?: string | null;
+    fx?: string | null;
+    adopted?: string | null;
+    asOf?: string;
+    retrieved?: string;
+    archive?: string;
+  } = {},
+): string => {
+  const d = FX_QUOTES[currency] ?? { quote: "1", direction: "per USD", fx: "1.00000000000000000000" };
+  const quote = o.quote === undefined ? d.quote : o.quote;
+  const dir = d.direction === "USD per" ? `USD per ${currency}` : `${currency} per USD`;
+  const field = (label: string, v: string | null | undefined, dflt: string | null) => {
+    const x = v === undefined ? dflt : v;
+    return x === null ? [] : [`- ${label}: ${x}`];
+  };
+  return extract({
+    title: o.title ?? `FX ${currency}`,
+    ...(o.retrieved ? { retrieved: o.retrieved } : {}),
+    ...(o.archive ? { archive: o.archive } : {}),
+    fields: [
+      `- Currency: ${currency}`,
+      ...(o.asOf ? [`- As of: ${o.asOf}`] : []),
+      ...field("Quote as published", quote, null),
+      ...field("Quote direction", o.direction, dir),
+      ...field("Rate", o.rate, quote === null ? null : quote.replaceAll(",", ".")),
+      ...field("fx_rate (USD per unit)", o.fx, d.fx),
+      ...field("Adopted", o.adopted, "yes"),
+    ],
+    quote: `${currency} (synthetic): ${quote ?? d.quote}`,
+  });
+};
 
 export const issuerFile = (iss: string, quarter: string, ...blocks: string[]): string =>
   [`# ${iss} 2026`, "", `## ${quarter}`, "", ...blocks].join("\n");

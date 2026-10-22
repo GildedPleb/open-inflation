@@ -1,7 +1,7 @@
 // All integrity checks (L1-L12 in WP1_REQUIREMENTS). Pure over a Snapshot; the only I/O is the injected Net.
 import { posix } from "node:path";
 import { MAX_HOPS } from "./archive.ts";
-import { type Decimal, parseDecimal, ratioHalfEven, roundHalfEven, sumOfProducts } from "./decimal.ts";
+import { type Decimal, parseDecimal, ratioHalfEven, roundHalfEven, sumOfProducts, usdPerUnit } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, slugs } from "./markdown.ts";
 import type { CheckId, Files, Finding, LintOptions, Net, Snapshot } from "./types.ts";
 
@@ -374,8 +374,14 @@ interface Extract {
   readonly quarter: string | null;
   /** Each `- As of:` value. */
   readonly asOf: string[];
+  /** FX extract fields (Currency, Quote as published, Quote direction, Rate, fx_rate, Adopted): every value. */
+  readonly facts: Map<FxFact, string[]>;
 }
 const AS_OF_LINE = /^\s*[-*]\s+As of:\s*(.*?)\s*$/;
+const FX_FACTS = ["Currency", "Quote as published", "Quote direction", "Rate", "fx_rate (USD per unit)"] as const;
+type FxFact = (typeof FX_FACTS)[number] | "Adopted";
+const FX_FACT_LINE =
+  /^\s*[-*]\s+(Currency|Quote as published|Quote direction|Rate|fx_rate \(USD per unit\)|Adopted):\s*(.*?)\s*$/;
 
 /** Extract blocks (### sections) of one issuer file, plus field lines found outside any block. */
 function extracts(body: string): { blocks: Extract[]; stray: number[] } {
@@ -398,6 +404,7 @@ function extracts(body: string): { blocks: Extract[]; stray: number[] } {
                 quote: false,
                 quarter,
                 asOf: [],
+                facts: new Map(),
               }
             : h[1].length < 3
               ? null
@@ -412,7 +419,10 @@ function extracts(body: string): { blocks: Extract[]; stray: number[] } {
         else cur.fields.set(f[1] as Field, [...(cur.fields.get(f[1] as Field) ?? []), f[2] ?? ""]);
       } else if (near && cur) cur.wrongForm.set(near[1] as Field, l.line);
       else if (cur && AS_OF_LINE.test(l.text)) cur.asOf.push(AS_OF_LINE.exec(l.text)?.[1] ?? "");
-      else if (cur && /^\s*>\s*\S/.test(l.text)) cur.quote = true;
+      else if (cur && FX_FACT_LINE.test(l.text)) {
+        const [, k, v] = FX_FACT_LINE.exec(l.text) as RegExpExecArray;
+        cur.facts.set(k as FxFact, [...(cur.facts.get(k as FxFact) ?? []), v ?? ""]);
+      } else if (cur && /^\s*>\s*\S/.test(l.text)) cur.quote = true;
     } else if (cur && l.fence === "body" && l.text.trim() !== "") cur.quote = true;
   }
   return { blocks, stray };
@@ -519,6 +529,11 @@ function extractSchema(ctx: Ctx, emit: Emit) {
     for (const b of blocks) {
       const at = `extract "${b.title}" (line ${b.line})`;
       for (const m of blockProblems(b, ctx.now)) emit("L7", p, `${at} ${m}`);
+      if (iss === FX_FOLDER) for (const m of fxRate(b).errs) emit("L7", p, `${at} ${m}`);
+      for (const v of b.asOf) {
+        const m = asOfAfterRetrieved(v, b.fields.get("Retrieved"));
+        if (m) emit("L7", p, `${at} ${m}`);
+      }
       // P2-m1: As of (the observation date) lies inside the extract's quarter heading. Separate from blockProblems,
       // so it never changes which URLs L8 fetches.
       if (b.quarter === null) continue;
@@ -532,6 +547,81 @@ function extractSchema(ctx: Ctx, emit: Emit) {
 
 /** YYYY-MM-DD or YYYY-MM, optionally one parenthetical note to the end of the line (Assay). Only the date counts. */
 const AS_OF = /^(\d{4})-(\d{2})(?:-(\d{2}))?(?:\s+\(.*\))?\s*$/;
+
+/**
+ * P6-n7 (Assay): the observation date cannot postdate its retrieval. The As of date (a YYYY-MM As of counts as that
+ * month's last day) must be on or before the UTC date part of Retrieved. Silent when either is malformed or
+ * repeated; the format checks report those.
+ */
+function asOfAfterRetrieved(v: string, retrieved: string[] | undefined): string | null {
+  const m = AS_OF.exec(v);
+  const r = retrieved?.length === 1 ? RETRIEVED.exec(retrieved[0] ?? "") : null;
+  if (!m || !r) return null;
+  const [y, mo, d] = [m[1] ?? "", m[2] ?? "", m[3]];
+  const date = d === undefined ? new Date(Date.UTC(+y, +mo, 0)).toISOString().slice(0, 10) : `${y}-${mo}-${d}`;
+  if (!isIsoDate(d === undefined ? `${y}-${mo}-01` : date)) return null;
+  const day = `${r[1]}-${r[2]}-${r[3]}`;
+  if (!isIsoDate(day) || date <= day) return null;
+  const what = d === undefined ? `${y}-${mo} (taken as its last day, ${date})` : date;
+  return `As of ${what} is after Retrieved ${day}: the observation date cannot be later than the retrieval date`;
+}
+
+const RATE = /^\d+(\.\d+)?$/;
+const DIRECTION = /^(?:([A-Z]{3}) per USD|USD per ([A-Z]{3}))$/;
+
+/** What one FX extract says about its rate, and the fx_rate (USD per unit) derived from it when it is valid. */
+interface FxRate {
+  readonly errs: string[];
+  readonly currency: string | undefined;
+  readonly rate: string | undefined;
+  readonly direction: string | undefined;
+  /** The derived fx_rate; null when the extract has any problem (L9 then fails closed). */
+  readonly fx: string | null;
+}
+
+/**
+ * The fx_rate check on one FX extract (L7). Required, once each: Currency, Quote as published, Quote direction, Rate
+ * and fx_rate (USD per unit). Rate is the normalized Quote as published (a decimal comma becomes a point; nothing
+ * else changes, so a grouped quote cannot be normalized) and a positive plain decimal. Quote direction is
+ * "<CCY> per USD" or "USD per <CCY>" for the extract's own Currency. fx_rate (USD per unit) equals the rate derived
+ * from Rate and the direction (usdPerUnit), exactly as a string.
+ */
+function fxRate(b: Extract): FxRate {
+  const errs: string[] = [];
+  const one = (k: FxFact) => {
+    const vs = b.facts.get(k) ?? [];
+    if (vs.length === 0) errs.push(`has no - ${k}: line`);
+    else if (vs.length > 1) errs.push(`has more than one - ${k}: line`);
+    return vs.length === 1 ? vs[0] : undefined;
+  };
+  const [currency, quote, direction, rate, stated] = FX_FACTS.map(one);
+  if (currency !== undefined && !/^[A-Z]{3}$/.test(currency))
+    errs.push(`Currency ${show(currency)} must be an ISO 4217 code`);
+  const parsed = rate !== undefined && RATE.test(rate) ? parseDecimal(rate) : null;
+  const r = parsed && parsed.digits > 0n ? parsed : null;
+  if (rate !== undefined) {
+    if (!RATE.test(rate))
+      errs.push(
+        `Rate ${show(rate)} must match ^\\d+(\\.\\d+)?$ (a plain decimal with a point; no comma, sign or separator)`,
+      );
+    else if (!r) errs.push(`Rate ${rate} must be positive`);
+    const normalized = quote?.replaceAll(",", ".");
+    if (quote !== undefined && normalized !== rate)
+      errs.push(
+        `Rate ${rate} is not the Quote as published ${quote} normalized (${normalized}): Rate is the same digits as a plain decimal with a point`,
+      );
+  }
+  const dir = direction === undefined ? null : DIRECTION.exec(direction);
+  if (direction !== undefined && !dir)
+    errs.push(`Quote direction ${show(direction)} must be "<CCY> per USD" or "USD per <CCY>"`);
+  const named = dir?.[1] ?? dir?.[2];
+  if (named !== undefined && currency !== undefined && named !== currency)
+    errs.push(`Quote direction ${direction} names ${named}, not the extract's Currency ${currency}`);
+  const fx = r && dir ? usdPerUnit(r, dir[1] ? "per USD" : "USD per") : null;
+  if (fx !== null && stated !== undefined && stated !== fx)
+    errs.push(`fx_rate (USD per unit) ${stated} does not equal ${fx} derived from Rate ${rate} (${direction})`);
+  return { errs, currency, rate, direction, fx: errs.length === 0 ? fx : null };
+}
 const QUARTER_STARTS = ["01-01", "04-01", "07-01", "10-01"];
 const quarterStart = (q: string) => `${q.slice(0, 4)}-${QUARTER_STARTS[Number(q.slice(5)) - 1]}`;
 const FX_WINDOW_DAYS = 3;
@@ -697,6 +787,7 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     const all = machines(body);
     const { baskets } = catalogModel(ctx.text.get("catalog.json"));
     const fx = fxCurrencies(ctx, q);
+    const rates = adoptedRates(ctx, q);
     // Blocks already committed on the base keep their implied basket version 1; later ones are new.
     const was = ctx.base?.get(p);
     const committed = was === undefined ? 0 : machines(was).filter((m) => m.ok).length;
@@ -711,7 +802,7 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
           q,
           label,
           current ? rows.find((r) => quarterOf(r.date) === q) : undefined,
-          { baskets, fx, isNew: i >= committed, source: m.source },
+          { baskets, fx, rates, isNew: i >= committed, source: m.source },
           e,
         );
     }
@@ -745,6 +836,61 @@ function fxCurrencies(ctx: Ctx, q: string): Set<string> {
 }
 
 const fxFile = (q: string) => `issuers/${FX_FOLDER}/${q.slice(0, 4)}.md`;
+
+type Adopted = FxRate & { readonly title: string };
+
+/**
+ * The adopted FX extracts of quarter `q`, by currency: ### extracts under "## <q>" in issuers/FX/<YYYY>.md whose
+ * single "- Adopted:" value starts with "yes". Confirming extracts ("- Adopted: no, confirming") never count.
+ */
+function adoptedRates(ctx: Ctx, q: string): Map<string, Adopted[]> {
+  const out = new Map<string, Adopted[]>();
+  for (const b of extracts(ctx.text.get(fxFile(q)) ?? "").blocks) {
+    const adopted = b.facts.get("Adopted") ?? [];
+    if (b.quarter !== q || adopted.length !== 1 || !/^yes\b/.test(adopted[0] ?? "")) continue;
+    const x = { ...fxRate(b), title: b.title };
+    if (x.currency !== undefined) out.set(x.currency, [...(out.get(x.currency) ?? []), x]);
+  }
+  return out;
+}
+
+/**
+ * The fx_rate check on one components or reference_values entry (L9): USD is exactly "1"; any other currency's
+ * fx_rate equals, as a string, the rate derived from its one adopted FX extract for the quarter. Fails closed when
+ * that extract is missing, not unique or invalid. Silent on entries the field checks already reject.
+ */
+function fxRateEntry(
+  key: string,
+  i: number,
+  c: unknown,
+  q: string,
+  fxHave: Set<string>,
+  rates: Map<string, Adopted[]>,
+): string[] {
+  if (!isObj(c) || typeof c.local_currency !== "string" || typeof c.fx_rate !== "string") return [];
+  if (!parseDecimal(c.fx_rate)) return [];
+  const ccy = c.local_currency;
+  const who = `${key}[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""}`;
+  if (ccy === "USD") return c.fx_rate === "1" ? [] : [`${who} local_currency USD needs fx_rate "1", not ${c.fx_rate}`];
+  if (!fxHave.has(ccy)) return [];
+  const a = rates.get(ccy) ?? [];
+  const where = `for ${ccy} under ## ${q} in ${fxFile(q)}`;
+  if (a.length === 0) return [`${who} cannot verify fx_rate: no adopted FX extract ("- Adopted: yes") ${where}`];
+  if (a.length > 1)
+    return [
+      `${who} cannot verify fx_rate: ${a.length} adopted FX extracts ${where} (one adopted extract per currency per quarter; mark the others "- Adopted: no, confirming")`,
+    ];
+  const x = a[0] as Adopted;
+  if (x.fx === null)
+    return [
+      `${who} cannot verify fx_rate: the adopted FX extract "${x.title}" ${where} fails L7 (see its L7 findings)`,
+    ];
+  if (c.fx_rate !== x.fx)
+    return [
+      `${who} fx_rate ${c.fx_rate} does not equal ${x.fx} derived from the adopted FX extract "${x.title}" (Rate ${x.rate}, ${x.direction})`,
+    ];
+  return [];
+}
 
 /**
  * Assay (c): components + exclusions are exactly the catalog basket, each issuer once. Skipped when the
@@ -852,6 +998,8 @@ function blockAggregation(
   ref: {
     readonly baskets: ReadonlyMap<number, Basket>;
     readonly fx: Set<string>;
+    /** The adopted FX extracts of the quarter, by currency (the fx_rate check). */
+    readonly rates: Map<string, Adopted[]>;
     readonly isNew: boolean;
     /** The block's YAML source, to check how basket_version is written. */
     readonly source: string;
@@ -893,6 +1041,7 @@ function blockAggregation(
   const pairs: Pair[] = [];
   for (const [i, c] of comps.entries()) {
     const pair = valueEntry("components", i, c, q, fxHave, errs);
+    errs.push(...fxRateEntry("components", i, c, q, fxHave, ref.rates));
     if (pair) pairs.push(pair);
   }
   const refs = Array.isArray(d.reference_values) ? d.reference_values : [];
@@ -903,6 +1052,7 @@ function blockAggregation(
   const refPairs: Pair[] = [];
   for (const [i, c] of refs.entries()) {
     const pair = valueEntry("reference_values", i, c, q, fxHave, errs);
+    errs.push(...fxRateEntry("reference_values", i, c, q, fxHave, ref.rates));
     if (pair) refPairs.push(pair);
   }
   if ([...comps, ...refs].some((c) => isObj(c) && c.local_currency !== "USD") && !nonEmpty(d.fx_source_anchor))
@@ -1155,9 +1305,36 @@ const seriesList = (j: unknown): Record<string, unknown>[] =>
   isObj(j) && Array.isArray(j.series) ? j.series.filter(isObj) : [];
 
 /**
+ * semver.org 2.0.0 precedence (section 11) of two versions: negative when a < b, 0 when equal, positive when a > b;
+ * null when either is not semver. MAJOR.MINOR.PATCH compare numerically; a pre-release is lower than its release;
+ * pre-release identifiers compare left to right (numeric ones numerically and below alphanumeric ones, others in
+ * ASCII order), and a shorter list that is a prefix is lower. Build metadata is ignored.
+ */
+export function compareSemver(a: string, b: string): number | null {
+  const [x, y] = [SEMVER.exec(a), SEMVER.exec(b)];
+  if (!x || !y) return null;
+  for (const k of [1, 2, 3]) {
+    const [p, q] = [BigInt(x[k] ?? "0"), BigInt(y[k] ?? "0")];
+    if (p !== q) return p < q ? -1 : 1;
+  }
+  const [pa, pb] = [x[4], y[4]];
+  if (pa === undefined || pb === undefined) return pa === pb ? 0 : pa === undefined ? 1 : -1;
+  const [ia, ib] = [pa.split("."), pb.split(".")];
+  for (let i = 0; i < Math.min(ia.length, ib.length); i++) {
+    const [p, q] = [ia[i] ?? "", ib[i] ?? ""];
+    if (p === q) continue;
+    const [np, nq] = [/^\d+$/.test(p), /^\d+$/.test(q)];
+    if (np && nq) return BigInt(p) < BigInt(q) ? -1 : 1;
+    if (np !== nq) return np ? -1 : 1;
+    return p < q ? -1 : 1;
+  }
+  return Math.sign(ia.length - ib.length);
+}
+
+/**
  * Basket history against the base: existing baskets are immutable (L4); appending one bumps the series' major
- * version (L11). A base still in the legacy `basket` shape reads as baskets [{version 1, issuers: basket}], so
- * migrating it to `baskets` keeps its issuers and only adds floor_pct.
+ * version (L11); the series version never goes down (L11, P10-n1). A base still in the legacy `basket` shape reads
+ * as baskets [{version 1, issuers: basket}], so migrating it to `baskets` keeps its issuers and only adds floor_pct.
  */
 function basketHistory(ctx: Ctx, emit: Emit) {
   const F = "catalog.json";
@@ -1185,6 +1362,15 @@ function basketHistory(ctx: Ctx, emit: Emit) {
           "L4",
           F,
           `basket version ${j + 1} of ${String(s.id)} was changed; baskets are immutable (append a new version with a major version bump)`,
+        );
+    }
+    if (typeof s.version === "string" && typeof b.version === "string") {
+      const order = compareSemver(s.version, b.version);
+      if (order !== null && order < 0)
+        emit(
+          "L11",
+          F,
+          `series ${String(s.id)} version ${s.version} is lower than ${b.version} in the base; the catalog version never goes down (semver precedence)`,
         );
     }
     const major = (v: unknown) => (typeof v === "string" ? SEMVER.exec(v)?.[1] : undefined);
