@@ -13,7 +13,7 @@
         {
           "version": 1,
           "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
-          "floor_pct": "93"
+          "floor_pct": "94"
         }
       ],
       "issuers": [{ "id": "CBR", "as_of_convention": "start_of_day" }]

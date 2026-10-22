@@ -37,8 +37,8 @@ export const issuerFile = (iss: string, quarter: string, ...blocks: string[]): s
 
 /** The fixture catalog's basket (version 1). */
 export const BASKET = ["FED", "ECB", "BOJ"];
-/** The fixture catalog's baskets: version 1 only, coverage floor 93%. */
-export const BASKETS = [{ version: 1, issuers: BASKET, floor_pct: "93" }];
+/** The fixture catalog's baskets: version 1 only, coverage floor 94%. */
+export const BASKETS = [{ version: 1, issuers: BASKET, floor_pct: "94" }];
 
 /** Synthetic reference value for an excluded issuer: 0.01 USD (USD, so no FX extract is needed; small, so
  * coverage stays above any floor unless a test sets reference_values itself). */

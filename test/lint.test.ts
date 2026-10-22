@@ -782,7 +782,7 @@ describe("L9 aggregation", () => {
     fails(
       good({
         "catalog.json": catalog([
-          { ...JSON.parse(catalog()).series[0], baskets: [{ version: 1, issuers: ["FED", "BOJ"], floor_pct: "93" }] },
+          { ...JSON.parse(catalog()).series[0], baskets: [{ version: 1, issuers: ["FED", "BOJ"], floor_pct: "94" }] },
         ]),
         [ROLLUP]: rollup(machineBlock({ exclusions: 'exclusions:\n  - issuer: BOJ\n    reason: "x"' })),
       }),
@@ -972,7 +972,7 @@ describe("L11 catalog.json", () => {
     last_updated: "2026-10-02",
     version: "0.1.0",
     license: "CC-BY-4.0",
-    baskets: [{ version: 1, issuers: ["FED", "ECB", "BOJ"], floor_pct: "93" }],
+    baskets: [{ version: 1, issuers: ["FED", "ECB", "BOJ"], floor_pct: "94" }],
   };
   const without = (k: keyof typeof entry) => Object.fromEntries(Object.entries(entry).filter(([x]) => x !== k));
   test("version missing", () =>
@@ -1097,8 +1097,8 @@ describe("L11 catalog lists the base_money series (F2)", () => {
 
 const series0 = () => JSON.parse(catalog()).series[0] as Record<string, unknown>;
 const withSeries = (patch: Record<string, unknown>) => catalog([{ ...series0(), ...patch }]);
-const V1 = { version: 1, issuers: ["FED", "ECB", "BOJ"], floor_pct: "93" };
-const V2 = { version: 2, issuers: ["FED", "ECB", "BOJ", "SNB"], floor_pct: "93" };
+const V1 = { version: 1, issuers: ["FED", "ECB", "BOJ"], floor_pct: "94" };
+const V2 = { version: 2, issuers: ["FED", "ECB", "BOJ", "SNB"], floor_pct: "94" };
 /** Current = good + patch; base = good + basePatch. */
 const onBase = (basePatch: Record<string, string>, patch: Record<string, string>): Snapshot => ({
   files: files(goodText(), patch),
@@ -1123,9 +1123,9 @@ describe("L11 catalog baskets", () => {
     ["lower-case issuers", [{ ...V1, issuers: ["fed"] }], /baskets\[0\]\.issuers .* non-empty list of unique/],
     ["duplicate issuers", [{ ...V1, issuers: ["FED", "FED"] }], /baskets\[0\]\.issuers .* non-empty list of unique/],
     ["empty issuers", [{ ...V1, issuers: [] }], /baskets\[0\]\.issuers .* non-empty list of unique/],
-    ["a numeric floor_pct", [{ ...V1, floor_pct: 93 }], /baskets\[0\]\.floor_pct/],
+    ["a numeric floor_pct", [{ ...V1, floor_pct: 94 }], /baskets\[0\]\.floor_pct/],
     ["a floor_pct above 100", [{ ...V1, floor_pct: "100.01" }], /baskets\[0\]\.floor_pct/],
-    ["a non-decimal floor_pct", [{ ...V1, floor_pct: "93%" }], /baskets\[0\]\.floor_pct/],
+    ["a non-decimal floor_pct", [{ ...V1, floor_pct: "94%" }], /baskets\[0\]\.floor_pct/],
     ["a missing floor_pct", [{ version: 1, issuers: V1.issuers }], /baskets\[0\]\.floor_pct/],
     ["an unknown basket key", [{ ...V1, note: "x" }], /baskets\[0\] has unknown key "note"/],
   ];
@@ -1391,66 +1391,66 @@ describe("L9 reference_values and coverage_pct", () => {
         { "base_money.csv": `${CSV_HEADER}2026-09-30,1231,${ROLLUP}\n` },
       ),
     ));
-  test("half-to-even: 93.125 rounds to 93.12", () =>
+  test("half-to-even: 94.125 rounds to 94.12", () =>
     passes(
       usdOnly(
-        "93125",
+        "94125",
         [
-          ["ECB", "6875"],
+          ["ECB", "5875"],
           ["BOJ", "0"],
         ],
-        '"93.12"',
+        '"94.12"',
       ),
     ));
-  test("half-to-even: 93.13 for 93.125 fails", () =>
+  test("half-to-even: 94.13 for 94.125 fails", () =>
     fails(
       usdOnly(
-        "93125",
+        "94125",
         [
-          ["ECB", "6875"],
+          ["ECB", "5875"],
           ["BOJ", "0"],
         ],
-        '"93.13"',
+        '"94.13"',
       ),
       ["L9"],
-      /recomputed 93\.12/,
+      /recomputed 94\.12/,
     ));
-  test("rounded once: 92.9949 is 92.99 (not 93.00 via 92.995) and below the floor", () =>
+  test("rounded once: 93.9949 is 93.99 (not 94.00 via 93.995) and below the floor", () =>
     fails(
       usdOnly(
-        "929949",
+        "939949",
         [
-          ["ECB", "70051"],
+          ["ECB", "60051"],
           ["BOJ", "0"],
         ],
-        '"92.99"',
+        '"93.99"',
       ),
       ["L9"],
-      /coverage 92\.99% is below the basket 1 floor 93%/,
+      /coverage 93\.99% is below the basket 1 floor 94%/,
     ));
-  test("coverage exactly at the floor (93.00) passes", () =>
+  test("coverage exactly at the floor (94.00) passes", () =>
     passes(
       usdOnly(
-        "93",
+        "94",
         [
-          ["ECB", "7"],
+          ["ECB", "6"],
           ["BOJ", "0"],
         ],
-        '"93.00"',
+        '"94.00"',
       ),
     ));
-  test("coverage 92.99 is below the floor", () =>
+  test("coverage 93.99 is below the floor", () =>
     fails(
       usdOnly(
-        "9299",
+        "9399",
         [
-          ["ECB", "701"],
+          ["ECB", "601"],
           ["BOJ", "0"],
         ],
-        '"92.99"',
+        '"93.99"',
       ),
       ["L9"],
-      /below the basket 1 floor 93%/,
+      /below the basket 1 floor 94%/,
     ));
   test("zero component and reference USD leaves coverage undefined", () =>
     fails(
@@ -1480,7 +1480,7 @@ describe("L9 reference_values and coverage_pct", () => {
         ),
       }),
       ["L9"],
-      /coverage 19\.5\d% is below the basket 1 floor 93%/,
+      /coverage 19\.5\d% is below the basket 1 floor 94%/,
     ));
   test("reference values never count toward total_usd", () =>
     fails(blk({ referenceValues: boj10, total: "1231" }), ["L9"], /recomputed 1221/));
@@ -1572,7 +1572,7 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
     q2("issuers/FX/2026.md", "FX", extract({ title: "FX EUR Q2", fields: ["- Currency: EUR", `- As of: ${asOf}`] }));
   test("issuer As of 2026-06-30 (quarter end) under Q2 passes", () => passes(issuer("2026-06-30")));
   test("issuer As of 2026-04-01 under Q2 passes", () => passes(issuer("2026-04-01")));
-  test("issuer As of with trailing words passes", () => passes(issuer("2026-06-30 (end of period)")));
+  test("issuer As of with a parenthetical note passes", () => passes(issuer("2026-06-30 (end of period)")));
   test("issuer As of 2026-07-01 under Q2 fails", () =>
     fails(
       issuer("2026-07-01"),
@@ -1621,7 +1621,7 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
     good({
       "catalog.json": withSeries({
         version: "1.0.0",
-        baskets: [V1, { version: 2, issuers: [...V1.issuers, "CBR"], floor_pct: "93" }],
+        baskets: [V1, { version: 2, issuers: [...V1.issuers, "CBR"], floor_pct: "94" }],
         ...(convention ? { issuers: [{ id: "CBR", as_of_convention: "start_of_day" }] } : {}),
       }),
       [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })),
