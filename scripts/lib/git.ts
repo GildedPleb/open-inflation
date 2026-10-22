@@ -17,6 +17,8 @@ export class UnknownBase extends Error {
   }
 }
 
+export class NotGitCheckout extends Error {}
+
 const zsplit = (b: Uint8Array) => new TextDecoder().decode(b).split("\0").filter(Boolean);
 
 /**

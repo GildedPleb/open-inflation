@@ -1,4 +1,4 @@
-import type { Head } from "./types.ts";
+import type { Head, Net } from "./types.ts";
 
 /** A real HEAD over `fetchImpl`, following redirects, bounded by `timeoutMs`. */
 export function httpHead(fetchImpl: typeof fetch, timeoutMs: number): Head {
@@ -14,4 +14,12 @@ export function httpHead(fetchImpl: typeof fetch, timeoutMs: number): Head {
       clearTimeout(timer);
     }
   };
+}
+
+export function httpAvailable(_fetchImpl: typeof fetch, _timeoutMs: number): Net["available"] {
+  throw new Error("not implemented");
+}
+
+export function archiveNet(_fetchImpl: typeof fetch, _timeoutMs: number): Net {
+  throw new Error("not implemented");
 }

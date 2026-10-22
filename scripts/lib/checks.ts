@@ -42,7 +42,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   linkIntegrity(ctx, emit);
   indexCompleteness(ctx, emit);
   extractSchema(ctx, emit);
-  if (opts.archive !== "off" && opts.head) await archiveResolution(ctx, opts.head, emit);
+  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net.head, emit);
   aggregation(ctx, rows, emit);
   catalog(ctx, emit);
   const order = (c: CheckId) => Number(c.slice(1));
