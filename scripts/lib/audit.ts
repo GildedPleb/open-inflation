@@ -10,12 +10,23 @@
 //   no verdict  403, 429 or blocked (on every host, Ghostarchive included), and 503 on Ghostarchive (its Cloudflare
 //               challenge); also any other status, a
 //               timeout, a reset or a redirect loop: retried next audit
+
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { bounded } from "./archive.ts";
 import { extractLinks } from "./checks.ts";
+import {
+  CHALLENGE_BODY,
+  type Clock,
+  duration,
+  hostKey,
+  type Pacer,
+  RETRY_STATUSES,
+  realClock,
+  retryAfterMs,
+} from "./pacer.ts";
 import type { Files } from "./types.ts";
 
 export const AUDIT_USER_AGENT = "open-inflation-audit (+https://github.com/GildedPleb/open-inflation)";
@@ -92,18 +103,29 @@ const BLOCKED = [403, 429];
 /** Ghostarchive's Cloudflare challenge answers a script with 403 or 503: a block, not a verdict on the capture. */
 const GHOST = /^https:\/\/ghostarchive\.org\//;
 const GHOST_BLOCKED = [403, 503];
+/** Non-2xx answers whose page is read (512 KiB at most) for a challenge or CAPTCHA. */
+const BLOCK_STATUSES = [403, 429, 503];
+const CHALLENGE_READ = 512 * 1024;
 
 /** The class of one probe of `url` against the last saved copy (null on a first run). */
 export function classify(
   p: Probe,
   prior: { readonly sha256: string; readonly finalUrl: string } | null,
   url = "",
+  paced: { readonly challenge?: boolean; readonly gaveUp?: { tries: number; elapsedMs: number } } = {},
 ): { status: LinkClass; detail: string } {
   if (p.httpStatus === null) {
     const e = p.error ?? "no response";
     return DNS.test(e) ? { status: "lost", detail: `DNS failure (${e})` } : { status: "no verdict", detail: e };
   }
   if (LOST.includes(p.httpStatus)) return { status: "lost", detail: `HTTP ${p.httpStatus}` };
+  // Pacing's two ways to end with no verdict: a challenge/CAPTCHA page, or still rate-limited at the cap.
+  if (paced.challenge) return { status: "no verdict", detail: `HTTP ${p.httpStatus} (blocked: challenge/CAPTCHA)` };
+  if (paced.gaveUp)
+    return {
+      status: "no verdict",
+      detail: `HTTP ${p.httpStatus} (rate-limited: gave up after ${paced.gaveUp.tries} tries over ${duration(paced.gaveUp.elapsedMs)})`,
+    };
   if (GHOST.test(url) && GHOST_BLOCKED.includes(p.httpStatus))
     return { status: "no verdict", detail: `HTTP ${p.httpStatus} (blocked: Ghostarchive Cloudflare challenge)` };
   if (BLOCKED.includes(p.httpStatus))
@@ -124,7 +146,13 @@ async function probe(
   fetchImpl: typeof fetch,
   url: string,
   timeoutMs: number,
-): Promise<{ probe: Probe; body: Uint8Array | null; contentType: string | null }> {
+): Promise<{
+  probe: Probe;
+  body: Uint8Array | null;
+  contentType: string | null;
+  retryAfter?: string | null;
+  challenge?: boolean;
+}> {
   const r = await bounded(timeoutMs, async (signal) => {
     let at = url;
     for (let hop = 0; ; hop++) {
@@ -148,8 +176,18 @@ async function probe(
       }
       const contentType = res.headers.get("content-type");
       if (!res.ok) {
-        await res.body?.cancel();
-        return { probe: { httpStatus: res.status, finalUrl: at, sha256: null, error: null }, body: null, contentType };
+        // A block or rate limit: read the start of the page to tell a challenge/CAPTCHA from a rate limit.
+        let challenge = res.headers.get("cf-mitigated")?.toLowerCase() === "challenge";
+        if (!challenge && BLOCK_STATUSES.includes(res.status))
+          challenge = CHALLENGE_BODY.test(new TextDecoder().decode((await res.arrayBuffer()).slice(0, CHALLENGE_READ)));
+        else await res.body?.cancel();
+        return {
+          probe: { httpStatus: res.status, finalUrl: at, sha256: null, error: null },
+          body: null,
+          contentType,
+          retryAfter: res.headers.get("retry-after"),
+          challenge,
+        };
       }
       const declared = Number(res.headers.get("content-length") ?? "0");
       if (declared > MAX_BODY_BYTES) {
@@ -247,6 +285,12 @@ export interface AuditOptions {
   readonly timeoutMs: number;
   /** Pause between requests (politeness; requests are sequential). */
   readonly pauseMs: number;
+  /**
+   * Pacing (the CLI always sets it; tests inject a fake clock): per-host spacing, hosts in parallel, 429/503 retried
+   * with backoff. Replaces pauseMs. Without it requests are sequential with pauseMs between them, one try each.
+   */
+  readonly pacer?: Pacer;
+  readonly clock?: Clock;
   readonly progress?: (line: string) => void;
 }
 
@@ -265,14 +309,35 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
   const manifest: Manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : {};
   const links = auditLinks(o.files);
   const out: AuditLink[] = [];
-  for (const [i, link] of links.entries()) {
-    if (i > 0 && o.pauseMs > 0) await Bun.sleep(o.pauseMs);
+  const clock = o.clock ?? realClock;
+  let done = 0;
+  const check = async (i: number) => {
+    const link = links[i] as Link;
     const fetched = rawUrl(link.url);
-    const { probe: p, body, contentType } = await probe(o.fetch, fetched, o.timeoutMs);
+    const once = () => probe(o.fetch, fetched, o.timeoutMs);
+    let r: Awaited<ReturnType<typeof once>>;
+    let gaveUp: { tries: number; elapsedMs: number } | undefined;
+    if (o.pacer) {
+      const paced = await o.pacer.run(fetched, async () => {
+        const x = await once();
+        const s = x.probe.httpStatus;
+        const retry = s !== null && RETRY_STATUSES.includes(s) && !x.challenge;
+        return {
+          result: x,
+          retry: retry ? { status: s, retryAfterMs: retryAfterMs(x.retryAfter, clock.now()) } : null,
+        };
+      });
+      r = paced.result;
+      if (paced.gaveUp) gaveUp = { tries: paced.tries, elapsedMs: paced.elapsedMs };
+    } else r = await once();
+    const { probe: p, body, contentType } = r;
     const history = (manifest[link.url] ?? []).filter((e) => e.date !== o.date);
     const last = history.at(-1) ?? null;
     const prior = last && { date: last.date, sha256: last.sha256, finalUrl: last.finalUrl };
-    const { status, detail } = classify(p, prior, link.url);
+    const { status, detail } = classify(p, prior, link.url, {
+      ...(r.challenge ? { challenge: true } : {}),
+      ...(gaveUp ? { gaveUp } : {}),
+    });
     let saved: string | null = null;
     if (body && p.sha256 && p.finalUrl) {
       const key = createHash("sha256").update(link.url).digest("hex").slice(0, 16);
@@ -289,9 +354,31 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
     }
     manifest[link.url] = history.sort((a, b) => a.date.localeCompare(b.date));
     if (manifest[link.url]?.length === 0) delete manifest[link.url];
-    out.push({ ...link, fetched, ...p, status, detail, previous: prior, saved });
-    o.progress?.(`audit [${i + 1}/${links.length}] ${status} (${detail}) ${link.url}`);
-  }
+    out[i] = { ...link, fetched, ...p, status, detail, previous: prior, saved };
+    o.progress?.(`audit [${++done}/${links.length}] ${status} (${detail}) ${link.url}`);
+  };
+  if (o.pacer) {
+    const e = o.pacer.estimate(links.map((l) => rawUrl(l.url)));
+    const top = e.hosts.slice(0, 4).map((h) => `${h.key} ${h.urls} x ${duration(h.intervalMs)}`);
+    o.progress?.(
+      `audit: ${links.length} links, about ${duration(e.ms)} before any retry (hosts in parallel; slowest: ${top.join(", ")})`,
+    );
+    // One worker per host (serial, spaced), hosts in parallel; each URL's history is its own, so order is free.
+    const byHost = new Map<string, number[]>();
+    for (const [i, l] of links.entries()) {
+      const k = hostKey(rawUrl(l.url));
+      byHost.set(k, [...(byHost.get(k) ?? []), i]);
+    }
+    await Promise.all(
+      [...byHost.values()].map(async (idx) => {
+        for (const i of idx) await check(i);
+      }),
+    );
+  } else
+    for (const i of links.keys()) {
+      if (i > 0 && o.pauseMs > 0) await Bun.sleep(o.pauseMs);
+      await check(i);
+    }
   const counts = Object.fromEntries(CLASSES.map((c) => [c, out.filter((l) => l.status === c).length])) as Record<
     LinkClass,
     number

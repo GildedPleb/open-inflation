@@ -2392,7 +2392,8 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
       const { fs, progress, summary } = await run(onGood({ [FED]: added }), fake({ kind: "http", status }).opts);
       expect(fs).toEqual([]);
       const why = status === 429 ? "rate limit" : "challenge";
-      expect(progress.at(-1)).toBe(`L8 [2/2] unverified (HTTP ${status}, Ghostarchive ${why}; no verdict) ${GHOST}`);
+      const word = status === 429 ? "rate-limited (" : "blocked (challenge/CAPTCHA; ";
+      expect(progress.at(-1)).toBe(`L8 [2/2] ${word}HTTP ${status}, Ghostarchive ${why}; no verdict) ${GHOST}`);
       expect(summary).toEqual(["ghostarchive: 0 verified, 1 unverified", GHOST]);
     }
   });
@@ -2502,11 +2503,12 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
     ]);
   });
   for (const status of [403, 429])
-    test(`HTTP ${status} (an archive.today block or rate limit) is rate-limited, not a fail`, async () => {
+    test(`HTTP ${status} (an archive.today block or rate limit) is no verdict, not a fail`, async () => {
       const f = fake({ kind: "http", status });
       const { fs, lines } = await progressOf(onGood({ [FED]: added }), f);
       expect(fs).toEqual([]);
-      expect(lines.at(-1)).toBe(`L8 [2/2] rate-limited (HTTP ${status}, archive.today; no verdict) ${TODAY}`);
+      const word = status === 429 ? "rate-limited (" : "blocked (challenge/CAPTCHA; ";
+      expect(lines.at(-1)).toBe(`L8 [2/2] ${word}HTTP ${status}, archive.today; no verdict) ${TODAY}`);
       expect(f.avail).toEqual([]);
     });
   test("404 fails and names archive.today", () =>

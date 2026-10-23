@@ -7,11 +7,17 @@
 // Ghostarchive (Archive URL 3), where HTTP 403/503 is its Cloudflare challenge: no verdict, not a failure, listed
 // after "ghostarchive: N verified, M unverified".
 // A 404/410 is excused only by a "- Re-archive: <url>" note added in the same diff. Committed links are never re-swept.
-// Exit 0 clean, 1 with findings, 2 on usage or base errors. Same base selection as lint (lib/lint-base.ts).
+// Paced (lib/pacer.ts): one host's requests serial and spaced (archive.today 30 s; OBM_RATE_<HOST>_MS overrides),
+// hosts in parallel, 429/503 retried with Retry-After or backoff; a challenge/CAPTCHA is "blocked", not retried.
+// The expected time is printed first. Every URL must get a verdict: a run that leaves any URL rate-limited or blocked
+// is incomplete, not clean.
+// Exit 0 clean, 1 with findings, 2 on usage, base or pacing-setting errors, 3 incomplete (no findings, but some URLs
+// still have no verdict). Same base selection as lint (lib/lint-base.ts).
 import { archiveNet } from "./lib/archive.ts";
 import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, UnknownBase } from "./lib/git.ts";
 import { chooseBase } from "./lib/lint-base.ts";
-import { verify } from "./lib/verify.ts";
+import { createPacer, duration, hostKey, type PaceConfig, paceFromEnv, realClock } from "./lib/pacer.ts";
+import { verify, verifyExit } from "./lib/verify.ts";
 
 const USAGE = "usage: bun run verify [--base <ref>]";
 
@@ -56,12 +62,37 @@ try {
   console.error(`verify: ${e.message}`);
   process.exit(2);
 }
+let pace: PaceConfig;
+try {
+  pace = paceFromEnv(process.env);
+} catch (e) {
+  console.error(`verify: ${(e as Error).message}`);
+  process.exit(2);
+}
+const started = Date.now();
+const unresolved = { "rate-limited": [] as string[], blocked: [] as string[] };
 const findings = await verify(snapshot, {
   net: archiveNet(fetch, 15_000),
   now: Date.now(),
+  pacer: createPacer(pace, realClock, (url, ms, why) =>
+    console.error(`verify: L8 waiting ${duration(ms)} (${hostKey(url)}: ${why}) before ${url}`),
+  ),
   progress: (line) => console.error(`verify: ${line}`),
   summary: (line) => console.log(line),
+  noVerdict: (url, why) => unresolved[why].push(url),
 });
 for (const f of findings) console.log(`${f.check} ${f.file}: ${f.message}`);
-console.log(findings.length === 0 ? `verify: clean (base ${base ?? "none"})` : `verify: ${findings.length} finding(s)`);
-process.exit(findings.length === 0 ? 0 : 1);
+const open = unresolved["rate-limited"].length + unresolved.blocked.length;
+if (open > 0)
+  console.log(
+    `verify: INCOMPLETE: ${open} archive URL(s) have no verdict: ${unresolved["rate-limited"].length} rate-limited (gave up), ${unresolved.blocked.length} blocked (challenge/CAPTCHA); open them in a browser or re-run from another network`,
+  );
+console.log(`verify: took ${duration(Date.now() - started)}`);
+console.log(
+  findings.length > 0
+    ? `verify: ${findings.length} finding(s)`
+    : open > 0
+      ? `verify: no findings, but incomplete (base ${base ?? "none"})`
+      : `verify: clean (base ${base ?? "none"})`,
+);
+process.exit(verifyExit(findings.length, open));

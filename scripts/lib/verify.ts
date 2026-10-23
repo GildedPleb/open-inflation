@@ -1,8 +1,9 @@
 // L8's link check, run locally by `bun run verify`: HEAD each archive URL added since the base, once.
 // Never part of lint or CI: those make no network call. The only I/O is the injected Net.
-import { MAX_HOPS } from "./archive.ts";
+import { MAX_HOPS, pacedNet } from "./archive.ts";
 import { type ArchiveRef, archiveRefs, decodeAll } from "./checks.ts";
-import type { CheckId, Finding, Net, Snapshot, VerifyOptions } from "./types.ts";
+import { duration, hostKey, realClock } from "./pacer.ts";
+import type { CheckId, Finding, HeadResult, Net, Snapshot, VerifyOptions } from "./types.ts";
 
 /** HTTP statuses that confirm a dead snapshot. Only these can be excused by a Re-archive note. */
 const DEAD = [404, 410];
@@ -10,7 +11,16 @@ const CONCURRENCY = 4;
 
 type Problem = { readonly dead: boolean; readonly message: string; readonly status?: number } | null;
 /** Why a URL passed, for the progress line: "HTTP 200, <timestamp>" or "archive.org availability, <timestamp>". */
-type Verdict = { readonly problem: Problem; readonly ok?: string; readonly limited?: string };
+type Verdict = {
+  readonly problem: Problem;
+  readonly ok?: string;
+  readonly limited?: string;
+  /** For a limited verdict: still rate-limited (one try, or the cap), or blocked by a challenge/CAPTCHA. */
+  readonly why?: "rate-limited" | "blocked";
+};
+type HttpResult = Extract<HeadResult, { kind: "http" }>;
+const gaveUp = (r: HttpResult) =>
+  r.gaveUp ? `gave up after ${r.gaveUp.tries} tries over ${duration(r.gaveUp.elapsedMs)}; ` : "";
 
 const RATE_LIMITED = 429;
 
@@ -43,7 +53,7 @@ async function snapshotVerdict(net: Net, url: string, ref: ArchiveRef): Promise<
       problem: {
         dead: DEAD.includes(r.status),
         status: r.status,
-        message: `failed HEAD: HTTP ${r.status}${r.status === RATE_LIMITED ? " (rate-limited; retry later)" : ""}`,
+        message: `failed HEAD: HTTP ${r.status}${r.status === RATE_LIMITED ? ` (rate-limited; ${gaveUp(r)}retry later)` : ""}`,
       },
     };
   const a = await net.available(ref.original, ref.ts);
@@ -87,7 +97,11 @@ async function todayVerdict(net: Net, url: string): Promise<Verdict> {
     };
   if (r.kind === "http") {
     if (TODAY_BLOCKED.includes(r.status))
-      return { problem: null, limited: `HTTP ${r.status}, archive.today; no verdict` };
+      return {
+        problem: null,
+        limited: `${gaveUp(r)}HTTP ${r.status}, archive.today; no verdict`,
+        why: r.challenge || r.status === 403 ? "blocked" : "rate-limited",
+      };
     return {
       problem: {
         dead: DEAD.includes(r.status),
@@ -126,11 +140,15 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
       },
     };
   if (r.kind === "http") {
-    if (GHOST_BLOCKED.includes(r.status))
+    if (GHOST_BLOCKED.includes(r.status)) {
+      // A 503 is its Cloudflare challenge unless pacing retried it to the cap (then it was a rate limit).
+      const limit = r.status === RATE_LIMITED || r.gaveUp !== undefined;
       return {
         problem: null,
-        limited: `HTTP ${r.status}, Ghostarchive ${r.status === RATE_LIMITED ? "rate limit" : "challenge"}; no verdict`,
+        limited: `${gaveUp(r)}HTTP ${r.status}, Ghostarchive ${limit ? "rate limit" : "challenge"}; no verdict`,
+        why: r.challenge || !limit ? "blocked" : "rate-limited",
       };
+    }
     return {
       problem: {
         dead: DEAD.includes(r.status),
@@ -155,29 +173,38 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
 export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Finding[]> {
   const out: Finding[] = [];
   const emit = (check: CheckId, file: string, message: string) => out.push({ check, file, message });
-  const { net, progress, summary } = opts;
+  const { progress, summary } = opts;
+  const net = opts.pacer ? pacedNet(opts.net, opts.pacer, opts.clock ?? realClock) : opts.net;
   const now = archiveRefs(decodeAll(snap.files), opts.now);
   const was = archiveRefs(snap.base && decodeAll(snap.base));
   const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
   const results: Problem[] = [];
   const noted = (url: string) => now.notes.has(url) && !was.notes.has(url);
   if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
+  if (todo.length > 0 && opts.pacer) {
+    const e = opts.pacer.estimate(todo.map(([url]) => url));
+    const hosts = e.hosts.map((h) => `${h.key} ${h.urls} x ${duration(h.intervalMs)}`).join(", ");
+    progress?.(`L8 pacing: about ${duration(e.ms)} before any retry (hosts in parallel: ${hosts})`);
+  }
   let next = 0;
   let done = 0;
   const verified: string[] = [];
   const unverified: string[] = [];
   const ghostVerified: string[] = [];
   const ghostUnverified: string[] = [];
-  const worker = async () => {
-    for (let i = next++; i < todo.length; i = next++) {
+  const check = async (i: number) => {
+    {
       const [url, ref] = todo[i] as [string, ArchiveRef];
       const v = await snapshotVerdict(net, url, ref);
       results[i] = v.problem;
       if (ref.host === "today" && !v.problem) (v.limited ? unverified : verified).push(url);
       if (ref.host === "ghost" && !v.problem) (v.limited ? ghostUnverified : ghostVerified).push(url);
+      if (v.limited) opts.noVerdict?.(url, v.why ?? "rate-limited");
       const p = v.problem;
       const word = v.limited
-        ? `${ref.host === "ghost" ? "unverified" : "rate-limited"} (${v.limited})`
+        ? v.why === "blocked"
+          ? `blocked (challenge/CAPTCHA; ${v.limited})`
+          : `rate-limited (${v.limited})`
         : !p
           ? `ok (${v.ok})`
           : p.dead && noted(url)
@@ -186,7 +213,19 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
       progress?.(`L8 [${++done}/${todo.length}] ${word} ${url}`);
     }
   };
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  const worker = async () => {
+    for (let i = next++; i < todo.length; i = next++) await check(i);
+  };
+  if (opts.pacer) {
+    // Paced: one worker per host (its requests serial and spaced), the hosts in parallel.
+    const byHost = new Map<string, number[]>();
+    for (const [i, [url]] of todo.entries()) byHost.set(hostKey(url), [...(byHost.get(hostKey(url)) ?? []), i]);
+    await Promise.all(
+      [...byHost.values()].map(async (idx) => {
+        for (const i of idx) await check(i);
+      }),
+    );
+  } else await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   // Assay M-2: a 403/429 is no verdict, so say how many archive.today captures went unchecked, and which, for review.
   // Failures are findings and are not counted; with no verified or rate-limited capture there is no line.
   if (verified.length + unverified.length > 0) {
@@ -211,3 +250,6 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
   }
   return out;
 }
+
+/** verify's exit: 1 with findings; else 3 when some URL still has no verdict (incomplete: every URL must be checked); else 0. */
+export const verifyExit = (findings: number, noVerdict: number): number => (findings > 0 ? 1 : noVerdict > 0 ? 3 : 0);
