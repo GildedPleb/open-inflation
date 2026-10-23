@@ -44,20 +44,17 @@ const git = (dir: string, ...args: string[]) => {
   return dec.decode(r.stdout).trim();
 };
 /**
- * A self-contained copy of `src`'s committed tree (HEAD), as its own one-commit git repo. Tests that lint "this
- * repository" use it, never the live working tree, so uncommitted evidence cannot change their result or reach the
- * network.
+ * A copy of `src`'s committed tree (HEAD) as its own git checkout: a real `git clone --shared` (it borrows src's
+ * objects read-only instead of re-hashing every file, the slow part of archive + add + commit), with the origin
+ * remote dropped so nothing of src's branches leaks in. Tests that lint "this repository" use it, never the live
+ * working tree, so uncommitted evidence cannot change their result or reach the network.
  */
 const committedTree = (src: string): string => {
   const dir = mkdtempSync(join(tmpdir(), "obm-tree-"));
   dirs.push(dir);
-  const tar = Bun.spawnSync(["git", "-C", src, "archive", "--format=tar", "HEAD"]);
-  if (tar.exitCode !== 0) throw new Error(dec.decode(tar.stderr));
-  const x = Bun.spawnSync(["tar", "-x", "-C", dir], { stdin: tar.stdout });
-  if (x.exitCode !== 0) throw new Error(dec.decode(x.stderr));
-  git(dir, "init", "-q", "--template=");
-  git(dir, "add", "-A");
-  git(dir, "commit", "-qm", "committed tree", "--allow-empty");
+  const r = Bun.spawnSync(["git", "clone", "-q", "--shared", "--template=", src, dir]);
+  if (r.exitCode !== 0) throw new Error(dec.decode(r.stderr));
+  git(dir, "remote", "remove", "origin");
   return dir;
 };
 /** One committed copy of this repository, made once and never edited: every test that only reads it shares it. */

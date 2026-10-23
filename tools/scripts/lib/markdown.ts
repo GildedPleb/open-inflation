@@ -53,7 +53,9 @@ function parseLines(md: string): Line[] {
   });
 }
 
-export function headings(md: string): Heading[] {
+/** ATX headings outside code, memoized like lines (L3 and every anchor check re-read the same files). */
+export const headings: (md: string) => readonly Heading[] = memoText(parseHeadings);
+function parseHeadings(md: string): Heading[] {
   const out: Heading[] = [];
   for (const l of lines(md)) {
     if (l.fence !== "none") continue;
@@ -63,23 +65,20 @@ export function headings(md: string): Heading[] {
   return out;
 }
 
-/** GitHub's heading-anchor algorithm (github-slugger), with -1, -2 ... for repeats. */
-export const slugs: (md: string) => ReadonlySet<string> = memoText(parseSlugs);
-function parseSlugs(md: string): Set<string> {
+/** GitHub's heading-anchor algorithm (github-slugger), with -1, -2 ... for repeats: one slug per heading, in order. */
+export const headingSlugs: (md: string) => readonly string[] = memoText(parseSlugs);
+export const slugs: (md: string) => ReadonlySet<string> = memoText((md) => new Set(headingSlugs(md)));
+function parseSlugs(md: string): string[] {
   const seen = new Map<string, number>();
-  const out = new Set<string>();
-  for (const h of headings(md)) {
+  return headings(md).map((h) => {
     const base = h.text
       .toLowerCase()
       .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
       .replace(/ /g, "-");
-    let slug = base;
     const n = seen.get(base);
-    if (n !== undefined) slug = `${base}-${n}`;
     seen.set(base, (n ?? 0) + 1);
-    out.add(slug);
-  }
-  return out;
+    return n === undefined ? base : `${base}-${n}`;
+  });
 }
 
 /** Inline link and image targets outside code. */

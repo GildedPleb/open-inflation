@@ -6,9 +6,11 @@ import { verify } from "../scripts/lib/verify.ts";
 import {
   CSV_HEADER,
   catalog,
+  ECB,
   extract,
   failedLog,
   files,
+  folderReadme,
   fxExtract,
   good,
   goodText,
@@ -16,6 +18,7 @@ import {
   issuerFile,
   machineBlock,
   onGood,
+  quarterSection,
   revisedRollup,
   rollup,
   skeletonText,
@@ -54,6 +57,7 @@ const OFF: Opts = { archive: "off", now: NOW };
 const ROW = "2026-09-30,1221,base_money/quarters/2026Q3.md";
 const FED = "base_money/issuers/FED/2026.md";
 const ROLLUP = "base_money/quarters/2026Q3.md";
+const FED_README = "base_money/issuers/FED/README.md";
 
 const ids = (fs: Finding[]): CheckId[] => [...new Set(fs.map((f) => f.check))].sort();
 
@@ -130,9 +134,9 @@ describe("L2 evidence existence", () => {
             "$1#2026q2",
           ),
         ),
-        [FED]: `${fedText}\n## 2026Q2\n`,
-        "base_money/issuers/ECB/2026.md": `${goodText()["base_money/issuers/ECB/2026.md"]}\n## 2026Q2\n`,
-        "base_money/FX/2026.md": `${goodText()["base_money/FX/2026.md"]}\n## 2026Q2\n\n${fxExtract("EUR")}`,
+        [FED]: `${fedText}${quarterSection("FED", "2026Q2")}`,
+        "base_money/issuers/ECB/2026.md": `${goodText()["base_money/issuers/ECB/2026.md"]}${quarterSection("ECB", "2026Q2")}`,
+        "base_money/FX/2026.md": `${goodText()["base_money/FX/2026.md"]}${quarterSection("FX", "2026Q2", "EUR")}`,
         "base_money/README.md": index("- [2026Q2](quarters/2026Q2.md)"),
         ...csv("2026-06-30,1221,base_money/quarters/2026Q2.md", ROW),
       }),
@@ -151,10 +155,15 @@ describe("L2 evidence existence", () => {
 
 describe("L3 heading immutability", () => {
   test("renamed heading", async () => {
-    const fs = await fails(onGood({ [FED]: fedText.replace("## 2026Q3", "## 2026-Q3") }), ["L3", "L4", "L5"], /2026Q3/);
+    const fs = await fails(
+      onGood({ [FED]: fedText.replace("## 2026Q3", "## 2026-Q3") }),
+      ["L3", "L4", "L5", "L9"],
+      /2026Q3/,
+    );
     expect(fs.find((f) => f.check === "L3")?.file).toBe(FED);
   });
-  test("removed issuer file loses its headings", () => fails(onGood({ [FED]: null }), ["L3", "L4", "L5"], /## 2026Q3/));
+  test("removed issuer file loses its headings", () =>
+    fails(onGood({ [FED]: null, [FED_README]: null }), ["L3", "L4", "L5", "L9"], /## 2026Q3/));
   test("a quarter file's headings are presentation: changing one passes", () =>
     passes(onGood({ [ROLLUP]: rollup().replace("## Conflicts", "## Conflict") })));
   test("new heading appended passes", () =>
@@ -165,7 +174,7 @@ describe("L4 append-only (no committed line changes)", () => {
   test("new block inserted under an existing dated heading passes", () =>
     passes(onGood({ [FED]: fedText.replace("## 2026Q3\n", `## 2026Q3\n\n${extract({ title: "FED revision" })}`) })));
   test("edited verbatim quote", () =>
-    fails(onGood({ [FED]: fedText.replace("synthetic): 1", "synthetic): 2") }), ["L4"], /line 13/));
+    fails(onGood({ [FED]: fedText.replace("synthetic): 1", "synthetic): 2") }), ["L4"], /line 14/));
   test("deleted line", () =>
     fails(onGood({ [FED]: fedText.replace("- Notes: synthetic fixture\n", "") }), ["L4"], /removed or changed/));
   test("a quarter file's prose is presentation: rewriting it passes", () =>
@@ -224,9 +233,9 @@ describe("L4 base_money.csv rows", () => {
     "$1#2026q4",
   );
   const q4Headings = {
-    [FED]: `${fedText}\n## 2026Q4\n`,
-    "base_money/issuers/ECB/2026.md": `${goodText()["base_money/issuers/ECB/2026.md"]}\n## 2026Q4\n`,
-    "base_money/FX/2026.md": `${goodText()["base_money/FX/2026.md"]}\n## 2026Q4\n\n${fxExtract("EUR")}`,
+    [FED]: `${fedText}${quarterSection("FED", "2026Q4")}`,
+    "base_money/issuers/ECB/2026.md": `${goodText()["base_money/issuers/ECB/2026.md"]}${quarterSection("ECB", "2026Q4")}`,
+    "base_money/FX/2026.md": `${goodText()["base_money/FX/2026.md"]}${quarterSection("FX", "2026Q4", "EUR")}`,
   };
   test("a new row passes", () =>
     passes(
@@ -360,8 +369,13 @@ describe("L5 link integrity", () => {
     fails(withLink("- [FED](base_money/issuers/FED/2026.md#2026q3)"), ["L5"], /quarters\/base_money\/issuers/));
   test("same-file anchor", () => fails(withLink("- [up](#components-x)"), ["L5"], /#components-x/));
   test("same-file anchor that exists passes", () => passes(withLink("- [up](#machine-block)")));
-  test("external and in-code links are ignored", () =>
-    passes(withLink("- [fed](https://www.federalreserve.gov/)\n\n```\n[x](missing.md)\n```\n\n`[y](missing.md)`")));
+  test("external links are not resolved (outside quarter files) and in-code links are ignored", () =>
+    passes(
+      good({
+        "base_money/README.md": `${index()}\nSee [the Fed](https://www.federalreserve.gov/).\n`,
+        [ROLLUP]: rollup().replace("## Conflicts", "```\n[x](missing.md)\n```\n\n`[y](missing.md)`\n\n## Conflicts"),
+      }),
+    ));
   test("broken evidence index link", () =>
     fails(good({ "base_money/README.md": index("- [Q4](quarters/2026Q4.md)") }), ["L5"], /2026Q4/));
   test("machine-block anchor uses the exact slug", () =>
@@ -374,15 +388,91 @@ describe("L5 link integrity", () => {
           ),
         ),
       }),
-      ["L5", "L9"],
+      ["L9", "L5"],
       /machine block.*#2026Q3/,
     ));
   test("machine-block fx anchor must resolve", () =>
     fails(
       good({ [ROLLUP]: rollup(machineBlock({}).replace("FX/2026.md#2026q3", "FX/2025.md#2026q3")) }),
-      ["L5"],
+      ["L9", "L5"],
       /FX\/2025/,
     ));
+});
+
+describe("L5 quarter reader text links only repo-relative paths (source and archive URLs live in the extracts)", () => {
+  const withText = (t: string) => good({ [ROLLUP]: rollup().replace("## Conflicts", `${t}\n\n## Conflicts`) });
+  test("a raw source URL in reader text fails", () =>
+    fails(
+      withText("- [Fed H.4.1](https://www.federalreserve.gov/releases/h41/)"),
+      ["L5"],
+      /line \d+: .*absolute http/,
+    ));
+  test("an archive URL in reader text fails", () =>
+    fails(
+      withText(
+        "| Original | Wayback |\n| --- | --- |\n| x | <https://web.archive.org/web/20261002000000/https://x.test/> |",
+      ),
+      ["L5"],
+      /absolute http/,
+    ));
+  test("a bare URL in prose or a non-yaml code fence fails", async () => {
+    const fs = await fails(
+      withText("See http://x.test/a.\n\n```text\nhttps://archive.ph/abcd\n```"),
+      ["L5"],
+      /absolute/,
+    );
+    expect(fs.length).toBe(2);
+  });
+  test("URLs inside the machine block and the failed_attempts log are fine", () =>
+    passes(
+      good({
+        [ROLLUP]: rollup(
+          machineBlock({
+            extra:
+              "# source https://www.federalreserve.gov/releases/h41/\n# https://web.archive.org/web/20261002000000/https://x.test/",
+          }),
+          machineBlock({}),
+          failedLog("# https://archive.ph/abcd\nfailed_attempts: []"),
+        ),
+      }),
+    ));
+});
+
+describe("L12/L13 issuer and FX folder READMEs (static facts plus a generated ## Years list)", () => {
+  const FED25 = "base_money/issuers/FED/2025.md";
+  const fed25 = `${issuerFile("FED", "2025Q4")}`;
+  test("the good repo (READMEs listing every year) passes; FX's README is optional", async () => {
+    await passes(good());
+    await passes(good({ "base_money/FX/README.md": null }));
+  });
+  test("a basket issuer's folder without a README fails L13, even when nothing links it", () =>
+    fails(
+      good({ "base_money/issuers/BOJ/README.md": null }),
+      ["L13"],
+      /issuers\/BOJ\/README\.md|is missing: every issuer folder has a README\.md/,
+    ));
+  test("the list is newest first, one line per year file", () =>
+    passes(good({ [FED25]: fed25, [FED_README]: folderReadme("FED", "2026", "2025") })));
+  test("a Years list missing a year fails L13", () =>
+    fails(good({ [FED25]: fed25 }), ["L13"], /issuers\/FED\/README\.md|year list differs/));
+  test("an extra year (no such file) fails L13 (and its link L5)", () =>
+    fails(good({ [FED_README]: folderReadme("FED", "2026", "2025") }), ["L13", "L5"], /year list differs/));
+  test("years out of order fail L13", () =>
+    fails(good({ [FED25]: fed25, [FED_README]: folderReadme("FED", "2025", "2026") }), ["L13"], /year list differs/));
+  test("a README without a ## Years heading fails L13", () =>
+    fails(good({ [FED_README]: "# FED\n\nStatic facts.\n" }), ["L13"], /## Years/));
+  test("the hand-written facts around the list are free text (not append-only)", () =>
+    passes(
+      onGood({ [FED_README]: folderReadme("FED", "2026").replace("Static facts.", "Other facts.\n\n## History") }),
+    ));
+  test("a README for an issuer outside the basket fails L12", () =>
+    fails(
+      good({ "base_money/issuers/XYZ/README.md": "# XYZ\n\n## Years\n\nNo years yet.\n" }),
+      ["L12"],
+      /XYZ is not in the catalog basket/,
+    ));
+  test("issuers/FX/README.md is misplaced (FX has its own folder)", () =>
+    fails(good({ "base_money/issuers/FX/README.md": "# FX\n\n## Years\n\nNo years yet.\n" }), ["L12"], /holds only/));
 });
 
 describe("L6 evidence index completeness", () => {
@@ -1005,7 +1095,7 @@ describe("L9 aggregation", () => {
   test("missing machine block", () => fails(good({ [ROLLUP]: rollup("") }), ["L9"], /no ```yaml machine block/));
   test("unparseable YAML", () => fails(good({ [ROLLUP]: rollup("```yaml\nquarter: [\n```\n") }), ["L9"], /YAML/));
   test("quarter differs from filename", () =>
-    fails(good({ [ROLLUP]: rollup(machineBlock({ quarter: "2026Q2" })) }), ["L9"], /quarter/));
+    fails(good({ [ROLLUP]: rollup(machineBlock({ quarter: "2026Q2" })) }), ["L9", "L5"], /quarter/));
   test("as_of is not the quarter-end", () =>
     fails(good({ [ROLLUP]: rollup(machineBlock({ asOf: "2026-09-29" })) }), ["L9"], /as_of/));
   test("unit must be USD", () =>
@@ -1119,7 +1209,7 @@ describe("L9 aggregation", () => {
   test("a component currency with no FX extract fails", () =>
     fails(
       good({ [FX]: issuerFile("FX", "2026Q3", fxExtract("JPY")) }),
-      ["L9"],
+      ["L9", "L5"],
       /components\[1\] \(ECB\) local_currency EUR has no FX extract .*"- Currency: EUR".*## 2026Q3.*base_money\/FX\/2026\.md/,
     ));
   test("an FX extract under another quarter does not count", () =>
@@ -1134,11 +1224,11 @@ describe("L9 aggregation", () => {
         [FX]: `# FX 2026\n\n## 2026Q3\n\n- Currency: EUR\n\n${extract({ title: "FX note" })}\n\`\`\`\n- Currency: EUR\n\`\`\`\n`,
       }),
       // The "FX note" extract has no FX fields, so L7 reports it too.
-      ["L9", "L7"],
+      ["L9", "L7", "L5"],
       /local_currency EUR has no FX extract/,
     ));
   test("no FX file at all fails for a non-USD component", () =>
-    fails(good({ [FX]: null }), ["L9", "L5"], /local_currency EUR has no FX extract/));
+    fails(good({ [FX]: null, "base_money/FX/README.md": null }), ["L9", "L5"], /local_currency EUR has no FX extract/));
   test("a USD-only quarter needs no FX extract", () =>
     passes(
       good({
@@ -1357,13 +1447,13 @@ describe("L9 component anchors", () => {
   test("anchor in another issuer's file fails", () =>
     fails(
       anchored("base_money/issuers/ECB/2026.md#2026q3"),
-      ["L9"],
+      ["L9", "L5"],
       /components\[0\]\.anchor base_money\/issuers\/ECB\/2026\.md#2026q3 must be base_money\/issuers\/FED\/2026\.md#2026q3/,
     ));
   test("anchor at another quarter's heading fails", () =>
     fails(
       anchored("base_money/issuers/FED/2026.md#2026q2", { [FED]: `${fedText}\n## 2026Q2\n` }),
-      ["L9"],
+      ["L9", "L5"],
       /must be base_money\/issuers\/FED\/2026\.md#2026q3/,
     ));
   test("anchor at an extract heading instead of the quarter fails", () =>
@@ -1384,7 +1474,7 @@ describe("L9 the quarter's reader table equals its current machine block", () =>
   const table = (from: string, to: string) => good({ [ROLLUP]: rollup().replace(from, to) });
   test("a local amount that differs fails", () =>
     fails(table("EUR 200.25", "EUR 200.26"), ["L9"], /Local amount "EUR 200\.26"/));
-  test("a USD amount that differs fails", () => fails(table("| $220 |", "| $221 |"), ["L9"], /USD "\$221"/));
+  test("a USD amount that differs fails", () => fails(table("[$220]", "[$221]"), ["L9"], /USD "\$221"/));
   test("an FX rate that differs fails", () => fails(table("1.1 USD per EUR", "1.2 USD per EUR"), ["L9"], /FX rate/));
   test("the same rate quoted the other way round matches", async () => {
     const block = machineBlock({}).replace('fx_rate: "1.1"', 'fx_rate: "0.5"').replace('"1221"', '"1101"');
@@ -1396,7 +1486,83 @@ describe("L9 the quarter's reader table equals its current machine block", () =>
   test("a missing component row fails", () =>
     fails(table(/\| \[ECB\].*\n/.exec(rollup())?.[0] ?? "", ""), ["L9"], /ECB/));
   test("a row for an issuer not in the block fails", () =>
-    fails(table("[ECB](../issuers/ECB/2026.md)", "[BOJ](../issuers/BOJ/2026.md)"), ["L9"], /BOJ is not a component/));
+    fails(
+      table("[ECB](../issuers/ECB/README.md)", "[BOJ](../issuers/BOJ/README.md)"),
+      ["L9"],
+      /BOJ is not a component/,
+    ));
+  test("an Issuer cell linking the issuer's year file instead of its README fails", () =>
+    fails(table("[ECB](../issuers/ECB/README.md)", "[ECB](../issuers/ECB/2026.md)"), ["L9"], /Issuer cell must link/));
+  test("an Issuer cell linking neither fails", () =>
+    fails(table("[ECB](../issuers/ECB/README.md)", "[ECB](../README.md)"), ["L9"], /Issuer cell must link/));
+  test("a linked USD value that differs fails", () =>
+    fails(
+      table(
+        "[$220](../issuers/ECB/2026.md#ecb-weekly-statement)",
+        "[$219](../issuers/ECB/2026.md#ecb-weekly-statement)",
+      ),
+      ["L9"],
+      /USD "\$219"/,
+    ));
+  test("a USD link to another issuer's extract fails", () =>
+    fails(
+      table("[$220](../issuers/ECB/2026.md#ecb-weekly-statement)", "[$220](../issuers/FED/2026.md#fed-h41)"),
+      ["L9"],
+      /USD cell must link ECB's adopted extract .*#2026q3 \(\.\.\/issuers\/ECB\/2026\.md#ecb-weekly-statement\), not "\.\.\/issuers\/FED\/2026\.md#fed-h41"/,
+    ));
+  test("a USD link to the quarter heading instead of the extract fails", () =>
+    fails(
+      table("[$220](../issuers/ECB/2026.md#ecb-weekly-statement)", "[$220](../issuers/ECB/2026.md#2026q3)"),
+      ["L9"],
+      /USD cell must link ECB's adopted/,
+    ));
+  test("a USD link to the file with no fragment fails", () =>
+    fails(
+      table("[$220](../issuers/ECB/2026.md#ecb-weekly-statement)", "[$220](../issuers/ECB/2026.md)"),
+      ["L9"],
+      /USD cell must link ECB's adopted/,
+    ));
+  test("an unlinked USD value fails", () =>
+    fails(
+      table("[$220](../issuers/ECB/2026.md#ecb-weekly-statement)", "$220"),
+      ["L9"],
+      /USD cell must link ECB's adopted extract/,
+    ));
+  test("a USD link to an extract that is not adopted fails", () =>
+    fails(
+      good({
+        [ROLLUP]: rollup().replace(
+          "[$220](../issuers/ECB/2026.md#ecb-weekly-statement)",
+          "[$220](../issuers/ECB/2026.md#ecb-confirming)",
+        ),
+        [ECB]: `${goodText()[ECB]}\n${extract({ title: "ECB confirming", fields: ["- Adopted: no, confirming"] })}`,
+      }),
+      ["L9"],
+      /USD cell must link ECB's adopted extract/,
+    ));
+  test("an unlinked FX cell for a non-USD row fails", () =>
+    fails(
+      table("[1.1 USD per EUR](../FX/2026.md#fx-eur)", "1.1 USD per EUR"),
+      ["L9"],
+      /FX cell must link the adopted EUR extract/,
+    ));
+  test("an FX cell linking another currency's extract fails", () =>
+    fails(
+      good({
+        [ROLLUP]: rollup().replace("(../FX/2026.md#fx-eur)", "(../FX/2026.md#fx-jpy)"),
+        "base_money/FX/2026.md": `${goodText()["base_money/FX/2026.md"]}\n${fxExtract("JPY")}`,
+      }),
+      ["L9"],
+      /FX cell must link the adopted EUR extract under ## 2026Q3 in base_money\/FX\/2026\.md \(\.\.\/FX\/2026\.md#fx-eur\), not "\.\.\/FX\/2026\.md#fx-jpy"/,
+    ));
+  test("an FX cell linking the quarter heading fails", () =>
+    fails(table("(../FX/2026.md#fx-eur)", "(../FX/2026.md#2026q3)"), ["L9"], /FX cell must link the adopted EUR/));
+  test("a USD row's FX cell with a link fails", () =>
+    fails(
+      table("none (already USD)", "[none (already USD)](../FX/2026.md#fx-eur)"),
+      ["L9"],
+      /a USD row's FX cell has no link/,
+    ));
   test("a quarter file with no reader table fails", () =>
     fails(
       table("| Issuer | Local amount | FX rate | USD |", "| Bank | Local amount | FX rate | USD |"),
@@ -1487,6 +1653,7 @@ describe("L11 catalog baskets", () => {
         "catalog.json": withSeries({ version: "1.0.0", baskets: [V1, V2] }),
         [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })),
         "base_money/issuers/SNB/2026.md": issuerFile("SNB", "2026Q3"),
+        "base_money/issuers/SNB/README.md": folderReadme("SNB", "2026"),
       }),
     ));
 });
@@ -1655,6 +1822,7 @@ describe("L9 basket_version", () => {
         V2,
         {
           "base_money/issuers/SNB/2026.md": issuerFile("SNB", "2026Q3", extract({ title: "SNB (reference only)" })),
+          "base_money/issuers/SNB/README.md": folderReadme("SNB", "2026"),
         },
       ),
     ));
@@ -1905,6 +2073,7 @@ describe("L9 reference_values and coverage_pct", () => {
       good({
         "catalog.json": withSeries({ baskets: [{ ...V1, issuers: ["PBOC", "FED", "ECB", "BOJ"] }] }),
         "base_money/issuers/PBOC/2026.md": issuerFile("PBOC", "2026Q3", extract({ title: "PBOC (reference only)" })),
+        "base_money/issuers/PBOC/README.md": folderReadme("PBOC", "2026"),
         [ROLLUP]: rollup(
           machineBlock({
             exclusions:
@@ -1948,6 +2117,7 @@ describe("L9 reference_values and coverage_pct", () => {
     fails(
       good({
         "base_money/issuers/BOJ/2026.md": null as unknown as string,
+        "base_money/issuers/BOJ/README.md": null,
         "base_money/README.md": index(),
       }),
       ["L5"],
@@ -2062,6 +2232,7 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
         ...(convention ? { issuers: [{ id: "CBR", as_of_convention: "start_of_day" }] } : {}),
       }),
       [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })),
+      "base_money/issuers/CBR/README.md": folderReadme("CBR", "2026"),
       "base_money/issuers/CBR/2026.md": issuerFile(
         "CBR",
         "2026Q2",

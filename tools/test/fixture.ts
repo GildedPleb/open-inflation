@@ -1,5 +1,5 @@
 // Synthetic, test-only evidence. None of these numbers are real observations.
-import { extractPath, fxPath, QUARTER_LIST, quarterPath, relLink } from "../scripts/lib/paths.ts";
+import { extractPath, folderReadmePath, fxPath, QUARTER_LIST, quarterPath, relLink } from "../scripts/lib/paths.ts";
 import type { Files, Snapshot } from "../scripts/lib/types.ts";
 
 /** Fixture paths, from the one layout module (scripts/lib/paths.ts). */
@@ -41,6 +41,8 @@ export const extract = (o: {
     ...(o.archive2 === null ? [] : [`- Archive URL 2: ${o.archive2 ?? ARCHIVE2_ATTEMPT}`]),
     ...(o.archive3 === null ? [] : [`- Archive URL 3: ${o.archive3 ?? ARCHIVE3_ATTEMPT}`]),
     ...(o.fields ?? []),
+    // Adopted by default (the reader table's USD and FX cells link the adopted extract); fields can override it.
+    ...((o.fields ?? []).some((f) => f.startsWith("- Adopted:")) ? [] : ["- Adopted: yes"]),
     "- Notes: synthetic fixture",
     "",
     `> ${o.quote ?? "Monetary base (synthetic): 1"}`,
@@ -223,6 +225,43 @@ export const machineBlock = (o: {
 
 const group = (d: string) => d.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 const link = (to: string) => relLink(Q3, to);
+/** A machine-block anchor (repo path#fragment) as a link from the quarter file. */
+const anchorLink = (a: string) => {
+  const [p = "", frag] = a.split("#");
+  return `${link(p)}${frag === undefined ? "" : `#${frag}`}`;
+};
+/** A heading's GitHub slug (enough for fixture titles: lowercase, drop punctuation, spaces to hyphens). */
+const slugOf = (title: string) =>
+  title
+    .toLowerCase()
+    .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
+    .replace(/ /g, "-");
+/**
+ * The fixture's adopted extract titles: under 2026Q3 the goodText extracts, under any other quarter `<ISS> <quarter>`
+ * (`FX <CCY> <quarter>` for FX). A reader-table USD cell links the issuer's adopted extract under the component's
+ * anchor, an FX cell the currency's adopted FX extract; a test adding another quarter adds these (quarterSection).
+ */
+const ADOPTED_TITLE: Record<string, string> = {
+  FED: "FED H.4.1",
+  ECB: "ECB weekly statement",
+  BOJ: "BOJ monetary base (reference only)",
+};
+export const adoptedTitle = (iss: string, q: string): string =>
+  q === "2026Q3" ? (ADOPTED_TITLE[iss] ?? iss) : `${iss} ${q}`;
+export const fxTitle = (ccy: string, q: string): string => (q === "2026Q3" ? `FX ${ccy}` : `FX ${ccy} ${q}`);
+/** A `## <quarter>` section holding the issuer's adopted extract (or, for FX, the given currencies' FX extracts). */
+export const quarterSection = (iss: string, q: string, ...ccys: string[]): string =>
+  iss === "FX"
+    ? `\n## ${q}\n\n${ccys.map((c) => fxExtract(c, { title: fxTitle(c, q) })).join("\n")}`
+    : `\n## ${q}\n\n${extract({ title: adoptedTitle(iss, q) })}`;
+/** The link from the quarter file to the adopted extract under a repo anchor (path#yyyyqn). */
+const adoptedLink = (anchor: string, title: (q: string) => string) => {
+  const [p = "", frag = ""] = anchor.split("#");
+  return /^\d{4}q[1-4]$/.test(frag) ? `${link(p)}#${slugOf(title(frag.toUpperCase()))}` : anchorLink(anchor);
+};
+/** An issuer or FX folder README: hand-written facts, then the generated "## Years" list. */
+export const folderReadme = (name: string, ...years: string[]): string =>
+  [`# ${name}`, "", "Static facts.", "", "## Years", "", ...years.map((y) => `- [${y}](${y}.md)`), ""].join("\n");
 
 /**
  * The reader table for a block (its last ```yaml block): one row per component with "CCY amount", the FX quote as
@@ -232,6 +271,10 @@ const link = (to: string) => relLink(Q3, to);
 export const readerTable = (block: string): string => {
   const yaml = block.split("```yaml").at(-1) ?? "";
   const comps = (yaml.split(/^components:$/m)[1] ?? "").split(/^[a-z_]+:/m)[0] ?? "";
+  const fxAnchor = /fx_source_anchor: "?([^"\n]*)"?/.exec(yaml)?.[1] ?? "";
+  // The FX cell links the adopted extract under the block's own quarter in that FX file.
+  const quarter = /^quarter: "?(\d{4}Q[1-4])/m.exec(yaml)?.[1];
+  const fxFile = fxAnchor.split("#")[0] ?? "";
   const rows = comps
     .split(/^ {2}- /m)
     .slice(1)
@@ -243,8 +286,14 @@ export const readerTable = (block: string): string => {
       const fx = f("fx_rate");
       const [i = "", d = ""] = v.split(".");
       const amount = `${ccy} ${group(i)}${d ? `.${d}` : ""}`;
-      const quote = ccy === "USD" ? "none (already USD)" : `${fx} USD per ${ccy}`;
-      return `| [${iss}](${link(extractPath(iss, "2026"))}) | ${amount} | ${quote} | $${group(usd([[v || "0", fx || "1"]]).toString())} |`;
+      const quote =
+        ccy === "USD"
+          ? "none (already USD)"
+          : fxAnchor
+            ? `[${fx} USD per ${ccy}](${adoptedLink(quarter ? `${fxFile}#${quarter.toLowerCase()}` : fxAnchor, (q) => fxTitle(ccy, q))})`
+            : `${fx} USD per ${ccy}`;
+      const dollars = `$${group(usd([[v || "0", fx || "1"]]).toString())}`;
+      return `| [${iss}](${link(folderReadmePath(iss))}) | ${amount} | ${quote} | [${dollars}](${adoptedLink(f("anchor"), (q) => adoptedTitle(iss, q))}) |`;
     });
   const total = /total_usd: "?([^"\n]*)"?/.exec(yaml)?.[1] ?? "";
   return [
@@ -259,7 +308,18 @@ export const readerTable = (block: string): string => {
 export const failedLog = (body = "failed_attempts: []"): string =>
   `\n## Failed attempts (machine-readable)\n\n\`\`\`yaml\n${body}\n\`\`\`\n`;
 
-export const rollup = (block = machineBlock({}), tableFrom = block, log = failedLog()): string =>
+const rollups = new Map<string, string>();
+/** The fixture quarter file. Pure in its arguments, so built once per distinct (block, table, log). */
+export const rollup = (block = machineBlock({}), tableFrom = block, log = failedLog()): string => {
+  const key = `${block}\0${tableFrom}\0${log}`;
+  let r = rollups.get(key);
+  if (r === undefined) {
+    r = buildRollup(block, tableFrom, log);
+    rollups.set(key, r);
+  }
+  return r;
+};
+const buildRollup = (block: string, tableFrom: string, log: string): string =>
   [
     "# 2026Q3 base money",
     "",
@@ -311,8 +371,13 @@ export const catalog = (series?: unknown): string =>
 export const index = (...extra: string[]): string =>
   ["# Quarters", "", "## Quarters", "", `- [2026 Q3](${relLink(INDEX, Q3)})`, ...extra, ""].join("\n");
 
-/** A complete, valid one-quarter repo. Every check must pass on it. */
-export const goodText = (): Record<string, string> => ({
+/** A complete, valid one-quarter repo. Every check must pass on it. Built once; each call returns a fresh copy. */
+export const goodText = (): Record<string, string> => {
+  GOOD_TEXT ??= buildGoodText();
+  return { ...GOOD_TEXT };
+};
+let GOOD_TEXT: Readonly<Record<string, string>> | undefined;
+const buildGoodText = (): Record<string, string> => ({
   "README.md": "# fixture\n",
   "catalog.json": catalog(),
   "base_money.csv": `${CSV_HEADER}2026-09-30,1221,${Q3}\n`,
@@ -324,6 +389,10 @@ export const goodText = (): Record<string, string> => ({
   // Reference-only issuer: every quarter heading exists so default reference_values anchors resolve.
   [BOJ]: `${issuerFile("BOJ", "2026Q3", extract({ title: "BOJ monetary base (reference only)" }))}\n## 2026Q1\n\n## 2026Q2\n\n## 2026Q4\n`,
   [FX]: issuerFile("FX", "2026Q3", fxExtract("EUR")),
+  [folderReadmePath("FED")]: folderReadme("FED", "2026"),
+  [folderReadmePath("ECB")]: folderReadme("ECB", "2026"),
+  [folderReadmePath("BOJ")]: folderReadme("BOJ", "2026"),
+  [folderReadmePath("FX")]: folderReadme("FX", "2026"),
 });
 
 /** The empty skeleton: no data rows, no extracts. */
