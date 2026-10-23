@@ -106,6 +106,8 @@ export function rawUrl(url: string): string {
  * m-G: only "this name does not exist" (ENOTFOUND) can make a link lost. Offline, Bun reports every lookup as
  * `getaddrinfo ETIMEOUT <host>` (a resolver timeout, not an answer), which the old /ENOTFOUND|getaddrinfo|DNS/ read as
  * lost; any DNS error but ENOTFOUND is now no verdict, and ENOTFOUND is lost only while a canary host answers.
+ * F-A: every request that gets no HTTP answer (ENOTFOUND, ETIMEOUT, our own ETIMEDOUT, a reset) asks the canary check;
+ * with no canary answering it is offline, whatever the error.
  */
 const NXDOMAIN = /ENOTFOUND/;
 
@@ -125,7 +127,8 @@ const CHALLENGE_READ = 512 * 1024;
  * cap; blocked: a challenge/CAPTCHA page or header, a 403, or a Ghostarchive 503 that was not retried
  * to the cap (no pacer; with one, a 503 is retried and ends rate-limited); unconfirmed: a Ghostarchive 200 with no capture on it (loading, in progress, unrecognised);
  * error page: Ghostarchive's "Archiving error" page; offline: a network error while no canary host answers; other:
- * any other HTTP status or network error (timeout, reset, redirect loop, a DNS error but ENOTFOUND, an oversized body).
+ * any other HTTP status, or a network error while a canary answers (timeout, reset, redirect loop, a DNS error but
+ * ENOTFOUND, an oversized body).
  */
 export type AuditNoVerdict = "rate-limited" | "blocked" | "unconfirmed" | "error page" | "offline" | "other";
 export const NO_VERDICTS: readonly AuditNoVerdict[] = [
@@ -366,8 +369,9 @@ export interface AuditOptions {
    */
   readonly pacer?: Pacer;
   /**
-   * m-G: is the network up? Asked (at most once a minute) before an ENOTFOUND makes a link lost; false makes it no
-   * verdict. Defaults to canaryOnline over `fetch` (CANARIES); tests inject it.
+   * m-G, F-A: is the network up? Asked (at most once a minute) after any request that got no HTTP answer: false makes
+   * that link offline (no verdict, never lost) and skips the pacing waits until a link answers again. Defaults to
+   * canaryOnline over `fetch` (CANARIES); tests inject it.
    */
   readonly online?: () => Promise<boolean>;
   readonly clock?: Clock;
@@ -393,13 +397,16 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
   let done = 0;
   const online = o.online ?? (() => canaryOnline(o.fetch, o.timeoutMs));
   const networkUp = networkCheck(online, () => clock.now());
+  // F-A: no canary answered after the last failed request, so the network is down: requests go out unpaced (one try
+  // each, no interval wait) until any link gets an HTTP answer again.
+  let down = false;
   const check = async (i: number) => {
     const link = links[i] as Link;
     const fetched = rawUrl(link.url);
     const once = () => probe(o.fetch, fetched, o.timeoutMs);
     let r: Awaited<ReturnType<typeof once>>;
     let gaveUp: { tries: number; elapsedMs: number } | undefined;
-    if (o.pacer) {
+    if (o.pacer && !down) {
       const paced = await o.pacer.run(fetched, async () => {
         const x = await once();
         const s = x.probe.httpStatus;
@@ -416,7 +423,8 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
     const history = (manifest[link.url] ?? []).filter((e) => e.date !== o.date);
     const last = history.at(-1) ?? null;
     const prior = last && { date: last.date, sha256: last.sha256, finalUrl: last.finalUrl };
-    const offline = p.httpStatus === null && NXDOMAIN.test(p.error ?? "") && !(await networkUp());
+    const offline = p.httpStatus === null && !(await networkUp());
+    down = offline;
     const page =
       body && GHOST.test(link.url) ? ghostPage(new TextDecoder().decode(body.subarray(0, PAGE_READ_BYTES))) : null;
     const { status, detail, noVerdict } = classify(p, prior, link.url, {

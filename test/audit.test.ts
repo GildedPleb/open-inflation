@@ -23,6 +23,7 @@ import {
   storeProblem,
 } from "../scripts/lib/audit.ts";
 import { auditMain } from "../scripts/lib/audit-main.ts";
+import { createPacer, DEFAULT_PACE } from "../scripts/lib/pacer.ts";
 import { extract, files, GHOST_CAPTURE_PAGE, GHOST_ERROR_PAGE, goodText, virtualClock } from "./fixture.ts";
 
 // #18: `bun run audit`, local only. Every Original URL, Archive URL and Archive URL 2 is re-checked by HTTP status
@@ -412,6 +413,8 @@ describe("audit: network down is no verdict, never lost", () => {
   test("Bun offline (getaddrinfo ETIMEOUT for every host, canaries included): nothing lost", async () => {
     const r = await audit(offline((h) => `getaddrinfo ETIMEOUT ${h}`));
     expect(r.report.counts).toEqual({ ok: 0, changed: 0, lost: 0, "no verdict": 3 });
+    // F-A: offline, not "other": the canary is asked for every error, not only ENOTFOUND.
+    expect(r.report.links.map((l) => l.noVerdict)).toEqual(["offline", "offline", "offline"]);
   });
   test("ENOTFOUND for every host, canaries included (default check over the same fetch): nothing lost", async () => {
     const r = await audit(offline((h) => `getaddrinfo ENOTFOUND ${h}`));
@@ -499,7 +502,9 @@ describe("audit in-process (auditMain): exit 3 when incomplete; the INCOMPLETE c
     [rawUrl(wb("B"))]: [500, "oops"], // other: any other HTTP status
     [G("Err01")]: [200, GHOST_ERROR_PAGE], // error page
     [url("C")]: code(new TypeError("getaddrinfo ENOTFOUND example.test"), "ENOTFOUND"), // offline: no canary
-    [rawUrl(wb("C"))]: code(new Error("socket closed"), "ECONNRESET"), // other: a network error
+    // F-A: with no canary answering, every network error is offline, so "other" here is an HTTP status; a network
+    // error while a canary answers is "other" in "audit: no network is offline, with no pacing waits".
+    [rawUrl(wb("C"))]: [418, ""], // other: any other HTTP status
     [G("Load1")]: [200, "<html><body>Loading...</body></html>"], // unconfirmed
   };
   const run = async (t: Record<string, Route | Error>, o: { env?: Record<string, string>; argv?: string[] } = {}) => {
@@ -561,9 +566,7 @@ describe("audit in-process (auditMain): exit 3 when incomplete; the INCOMPLETE c
       expect(r.md).toContain(`${l.url}: ${l.detail}`);
     }
     expect(rows.find((l) => l.url === url("C"))?.detail).toMatch(/^getaddrinfo ENOTFOUND example\.test/);
-    expect(rows.find((l) => l.noVerdict === "other" && l.httpStatus === null)?.detail).toBe(
-      "ECONNRESET: socket closed",
-    );
+    expect(rows.filter((l) => l.noVerdict === "other").map((l) => l.detail)).toEqual(["HTTP 500", "HTTP 418"]);
   });
   test("every link with a verdict: exit 0, no INCOMPLETE line", async () => {
     const ok = Object.fromEntries(
@@ -604,5 +607,80 @@ describe("audit in-process (auditMain): exit 3 when incomplete; the INCOMPLETE c
     expect(cases).toEqual([2, 2, 2, 2]);
     expect(err[1]).toBe("audit: not inside a git working tree");
     expect(err[3]).toMatch(/^audit: .*OBM_RATE_MAX_TRIES/);
+  });
+});
+
+// F-A: with no network, however it fails (a resolver timeout, a hanging resolver, ENOTFOUND), audit asks the canary
+// after the first failed request, counts every link offline, never "other", and skips the pacing waits: Probe's run
+// waited out 21 x 30 s of archive.today pacing to report "0 offline, 88 other". Default intervals, virtual clock.
+describe("audit: no network is offline, with no pacing waits", () => {
+  const T = ["https://archive.ph/Fa001", "https://archive.ph/Fa002", "https://archive.ph/Fa003"];
+  // Three extracts sharing one original and one Wayback snapshot: archive.today is the only host with three links.
+  const three = () =>
+    files(
+      {},
+      {
+        [FED]: `# FED 2026\n\n## 2026Q3\n\n${T.map((t, i) => extract({ title: `src ${i}`, original: ORIG, archive: WB, archive2: t })).join("\n")}`,
+      },
+    );
+  const audit = async (f: typeof fetch, extra: { online?: () => Promise<boolean>; timeoutMs?: number } = {}) => {
+    const clock = virtualClock();
+    const start = clock.now();
+    const waits: string[] = [];
+    const r = await runAudit({
+      files: three(),
+      fetch: f,
+      store: join(tmp(), "store"),
+      date: "2026-10-22",
+      timeoutMs: extra.timeoutMs ?? 1000,
+      pauseMs: 0,
+      clock,
+      pacer: createPacer(DEFAULT_PACE, clock, (u, ms, why) => waits.push(`${u} ${ms} ${why}`)),
+      ...(extra.online ? { online: extra.online } : {}),
+    });
+    return { r, waits, elapsed: clock.now() - start };
+  };
+  const reasons = (r: { report: { links: AuditLink[] } }) => r.report.links.map((l) => l.noVerdict);
+  test("resolver timeout (getaddrinfo ETIMEOUT), canaries included: all offline, no waits, canary asked once", async () => {
+    const seen: string[] = [];
+    const f = (async (u: string) => {
+      seen.push(u);
+      throw new TypeError(`getaddrinfo ETIMEOUT ${new URL(u).hostname}`);
+    }) as unknown as typeof fetch;
+    const { r, waits, elapsed } = await audit(f);
+    expect(reasons(r)).toEqual(Array(5).fill("offline"));
+    expect(waits).toEqual([]);
+    expect(elapsed).toBe(0);
+    expect(seen.filter((u) => (CANARIES as readonly string[]).includes(u))).toEqual([...CANARIES]);
+  });
+  test("a resolver that hangs (our own timeout aborts each request): all offline, no waits", async () => {
+    const f = ((_u: string, init?: RequestInit) =>
+      new Promise((_, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+      })) as unknown as typeof fetch;
+    const { r, waits, elapsed } = await audit(f, { timeoutMs: 5 });
+    expect(reasons(r)).toEqual(Array(5).fill("offline"));
+    expect(r.report.links[0]?.detail).toStartWith("ETIMEDOUT: timed out after 5 ms");
+    expect(waits).toEqual([]);
+    expect(elapsed).toBe(0);
+  });
+  test("a resolver timeout while a canary answers is other, and pacing goes on", async () => {
+    const f = (async (u: string) => {
+      throw new TypeError(`getaddrinfo ETIMEOUT ${new URL(u).hostname}`);
+    }) as unknown as typeof fetch;
+    const { r, waits } = await audit(f, { online: async () => true });
+    expect(reasons(r)).toEqual(Array(5).fill("other"));
+    expect(waits).toEqual([`${T[1]} 30000 interval`, `${T[2]} 30000 interval`]);
+  });
+  test("pacing resumes once a link answers again", async () => {
+    const f = (async (u: string) => {
+      if (u === T[0]) throw new TypeError("getaddrinfo ETIMEOUT archive.ph");
+      return new Response("x", { status: 200 });
+    }) as unknown as typeof fetch;
+    const { r, waits } = await audit(f, { online: async () => false });
+    expect(r.report.links.find((l) => l.url === T[0])?.noVerdict).toBe("offline");
+    expect(r.report.counts.ok).toBe(4);
+    // T[1] goes out unpaced (the network looked down); it answers, so T[2] waits out the interval again.
+    expect(waits).toEqual([`${T[2]} 30000 interval`]);
   });
 });
