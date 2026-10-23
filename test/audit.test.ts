@@ -22,7 +22,8 @@ import {
   runAudit,
   storeProblem,
 } from "../scripts/lib/audit.ts";
-import { extract, files, GHOST_CAPTURE_PAGE, GHOST_ERROR_PAGE, goodText } from "./fixture.ts";
+import { auditMain } from "../scripts/lib/audit-main.ts";
+import { extract, files, GHOST_CAPTURE_PAGE, GHOST_ERROR_PAGE, goodText, virtualClock } from "./fixture.ts";
 
 // #18: `bun run audit`, local only. Every Original URL, Archive URL and Archive URL 2 is re-checked by HTTP status
 // and content hash against the last saved copy in a store outside the repository. Fake fetch, temp dirs only.
@@ -125,7 +126,20 @@ describe("audit: classes (one per class)", () => {
   // m-G: offline, Bun says `getaddrinfo ETIMEOUT <host>` for every lookup; a resolver that did not answer is no verdict.
   test("no verdict: a DNS error that is not ENOTFOUND (the resolver timed out or failed)", () => {
     for (const error of ["getaddrinfo ETIMEOUT example.test", "getaddrinfo EAI_AGAIN example.test", "DNS SERVFAIL"])
-      expect(res({ httpStatus: null, sha256: null, error })).toEqual({ status: "no verdict", detail: error });
+      expect(res({ httpStatus: null, sha256: null, error })).toEqual({
+        status: "no verdict",
+        detail: error,
+        noVerdict: "other",
+      });
+  });
+  test("F-1: pacing's challenge flag is blocked and its give-up rate-limited, whatever the status", () => {
+    const p = { httpStatus: 503, finalUrl: null, sha256: null, error: null };
+    expect(classify(p, null, ORIG, { challenge: true })).toEqual({
+      status: "no verdict",
+      detail: "HTTP 503 (blocked: challenge/CAPTCHA)",
+      noVerdict: "blocked",
+    });
+    expect(classify(p, null, ORIG, { gaveUp: { tries: 3, elapsedMs: 61_000 } }).noVerdict).toBe("rate-limited");
   });
   test("no verdict: ENOTFOUND while offline (no canary answered)", () =>
     expect(
@@ -135,6 +149,7 @@ describe("audit: classes (one per class)", () => {
     ).toEqual({
       status: "no verdict",
       detail: "getaddrinfo ENOTFOUND x.test (network unreachable: no canary host answered)",
+      noVerdict: "offline",
     }));
   test("no verdict: 403, 429, blocked (other errors and statuses too)", () => {
     for (const httpStatus of [403, 429, 500, 503]) expect(res({ httpStatus, sha256: null }).status).toBe("no verdict");
@@ -146,16 +161,20 @@ describe("audit: classes (one per class)", () => {
   test("no verdict on Ghostarchive: 403 and 503 are its Cloudflare challenge, 429 as on every host; 404 is still lost", () => {
     const g = (httpStatus: number) => classify({ httpStatus, finalUrl: null, sha256: null, error: null }, prior, GHOST);
     for (const s of [403, 503])
-      expect(g(s)).toEqual({ status: "no verdict", detail: `HTTP ${s} (blocked: Ghostarchive Cloudflare challenge)` });
-    expect(g(429)).toEqual({ status: "no verdict", detail: "HTTP 429 (blocked or rate-limited)" });
+      expect(g(s)).toEqual({
+        status: "no verdict",
+        detail: `HTTP ${s} (blocked: Ghostarchive Cloudflare challenge)`,
+        noVerdict: "blocked",
+      });
+    expect(g(429)).toEqual({ status: "no verdict", detail: "HTTP 429 (rate-limited)", noVerdict: "rate-limited" });
     expect(g(404).status).toBe("lost");
-    // Elsewhere a 503 is plain no verdict, and a 403 is the generic block.
-    expect(classify({ httpStatus: 503, finalUrl: null, sha256: null, error: null }, prior, ORIG).detail).toBe(
-      "HTTP 503",
-    );
-    expect(classify({ httpStatus: 403, finalUrl: null, sha256: null, error: null }, prior, ORIG).detail).toMatch(
-      /blocked or rate-limited/,
-    );
+    // Elsewhere a 503 is "other" no verdict, a 403 blocked and a 429 rate-limited.
+    const o = (httpStatus: number) => classify({ httpStatus, finalUrl: null, sha256: null, error: null }, prior, ORIG);
+    expect([o(503), o(403), o(429)]).toEqual([
+      { status: "no verdict", detail: "HTTP 503", noVerdict: "other" },
+      { status: "no verdict", detail: "HTTP 403 (blocked)", noVerdict: "blocked" },
+      { status: "no verdict", detail: "HTTP 429 (rate-limited)", noVerdict: "rate-limited" },
+    ]);
   });
   // R5-n1: a Ghostarchive 200 is a capture only with its replay wrapper; lost stays ENOTFOUND, 404 or 410 (Assay).
   test("no verdict on Ghostarchive: a 200 that is its Archiving error page, or no capture at all", () => {
@@ -163,10 +182,12 @@ describe("audit: classes (one per class)", () => {
     expect(classify(p, prior, GHOST, { page: "error" })).toEqual({
       status: "no verdict",
       detail: 'HTTP 200, Ghostarchive "Archiving error" page, not a capture',
+      noVerdict: "error page",
     });
     expect(classify(p, null, GHOST, { page: "other" })).toEqual({
       status: "no verdict",
       detail: "HTTP 200, no capture on the Ghostarchive page (loading, in progress or unrecognised)",
+      noVerdict: "unconfirmed",
     });
     expect(classify(p, null, GHOST, { page: "capture" }).status).toBe("ok");
   });
@@ -303,9 +324,9 @@ describe("audit: run, manifest and report", () => {
       status: "no verdict",
       detail: "HTTP 503 (blocked: Ghostarchive Cloudflare challenge)",
     });
-    // The report's class line names Ghostarchive's 503 among the no-verdict statuses.
+    // The report's class line: item (b), "any other HTTP status" is listed under no verdict.
     expect(readFileSync(r.mdPath, "utf8").replace(/\n/g, " ")).toContain(
-      'no verdict (403, 429, blocked; Ghostarchive also 503, and a 200 with no capture (its "Archiving error" page, or loading); any other DNS error; no network, when no canary answers; retried at the next audit).',
+      'no verdict (rate-limited: 429, or a 429 or 503 still there when pacing gave up; blocked: a challenge/CAPTCHA page or header, or a 403; a Ghostarchive 200 with no capture (its "Archiving error" page, or loading); any other HTTP status; a timeout, reset, redirect loop or any other DNS error; no network, when no canary answers. Each carries its HTTP status or error code, is retried at the next audit, and makes the run INCOMPLETE).',
     );
   });
   test("a Ghostarchive Archiving error page (HTTP 200) is no verdict and is not saved; a capture page is", async () => {
@@ -447,5 +468,141 @@ describe("audit: network down is no verdict, never lost", () => {
         1000,
       ),
     ).toBe(false);
+  });
+});
+
+// Items 2, 4 and F-1, through the CLI in-process: auditMain with a fake fetch, a virtual clock and a fixture tree.
+describe("audit in-process (auditMain): exit 3 when incomplete; the INCOMPLETE counts match the rows", () => {
+  const url = (t: string) => `https://example.test/${t}`;
+  const wb = (t: string) => `https://web.archive.org/web/20261002140500/${url(t)}`;
+  const G = (id: string) => `https://ghostarchive.org/archive/${id}`;
+  const T1 = "https://archive.ph/Tdy01";
+  const tree = () =>
+    files(
+      {},
+      {
+        [FED]: [
+          "# FED 2026\n\n## 2026Q3\n",
+          extract({ title: "A", original: url("A"), archive2: T1, archive3: G("SH6r5") }),
+          extract({ title: "B", original: url("B"), archive2: null, archive3: G("Err01") }),
+          extract({ title: "C", original: url("C"), archive2: null, archive3: G("Load1") }),
+        ].join("\n"),
+      },
+    );
+  const code = (e: Error, c: string) => Object.assign(e, { code: c });
+  const table: Record<string, Route | Error> = {
+    [url("A")]: [200, "a"],
+    [rawUrl(wb("A"))]: [200, "a raw"],
+    [T1]: [403, "Forbidden"], // blocked
+    [G("SH6r5")]: [403, "Forbidden"], // F-1: a Ghostarchive 403 with no challenge page is blocked, and counted so
+    [url("B")]: [429, ""], // rate-limited: pacing gives up
+    [rawUrl(wb("B"))]: [500, "oops"], // other: any other HTTP status
+    [G("Err01")]: [200, GHOST_ERROR_PAGE], // error page
+    [url("C")]: code(new TypeError("getaddrinfo ENOTFOUND example.test"), "ENOTFOUND"), // offline: no canary
+    [rawUrl(wb("C"))]: code(new Error("socket closed"), "ECONNRESET"), // other: a network error
+    [G("Load1")]: [200, "<html><body>Loading...</body></html>"], // unconfirmed
+  };
+  const run = async (t: Record<string, Route | Error>, o: { env?: Record<string, string>; argv?: string[] } = {}) => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const net = fetchOf(t);
+    const store = join(tmp(), "store");
+    const exit = await auditMain({
+      argv: o.argv ?? [],
+      env: { OBM_ARCHIVE_DIR: store, ...o.env },
+      cwd: "/nowhere",
+      out: (l) => out.push(l),
+      err: (l) => err.push(l),
+      fetch: net.f,
+      clock: virtualClock(),
+      online: async () => false,
+      toplevel: () => tmp("obm-repo-"),
+      load: () => ({ files: tree(), base: null }),
+    });
+    const json = existsSync(join(store, "reports", "audit-2026-10-22.json"))
+      ? JSON.parse(readFileSync(join(store, "reports", "audit-2026-10-22.json"), "utf8"))
+      : null;
+    return {
+      exit,
+      out,
+      err,
+      net,
+      json,
+      md: json ? readFileSync(join(store, "reports", "audit-2026-10-22.md"), "utf8") : "",
+    };
+  };
+  test("every kind of no verdict: exit 3 and one INCOMPLETE line whose counts are the rows'", async () => {
+    const r = await run(table);
+    expect(r.exit).toBe(3);
+    expect(r.json.counts).toEqual({ ok: 2, changed: 0, lost: 0, "no verdict": 8 });
+    const rows = (r.json.links as AuditLink[]).filter((l) => l.status === "no verdict");
+    const by = (k: string) => rows.filter((l) => l.noVerdict === k).map((l) => l.url);
+    expect([
+      by("blocked"),
+      by("rate-limited"),
+      by("error page"),
+      by("unconfirmed"),
+      by("offline"),
+      by("other"),
+    ]).toEqual([
+      [T1, G("SH6r5")],
+      [url("B")],
+      [G("Err01")],
+      [G("Load1")],
+      [url("C")],
+      [rawUrl(wb("B")), rawUrl(wb("C"))].map((u) => u.replace("20261002140500id_", "20261002140500")),
+    ]);
+    expect(r.out.filter((l) => l.startsWith("audit: INCOMPLETE"))).toEqual([
+      'audit: INCOMPLETE: 8 of 10 links have no verdict: 1 rate-limited (gave up or 429), 2 blocked (challenge/CAPTCHA or 403), 1 unconfirmed (no capture on the Ghostarchive page), 1 Ghostarchive "Archiving error" page, 1 offline (no canary host answered), 2 other (any other HTTP status or network error); open them in a browser or re-run later or from another network',
+    ]);
+    // Item 4: every blocked, rate-limited or no-verdict row carries its HTTP status or error code, in the report too.
+    for (const l of rows) {
+      expect(l.detail).toMatch(/HTTP \d{3}|\bE[A-Z]{3,}\b/);
+      expect(r.md).toContain(`${l.url}: ${l.detail}`);
+    }
+    expect(rows.find((l) => l.url === url("C"))?.detail).toMatch(/^getaddrinfo ENOTFOUND example\.test/);
+    expect(rows.find((l) => l.noVerdict === "other" && l.httpStatus === null)?.detail).toBe(
+      "ECONNRESET: socket closed",
+    );
+  });
+  test("every link with a verdict: exit 0, no INCOMPLETE line", async () => {
+    const ok = Object.fromEntries(
+      Object.keys(table).map((u) => [u, [200, u.includes("ghostarchive") ? GHOST_CAPTURE_PAGE : "x"] as Route]),
+    );
+    const r = await run(ok);
+    expect(r.exit).toBe(0);
+    expect(r.out.some((l) => l.includes("INCOMPLETE"))).toBe(false);
+  });
+  test("exit 2: usage, outside a working tree, a store inside the repo, a bad pacing setting; no request made", async () => {
+    const base = {
+      env: {},
+      cwd: "/nowhere",
+      out: () => {},
+      fetch: fetchOf({}).f,
+      load: () => ({ files: tree(), base: null }),
+    };
+    const err: string[] = [];
+    const repo = tmp("obm-repo-");
+    const cases = [
+      await auditMain({ ...base, argv: ["x"], err: (l) => err.push(l), toplevel: () => repo }),
+      await auditMain({ ...base, argv: [], err: (l) => err.push(l), toplevel: () => null }),
+      await auditMain({
+        ...base,
+        argv: [],
+        env: { OBM_ARCHIVE_DIR: join(repo, "s") },
+        err: (l) => err.push(l),
+        toplevel: () => repo,
+      }),
+      await auditMain({
+        ...base,
+        argv: [],
+        env: { OBM_ARCHIVE_DIR: join(tmp(), "s"), OBM_RATE_MAX_TRIES: "0" },
+        err: (l) => err.push(l),
+        toplevel: () => repo,
+      }),
+    ];
+    expect(cases).toEqual([2, 2, 2, 2]);
+    expect(err[1]).toBe("audit: not inside a git working tree");
+    expect(err[3]).toMatch(/^audit: .*OBM_RATE_MAX_TRIES/);
   });
 });

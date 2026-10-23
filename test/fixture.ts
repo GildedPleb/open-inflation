@@ -341,3 +341,15 @@ export const GHOST_ERROR_PAGE =
 /** The markers of a real Ghostarchive capture page: its title, archive date and replay element. */
 export const GHOST_CAPTURE_PAGE =
   '<html><head><title>H.4.1 | Ghostarchive</title></head><body><span>Archive date: 22 Oct 2026 17:20:01</span><replay-web-page source="https://ghostarchive.org/chimurai4/AbC12.warc" url="https://example.test/"></replay-web-page></body></html>';
+
+/** A clock whose sleeps return at once and only move its time on: pacing and backoff cost the suite nothing. */
+export const virtualClock = (start = Date.parse("2026-10-22T16:00:00Z")) => {
+  let t = start;
+  return {
+    now: () => t,
+    sleep: async (ms: number) => {
+      t += ms;
+    },
+    random: () => 0,
+  };
+};

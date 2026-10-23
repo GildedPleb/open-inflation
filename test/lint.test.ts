@@ -31,6 +31,7 @@ interface Opts {
   readonly progress?: (line: string) => void;
   readonly summary?: (line: string) => void;
   readonly noVerdict?: (url: string, why: NoVerdict) => void;
+  readonly online?: () => Promise<boolean>;
 }
 async function lint(snap: Snapshot, o: Opts): Promise<Finding[]> {
   const fs = await lintOnly(snap, { now: o.now });
@@ -41,6 +42,7 @@ async function lint(snap: Snapshot, o: Opts): Promise<Finding[]> {
     ...(o.progress ? { progress: o.progress } : {}),
     ...(o.summary ? { summary: o.summary } : {}),
     ...(o.noVerdict ? { noVerdict: o.noVerdict } : {}),
+    ...(o.online ? { online: o.online } : {}),
   });
   const order = (c: CheckId) => Number(c.slice(1));
   return [...fs, ...v].sort((a, b) => order(a.check) - order(b.check));
@@ -483,6 +485,21 @@ describe("verify: L8 archive resolution (fake network)", () => {
       fake({ kind: "http", status: 404 }).opts,
     );
   });
+  // N-c: a Re-archive URL this diff adds is checked even when the same URL is already committed elsewhere.
+  test("N-c: a Re-archive URL added here but already committed in another extract is still checked", async () => {
+    const withNote = `${fedText}- Re-archive: ${REPL}\n`;
+    const snap = {
+      files: files(goodText(), { [FED]: `${withNote}${extract({ title: "FED new" })}- Re-archive: ${REPL}\n` }),
+      base: files(goodText(), { [FED]: withNote }),
+    };
+    const f = fake({ kind: "http", status: 404 });
+    await passes(snap, f.opts);
+    expect(f.heads.sort()).toEqual([NEW, REPL].sort());
+    // And when that capture is dead too, it is a finding of its own.
+    const dead: Net = { ...f.opts.net, head: async () => ({ kind: "http", status: 404 }) } as Net;
+    const fs = await lint(snap, { ...f.opts, net: dead });
+    expect(fs.map((x) => x.message.split(" failed")[0]).sort()).toEqual([`archive URL ${REPL}`]);
+  });
   test("m-B: a note already in base in the same extract does not excuse a dead URL this diff adds to it", () => {
     const GHOST = "https://ghostarchive.org/archive/ZzZ99";
     const block = extract({ title: "FED new", archive3: null });
@@ -491,7 +508,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
     return fails(
       { files: files(goodText(), { [FED]: grown }), base: files(goodText(), { [FED]: base }) },
       ["L8"],
-      /ZzZ99 failed HEAD: .*404/,
+      /ZzZ99 failed GET: Ghostarchive answered HTTP 404/,
       fake({ kind: "http", status: 404 }).opts,
     );
   });
@@ -2486,7 +2503,7 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     expect(progress.at(-1)).toBe(`L8 [2/2] ok (HTTP 200, Ghostarchive) ${GHOST}`);
     expect(summary).toEqual(["ghostarchive: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
-  test("HTTP 403 and 503 (its Cloudflare challenge) and 429 (its rate limit) are no verdict, not a fail", async () => {
+  test("HTTP 403 (its Cloudflare challenge), 429 (its rate limit) and an unretried 503 are no verdict, not a fail", async () => {
     for (const status of [403, 429, 503]) {
       const { fs, progress, summary } = await run(onGood({ [FED]: added }), fake({ kind: "http", status }).opts);
       expect(fs).toEqual([]);
@@ -2554,6 +2571,17 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     // a network error is not a dead capture: a Re-archive note does not excuse it
     const down = fake({ kind: "network", message: "ECONNREFUSED" }).opts;
     await fails(onGood({ [FED]: noted }), ["L8"], /network error: Ghostarchive: ECONNREFUSED/, down);
+  });
+  test("N-d: a Ghostarchive network error while no canary answers is no verdict (offline), counted in the summary", async () => {
+    const f = fake({ kind: "network", message: "FailedToOpenSocket: Was there a typo in the url or port?" });
+    const nv: string[] = [];
+    const { fs, summary } = await run(onGood({ [FED]: added }), {
+      ...f.opts,
+      online: async () => false,
+      noVerdict: (u, why) => nv.push(`${why} ${u}`),
+    });
+    expect([fs, nv]).toEqual([[], [`offline ${GHOST}`]]);
+    expect(summary[0]).toBe("ghostarchive: 0 verified, 1 unverified (0 rate-limited, 0 blocked, 1 offline)");
   });
   test("an attempt record and a committed Ghostarchive URL are never fetched", async () => {
     const f = fake({ kind: "http", status: 404 });
@@ -2658,6 +2686,29 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
     // a network error is not a dead capture: a Re-archive note does not excuse it
     await fails(onGood({ [FED]: noted }), ["L8"], /network error: archive\.today: ECONNREFUSED/, f.opts);
     expect(f.avail).toEqual([]);
+  });
+  // N-d: offline (no canary host answers) a network error is no verdict, "offline", never a finding (audit's m-G).
+  test("N-d: a network error while no canary answers is no verdict (offline), never a finding", async () => {
+    const f = fake({ kind: "network", message: "getaddrinfo ETIMEOUT archive.ph" });
+    const nv: string[] = [];
+    let asked = 0;
+    const online = async () => {
+      asked++;
+      return false;
+    };
+    const { fs, lines } = await progressOf(onGood({ [FED]: added }), {
+      ...f,
+      opts: { ...f.opts, online, noVerdict: (u, why) => nv.push(`${why} ${u}`) },
+    });
+    expect([fs, nv, asked]).toEqual([[], [`offline ${TODAY}`], 1]);
+    expect(lines.at(-1)).toBe(
+      `L8 [2/2] offline (archive.ph unreachable (getaddrinfo ETIMEOUT archive.ph) and no canary host answered; no verdict) ${TODAY}`,
+    );
+    // A canary answering: archive.today alone is down, which stays a finding.
+    await fails(onGood({ [FED]: added }), ["L8"], /network error: archive\.today/, {
+      ...f.opts,
+      online: async () => true,
+    });
   });
   test("a redirect off archive.today fails", () =>
     fails(

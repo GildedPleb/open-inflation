@@ -1,6 +1,6 @@
 // A per-host pacer for the local scripts (verify, audit): requests to one host are serial and at least that host's
-// interval apart; different hosts run in parallel. On HTTP 429 or 503 it waits (Retry-After, else exponential
-// backoff with jitter), slows that host for the rest of the run, and retries the same URL until it gets a verdict,
+// interval apart; different hosts run in parallel. On HTTP 429 or 503 it waits (max(Retry-After, the host's
+// interval), else exponential backoff with jitter), slows that host for the rest of the run, and retries the same URL until it gets a verdict,
 // the per-URL try cap or the run's time budget. Clock, sleep and randomness are injected: tests never wait.
 // Never used by lint or CI (no network there).
 
@@ -68,7 +68,7 @@ export const DEFAULT_PACE: PaceConfig = {
 
 const NUM = /^\d+$/;
 /**
- * DEFAULT_PACE with env overrides: OBM_RATE_<HOST>_MS per host (see envName; OBM_RATE_DEFAULT_MS for others),
+ * DEFAULT_PACE with env overrides: OBM_RATE_<KEY>_MS per host key (see hostKey and envName; OBM_RATE_DEFAULT_MS for others),
  * OBM_RATE_MAX_TRIES and OBM_RATE_BUDGET_MS. A value that is not a whole number is an error, not ignored.
  */
 export function paceFromEnv(env: Readonly<Record<string, string | undefined>>, base = DEFAULT_PACE): PaceConfig {
@@ -133,6 +133,24 @@ export interface Pacer {
   estimate(urls: readonly string[]): { ms: number; hosts: { key: string; urls: number; intervalMs: number }[] };
 }
 
+/**
+ * How long to wait before retrying a URL after its `tries`-th try answered 429/503. F-3 (Probe): the server's
+ * Retry-After is honoured as given, even when short (1 s, 5 s, an HTTP-date a few seconds off), but never below the
+ * host's pace interval (`intervalMs`, already slowed by this answer): max(Retry-After, interval). Only with no
+ * Retry-After is it the exponential backoff with jitter (backoffBaseMs doubling per try, capped at backoffMaxMs).
+ */
+export function retryWait(
+  cfg: PaceConfig,
+  tries: number,
+  retryAfterMs: number | null,
+  intervalMs: number,
+  random: number,
+): number {
+  if (retryAfterMs !== null) return Math.max(retryAfterMs, intervalMs);
+  const backoff = Math.min(cfg.backoffMaxMs, cfg.backoffBaseMs * 2 ** (tries - 1));
+  return Math.round(backoff * (1 + cfg.jitter * random));
+}
+
 /** "2 h 05 min", "3 min 20 s", "45 s", "0 s". */
 export function duration(ms: number): string {
   const s = Math.round(ms / 1000);
@@ -186,8 +204,7 @@ export function createPacer(
           if (!t.retry) return { result: t.result, tries, elapsedMs: clock.now() - t0, gaveUp: false };
           // Adaptive: this host answered "slow down", so every later request to it is spaced wider.
           interval.set(key, Math.min(cfg.maxIntervalMs, Math.ceil(intervalOf(key) * cfg.slowFactor)));
-          const backoff = Math.min(cfg.backoffMaxMs, cfg.backoffBaseMs * 2 ** (tries - 1));
-          const ms = Math.max(t.retry.retryAfterMs ?? 0, Math.round(backoff * (1 + cfg.jitter * clock.random())));
+          const ms = retryWait(cfg, tries, t.retry.retryAfterMs, intervalOf(key), clock.random());
           const over = clock.now() + ms - start > cfg.budgetMs;
           if (tries >= cfg.maxTries || over)
             return { result: t.result, tries, elapsedMs: clock.now() - t0, gaveUp: true };

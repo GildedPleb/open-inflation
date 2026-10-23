@@ -14,6 +14,7 @@ import {
   type PaceConfig,
   paceFromEnv,
   retryAfterMs,
+  retryWait,
 } from "../scripts/lib/pacer.ts";
 import type { HeadResult, Net } from "../scripts/lib/types.ts";
 import { verify, verifyExit } from "../scripts/lib/verify.ts";
@@ -126,6 +127,45 @@ describe("pacer", () => {
     expect(a.r).toEqual({ result: "429", tries: 5, elapsedMs: 480_000, gaveUp: true });
     expect((await run(0.5, null)).at.slice(0, 2)).toEqual([0, 67_500]);
     expect((await run(0, 200_000)).at.slice(0, 3)).toEqual([0, 200_000, 400_000]);
+  });
+  // F-3 (Probe): a short Retry-After was replaced by the 60 s backoff (the wait was max(Retry-After, backoff)). Now
+  // the wait is max(Retry-After, the host's interval, already slowed by the 429); the backoff only when there is none.
+  test("a short Retry-After is honoured (never below the host's interval); backoff only without one", async () => {
+    const X = (id: string) => `https://example.test/${id}`;
+    const run = async (url: string, retryAfter: number | null) => {
+      const { clock, drive, now } = fakeClock();
+      const at: number[] = [];
+      await drive(
+        createPacer({ ...PACE, maxTries: 2 }, clock).run(url, async () => {
+          at.push(now());
+          return { result: "429", retry: { status: 429, retryAfterMs: retryAfter } };
+        }),
+      );
+      return at;
+    };
+    expect(await run(X("a"), 1_000)).toEqual([0, 1_000]); // Retry-After: 1, on a host paced at 0
+    expect(await run(X("b"), 5_000)).toEqual([0, 5_000]);
+    expect(await run(X("c"), 0)).toEqual([0, 0]); // an HTTP-date already past
+    expect(await run(G("d"), 1_000)).toEqual([0, 7_500]); // Ghostarchive: 5 s slowed to 7.5 s
+    expect(await run(T("e"), 90_000)).toEqual([0, 90_000]); // longer than archive.today's slowed 45 s
+    expect(await run(X("f"), null)).toEqual([0, 60_000]); // no Retry-After: the backoff
+    expect(retryWait(PACE, 3, null, 0, 0)).toBe(150_000);
+    expect(retryWait({ ...PACE, jitter: 0.5 }, 1, 2_000, 1_000, 0.9)).toBe(2_000); // no jitter on a Retry-After
+    expect(retryWait(PACE, 1, 2_000, 9_000, 0)).toBe(9_000);
+  });
+  test("pacedNet: an HTTP-date Retry-After 3 s ahead is waited out, not the 60 s backoff", async () => {
+    const { clock, drive, now } = fakeClock();
+    const X = "https://example.test/date";
+    const answers: HeadResult[] = [
+      { kind: "http", status: 429, retryAfter: new Date(3_000).toUTCString() },
+      { kind: "ok", status: 200 },
+    ];
+    const net: Net = {
+      head: async () => answers.shift() as HeadResult,
+      available: async () => ({ kind: "ok", timestamp: null }),
+    };
+    expect(await drive(pacedNet(net, createPacer(PACE, clock), clock).head(X))).toEqual({ kind: "ok", status: 200 });
+    expect(now()).toBe(3_000);
   });
   test("a 429 slows the host for the rest of the run (to the max); the budget ends a retry early", async () => {
     const { clock, drive, now } = fakeClock();
