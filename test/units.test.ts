@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { archiveNet, httpAvailable, httpHead } from "../scripts/lib/archive.ts";
-import { archive2Problem, lint } from "../scripts/lib/checks.ts";
+import { archiveNet, httpAvailable, httpHead, USER_AGENT } from "../scripts/lib/archive.ts";
+import { archive2Problem } from "../scripts/lib/checks.ts";
 import { parseDecimal, roundHalfEven, sumOfProducts, usdPerUnit, wholeUsd } from "../scripts/lib/decimal.ts";
 import { chooseBase } from "../scripts/lib/lint-base.ts";
 import { headings, links, slugs } from "../scripts/lib/markdown.ts";
-import { good } from "./fixture.ts";
+import { verify } from "../scripts/lib/verify.ts";
+import { extract, good, goodText, onGood } from "./fixture.ts";
 
 const d = (s: string) => {
   const v = parseDecimal(s);
@@ -193,6 +194,40 @@ describe("httpHead redirects (fake fetch, by URL)", () => {
   });
 });
 
+describe("httpHead on Ghostarchive (fake fetch, by URL)", () => {
+  const routes = (table: Record<string, [number, string?]>) => {
+    const urls: string[] = [];
+    const f = (async (u: string) => {
+      urls.push(u);
+      const [status, location] = table[u] ?? [599];
+      return new Response(null, { status, headers: location === undefined ? {} : { location } });
+    }) as unknown as typeof fetch;
+    return { f, urls };
+  };
+  const G = "https://ghostarchive.org/archive/AbC12";
+  const G2 = "https://ghostarchive.org/archive/XyZ34";
+  test("a redirect to another ghostarchive.org/archive/ URL is followed", async () => {
+    const { f, urls } = routes({ [G]: [301, G2], [G2]: [200] });
+    expect(await httpHead(f, 1000)(G)).toEqual({ kind: "ok", status: 200 });
+    expect(urls).toEqual([G, G2]);
+  });
+  for (const to of [
+    "https://example.test/x",
+    "https://ghostarchive.org/search?term=x",
+    "https://web.archive.org/web/20261002140500/https://example.test/x",
+  ])
+    test(`a redirect off Ghostarchive captures is not followed: ${to}`, async () => {
+      const { f, urls } = routes({ [G]: [302, to] });
+      expect(await httpHead(f, 1000)(G)).toMatchObject({ kind: "redirect", reason: "off-snapshot", location: to });
+      expect(urls).toEqual([G]);
+    });
+  test("more than 5 hops inside Ghostarchive is a loop", async () => {
+    const { f, urls } = routes({ [G]: [302, G2], [G2]: [302, G] });
+    expect(await httpHead(f, 1000)(G)).toMatchObject({ kind: "redirect", reason: "loop" });
+    expect(urls.length).toBe(6);
+  });
+});
+
 // Assay (2): the whole L8 net over an injected fetch. A near-miss fails on BOTH paths: the HEAD redirect, and
 // (web.archive.org unreachable) the availability API returning another timestamp.
 describe("L8 near-miss on both paths (archiveNet over a fake fetch)", () => {
@@ -272,8 +307,8 @@ describe("httpAvailable (fake fetch)", () => {
   });
 });
 
-describe("archiveNet: lint's only network use", () => {
-  test("with web.archive.org blocked, lint contacts only web.archive.org and archive.org", async () => {
+describe("archiveNet: verify's only network use", () => {
+  test("with web.archive.org blocked, verify contacts only web.archive.org and archive.org", async () => {
     const hosts = new Set<string>();
     const f = (async (u: string) => {
       const url = new URL(u);
@@ -285,13 +320,115 @@ describe("archiveNet: lint's only network use", () => {
         JSON.stringify({ archived_snapshots: { closest: { available: true, timestamp: "20261002140500" } } }),
       );
     }) as unknown as typeof fetch;
-    const fs = await lint(good(), {
-      archive: "added",
-      net: archiveNet(f, 1000),
-      now: Date.parse("2026-10-22T00:00:00Z"),
-    });
+    const fs = await verify(good(), { net: archiveNet(f, 1000), now: Date.parse("2026-10-22T00:00:00Z") });
     expect(fs).toEqual([]);
     expect([...hosts].sort()).toEqual(["archive.org/wayback/available", "web.archive.org/web/..."]);
+  });
+  test("every request carries the User-Agent", async () => {
+    const agents = new Set<string | null>();
+    const f = (async (_u: string, init?: RequestInit) => {
+      agents.add(new Headers(init?.headers).get("user-agent"));
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+    await verify(good(), { net: archiveNet(f, 1000), now: Date.parse("2026-10-22T00:00:00Z") });
+    expect([...agents]).toEqual([USER_AGENT]);
+  });
+  test("the availability fallback carries the User-Agent too", async () => {
+    const agents: (string | null)[] = [];
+    const f = (async (_u: string, init?: RequestInit) => {
+      agents.push(new Headers(init?.headers).get("user-agent"));
+      return new Response(JSON.stringify({ archived_snapshots: {} }));
+    }) as unknown as typeof fetch;
+    await httpAvailable(f, 1000)("https://example.test/x", "20261002140500");
+    expect(agents).toEqual([USER_AGENT]);
+  });
+});
+
+// #18: `bun run verify` end to end over an injected fetch (by URL): what L8's online half did in lint.
+describe("verify over an injected fetch", () => {
+  const NOW = Date.parse("2026-10-22T16:00:00Z");
+  const FED = "issuers/FED/2026.md";
+  const fedText = goodText()[FED] as string;
+  const ORIG = "https://example.test/FED-new";
+  const TS = "20261002140500";
+  const WB = `https://web.archive.org/web/${TS}/${ORIG}`;
+  const TODAY = "https://archive.ph/AbC12";
+  const added = fedText + extract({ title: "FED new", archive2: TODAY });
+  const run = async (text: string, table: Record<string, [number, string?]>) => {
+    const urls: string[] = [];
+    const f = (async (u: string) => {
+      urls.push(u);
+      if (u.startsWith("https://archive.org/wayback/available")) throw new Error("no fallback expected");
+      const [status, location] = table[u] ?? [599];
+      return new Response(null, { status, headers: location === undefined ? {} : { location } });
+    }) as unknown as typeof fetch;
+    const progress: string[] = [];
+    const summary: string[] = [];
+    const fs = await verify(onGood({ [FED]: text }), {
+      net: archiveNet(f, 1000),
+      now: NOW,
+      progress: (l) => progress.push(l),
+      summary: (l) => summary.push(l),
+    });
+    return { fs, urls, progress, summary };
+  };
+  const note = (u: string) => `- Re-archive: ${u} (capture gone; recaptured)\n`;
+  test("200 on both archives: clean, with the summary line", async () => {
+    const r = await run(added, { [WB]: [200], [TODAY]: [200] });
+    expect(r.fs).toEqual([]);
+    expect(r.summary).toEqual(["archive.today: 1 verified, 0 unverified (rate-limited)"]);
+  });
+  for (const status of [404, 410]) {
+    test(`Wayback ${status} without a Re-archive note fails and asks for one`, async () => {
+      const r = await run(added, { [WB]: [status], [TODAY]: [200] });
+      expect(r.fs.map((x) => [x.check, x.message])).toEqual([
+        ["L8", `archive URL ${WB} failed HEAD: HTTP ${status}; the commit must add a "Re-archive: ${WB}" note`],
+      ]);
+    });
+    test(`Wayback ${status} with a Re-archive note in the same diff is excused`, async () => {
+      const r = await run(added + note(WB), { [WB]: [status], [TODAY]: [200] });
+      expect(r.fs).toEqual([]);
+      expect(r.progress).toContain(`L8 [1/2] excused (HTTP ${status}, Re-archive note) ${WB}`);
+    });
+    test(`archive.today ${status} with and without a Re-archive note`, async () => {
+      expect((await run(added, { [WB]: [200], [TODAY]: [status] })).fs.length).toBe(1);
+      expect((await run(added + note(TODAY), { [WB]: [200], [TODAY]: [status] })).fs).toEqual([]);
+    });
+  }
+  for (const status of [403, 429])
+    test(`archive.today ${status}: no verdict, not a failure; counted unverified and listed`, async () => {
+      const r = await run(added, { [WB]: [200], [TODAY]: [status] });
+      expect(r.fs).toEqual([]);
+      expect(r.summary).toEqual(["archive.today: 0 verified, 1 unverified (rate-limited)", TODAY]);
+    });
+  test("a same-capture redirect chain is followed to its 200", async () => {
+    const h1 = `https://web.archive.org/web/${TS}/http://example.test/FED-new`;
+    const h2 = `https://web.archive.org/web/${TS}id_/${ORIG}`;
+    const t1 = "https://archive.today/AbC12";
+    const r = await run(added, { [WB]: [301, h1], [h1]: [302, h2], [h2]: [200], [TODAY]: [302, t1], [t1]: [200] });
+    expect(r.fs).toEqual([]);
+    // the two archives are checked concurrently; each chain is in order
+    expect(r.urls.filter((u) => u.includes("web.archive.org"))).toEqual([WB, h1, h2]);
+    expect(r.urls.filter((u) => !u.includes("web.archive.org"))).toEqual([TODAY, t1]);
+  });
+  test("more than 5 redirects fails on both archives", async () => {
+    const h1 = `https://web.archive.org/web/${TS}/http://example.test/FED-new`;
+    const t1 = "https://archive.today/AbC12";
+    const r = await run(added, { [WB]: [302, h1], [h1]: [302, WB], [TODAY]: [302, t1], [t1]: [302, TODAY] });
+    expect(r.fs.map((x) => x.message)).toEqual([
+      `archive URL ${WB} HEAD redirected more than 5 times (last to ${WB})`,
+      `archive URL ${TODAY} HEAD redirected more than 5 times on archive.today (last to ${TODAY})`,
+    ]);
+    expect(r.urls.length).toBe(12);
+  });
+  test("summary: verified and unverified counts, the unverified URLs sorted", async () => {
+    const [A, Z] = ["https://archive.ph/Aaaa1", "https://archive.ph/Zzzz1"];
+    const text = fedText + [Z, TODAY, A].map((u, i) => extract({ title: `FED new ${i}`, archive2: u })).join("");
+    const table: Record<string, [number, string?]> = { [TODAY]: [200], [A]: [403], [Z]: [429] };
+    for (const m of text.matchAll(/https:\/\/web\.archive\.org\/web\/\S+/g)) table[m[0]] = [200];
+    const r = await run(text, table);
+    expect(r.fs).toEqual([]);
+    expect(r.summary).toEqual(["archive.today: 1 verified, 2 unverified (rate-limited)", A, Z]);
   });
 });
 
@@ -478,7 +615,14 @@ describe("archive2Problem (Archive URL 2 value)", () => {
   test("an attempt reason needs at least 3 whitespace-separated words", () => {
     for (const r of ["-", "blocked", "blocked  by", "- -"]) bad(`attempted 2026-10-02: ${r}`, /too short/);
     ok("attempted 2026-10-02: blocked by\tCAPTCHA");
-    ok("attempted 2026-10-02: - - -");
+  });
+  // #16 n-1: a word counts toward the 3 only if it has a letter or a digit.
+  test("only words with a letter or digit count toward the 3", () => {
+    for (const r of ["- - -", "blocked - -", "... !! ??", "blocked by —", "« » blocked"])
+      bad(`attempted 2026-10-02: ${r}`, /too short/);
+    ok("attempted 2026-10-02: blocked - by - CAPTCHA");
+    ok("attempted 2026-10-02: HTTP 403 twice");
+    ok("attempted 2026-10-02: Zugriff verweigert (Ärger)");
   });
   test("an attempt reason may not contain a URL (any http(s) scheme, any case, or a bare www.)", () => {
     for (const r of [
@@ -488,7 +632,41 @@ describe("archive2Problem (Archive URL 2 value)", () => {
       "see Www.example.test for it",
     ])
       bad(`attempted 2026-10-02: ${r}`, /contains a URL/);
-    ok("attempted 2026-10-02: archive.today returned a CAPTCHA (aawww.example is not a host)");
+    ok("attempted 2026-10-02: archive.today returned a CAPTCHA (aawww is not a host)");
+  });
+  // #16 m-1: any scheme://, and bare host or host/path words, are links too.
+  test("an attempt reason may not contain any scheme:// or a bare host or host/path", () => {
+    for (const r of [
+      "see ftp://example.test/x for it",
+      "see file:///tmp/x for it",
+      "see ipfs://bafy for it",
+      "captured as archive.ph/abc instead",
+      "captured as archive.today/AbC12 instead",
+      "the page example.com was blocked",
+      "example.com returned a CAPTCHA page",
+      "fetch raw.githubusercontent.com/x/y failed twice",
+      "the host (example.com) was blocked",
+      "mirror at sub.example.co.uk, blocked",
+      "see aawww.example for details",
+      "fetch example.zip/download failed",
+    ])
+      bad(`attempted 2026-10-02: ${r}`, /contains a URL/);
+  });
+  test("prose with dots still passes: sentence ends, abbreviations, numbers, file types, archive.today's names", () => {
+    for (const r of [
+      "archive.today returned a CAPTCHA, blocked.",
+      "archive.today returned a CAPTCHA page",
+      "archive.ph returned a CAPTCHA page",
+      "archive.is returned a CAPTCHA page",
+      "blocked by CAPTCHA, e.g. twice",
+      "the U.S. mirror was blocked",
+      "H.4.1 release blocked, i.e. CAPTCHA",
+      "the xlsx (data.xlsx) was blocked",
+      "blocked at 3.5 seconds",
+      "archive.ph and archive.is both blocked",
+      'archive.today returned capture ids k7pXR and ieC3W for the xlsx, both showing "Not Found (yet?)" with no content, after two tries',
+    ])
+      ok(`attempted 2026-10-02: ${r}`);
   });
   // Assay M-3: the dated form's timestamp is a real time, and its UTC date has the attempt window.
   const datedAt = (ts: string, retrieved: string | undefined = R, now: number | undefined = NOW) =>
