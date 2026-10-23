@@ -3,14 +3,14 @@ import type { Clock, Pacer } from "./pacer.ts";
 /** Repo-relative POSIX path -> raw bytes. */
 export type Files = ReadonlyMap<string, Uint8Array>;
 
-/** What lint sees: the tree being checked and the base it must only append to. */
+/** The tree being checked and, for verify, the base whose archive URLs are already committed (lint passes none). */
 export interface Snapshot {
   readonly files: Files;
   /** null when there is no base commit (first commit, or a new branch with no "before"). */
   readonly base: Files | null;
 }
 
-export type CheckId = "L1" | "L2" | "L3" | "L4" | "L5" | "L6" | "L7" | "L8" | "L9" | "L10" | "L11" | "L12" | "L13";
+export type CheckId = "L1" | "L2" | "L5" | "L6" | "L7" | "L8" | "L9" | "L10" | "L11" | "L12" | "L13";
 
 export interface Finding {
   readonly check: CheckId;

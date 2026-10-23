@@ -9,7 +9,7 @@
 // max(Retry-After, the host's interval), else backoff. The expected time is printed first; any link left with no
 // verdict ends the run with a loud INCOMPLETE line counting each kind (rate-limited, blocked, unconfirmed,
 // Ghostarchive error page, offline, other).
-// Findings are appended by Assay under each extract as "- Link audit <YYYY-MM-DD>: <text>." lines (L7, L4 append-only).
+// Findings are appended by Assay under each extract as "- Link audit <YYYY-MM-DD>: <text>." lines (L7).
 // Exit 0 when every link got a verdict (whatever it found), 3 incomplete (some link has no verdict), 2 on usage,
 // repository or store errors (or any internal error, lib/exit.ts). The CLI is lib/audit-main.ts.
 import { auditMain } from "./lib/audit-main.ts";

@@ -8,7 +8,7 @@ For contributors. Run every command from the repository root.
 |---|---|---|---|---|
 | `bun test` | Unit tests of the tools | Before every push | Yes | Never |
 | `bun run typecheck` and `bun run check` | TypeScript types; Biome format and code lint | Before every push | Yes | Never |
-| `bun run lint --base origin/main` | Checks the data files against a base commit | Before every push | Yes | Never |
+| `bun run lint` | Checks the data files in the working tree | Before every push | Yes | Never |
 | `bun run readme` | Rewrites the generated README parts | After adding a quarter | Through lint L13 | Never |
 | `bun run verify --base origin/main` | Checks each archive URL your change adds | While archiving new sources | No | Yes |
 | `bun run audit` | Re-checks every link and keeps private copies | When re-checking links | No | Yes |
@@ -72,28 +72,17 @@ Exit 0 when every test passes; anything else is a failure.
 
 ## Lint
 
-Checks the working tree against a base commit. What each check enforces is in [What lint enforces](lint.md).
+Checks the working tree alone. What each check enforces is in [What lint enforces](lint.md).
 
 ```sh
-git fetch origin main
-bun run lint --base origin/main
+bun run lint
 ```
 
+- It reads no base commit. `--base <ref>` and `$LINT_BASE` are accepted and ignored.
 - Lint makes no network calls, ever.
 - L8 checks only the form of each archive URL. `bun run verify` does the network half.
 - It prints one line per finding, `<check> <file>: <message>`.
-- It ends with `lint: clean (base <ref>)` or `lint: N finding(s)`.
-
-The base is the first of these that applies:
-
-| Situation | Base |
-|---|---|
-| `--base <ref>` given | That ref. A ref of all zeros means no base. |
-| A GitHub push to any branch but `main` | The merge-base of `HEAD` and `origin/main`, so a branch is linted against what it diverged from. Exit 2 if it cannot be found. |
-| `$LINT_BASE` set | That commit. All zeros means no base. CI passes the PR base on a pull request, and `github.event.before` on a push to `main`. |
-| Otherwise | `HEAD`, or no base in a repository with no commits. |
-
-A GitHub push means `GITHUB_EVENT_NAME=push`, and `GITHUB_REF` is not `refs/heads/main`.
+- It ends with `lint: clean` or `lint: N finding(s)`.
 
 | Exit | Meaning |
 |---|---|
@@ -126,11 +115,24 @@ bun run readme
 Checks that each archive URL your change adds really holds a capture.
 
 ```sh
+git fetch origin main
 bun run verify --base origin/main
 ```
 
 - It is a local research script. It is not a merge gate and never runs in CI.
-- It takes an optional `--base <ref>` and picks the base exactly as lint does.
+- It compares the working tree with a base commit, the first of these that applies:
+
+| Situation | Base |
+|---|---|
+| `--base <ref>` given | That ref. A ref of all zeros means no base. |
+| A GitHub push to any branch but `main` | The merge-base of `HEAD` and `origin/main`. Exit 2 if it cannot be found. |
+| `$LINT_BASE` set | That commit. All zeros means no base. |
+| Otherwise | `HEAD`, or no base in a repository with no commits. |
+
+A GitHub push means `GITHUB_EVENT_NAME=push`, and `GITHUB_REF` is not `refs/heads/main`.
+
+Locally, after a commit, `HEAD` sees no change: pass `--base origin/main`.
+
 - It checks each archive URL added since the base that passes L7, once.
 - It also checks each `- Re-archive:` note URL added since the base, even one already committed elsewhere.
 - It never re-checks any other committed link.

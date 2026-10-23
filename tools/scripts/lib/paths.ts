@@ -12,7 +12,7 @@ export const QUARTERS_DIR = "base_money/quarters";
 export const ISSUERS_DIR = "base_money/issuers";
 /**
  * FX rate tables (what fx_source_anchor cites; not a basket issuer): <FX_DIR>/<YYYY>.md, one table per quarter of
- * market closes on each report's count date. Supporting data, regenerable: not append-only, not archived.
+ * market closes on each report's count date. Supporting data, regenerable: not archived.
  */
 export const FX_DIR = "base_money/FX";
 /** The id the FX folder goes by in messages and in extractOf. */
@@ -20,24 +20,14 @@ export const FX_ID = "FX";
 
 /** The series CSV (date,value,evidence_id); its evidence_id values are repo-root paths. */
 export const CSV_PATH = "base_money/base_money.csv";
-/** The CSV's earlier path (repo root): the base side of the move for L4; a file there now is misplaced (L12). */
-export const LEGACY_CSV = posix.basename(CSV_PATH);
+/** Not a place for the CSV (L12): the repository root. */
+export const ROOT_CSV = posix.basename(CSV_PATH);
 
 /** Top-level folders of earlier layouts: any file there now is misplaced (L12). */
 export const RETIRED_ROOTS = ["issuers/", "evidence/", "research/"];
-/** Quarter files at earlier paths (the base side of a move): path -> quarter. */
-const LEGACY_QUARTERS = [/^evidence\/base_money\/(\d{4}Q[1-4])\.md$/, /^evidence\/(\d{4}Q[1-4])\.md$/];
-/** Earlier quarter lists (generated or hand-written): not extracts. */
-const LEGACY_LISTS = ["evidence/README.md", "docs/evidence-index.md"];
-/** Folders whose committed .md files (other than quarters and lists) are strictly append-only extracts. */
-const EXTRACT_ROOTS = [EVIDENCE_ROOT, "issuers/", "evidence/"];
 
-/** Base files lint needs: every evidence tree (current and earlier, for moves), the CSV (L4) and the catalog. */
-export const BASE_PREFIXES = [...new Set([...EXTRACT_ROOTS, ...RETIRED_ROOTS])].concat([
-  CSV_PATH,
-  LEGACY_CSV,
-  "catalog.json",
-]);
+/** Base files verify reads (archive URLs already committed): the evidence tree. Lint reads no base. */
+export const BASE_PREFIXES = [EVIDENCE_ROOT];
 
 /** Path patterns as written in messages and docs. */
 export const QUARTER_TEXT = `${QUARTERS_DIR}/YYYYQn.md`;
@@ -71,10 +61,6 @@ export const fxPath = (year: string) => extractPath(FX_ID, year);
 
 /** The quarter of a quarter file at its current path (2026Q2), else undefined. */
 export const quarterOfPath = (p: string): string | undefined => QUARTER_RE.exec(p)?.[1];
-/** The quarter of a quarter file at its current or an earlier path. */
-export const anyQuarterOfPath = (p: string): string | undefined =>
-  quarterOfPath(p) ?? LEGACY_QUARTERS.map((r) => r.exec(p)?.[1]).find((q) => q !== undefined);
-
 /** An issuer-year file or FX year file at its current path: its issuer (FX_ID for an FX file) and year; else undefined. */
 export function extractOf(p: string): { issuer: string; year: string } | undefined {
   const fx = FX_RE.exec(p);
@@ -86,19 +72,6 @@ export function extractOf(p: string): { issuer: string; year: string } | undefin
 
 /** An FX rate table at its current path (base_money/FX/<YYYY>.md). */
 export const isFxPath = (p: string) => FX_RE.test(p);
-
-/**
- * A committed file that is a strictly append-only extract (current or earlier layout): not a quarter, not a list, not
- * an FX rate table (regenerable supporting data).
- */
-export const isExtractPath = (p: string) =>
-  p.endsWith(".md") &&
-  !isFxPath(p) &&
-  EXTRACT_ROOTS.some((r) => p.startsWith(r)) &&
-  p !== QUARTER_LIST &&
-  !LEGACY_LISTS.includes(p) &&
-  !p.endsWith("/README.md") && // folder READMEs (static facts plus a generated year list) are not extracts
-  anyQuarterOfPath(p) === undefined;
 
 /** A markdown link from file `from` to repo path `to`. */
 export const relLink = (from: string, to: string) => posix.relative(posix.dirname(from), to);

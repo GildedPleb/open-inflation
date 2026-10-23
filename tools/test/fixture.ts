@@ -444,7 +444,7 @@ export const files = (text: Record<string, string>, patch: Patch = {}): Files =>
 
 export const good = (patch: Patch = {}): Snapshot => ({ files: files(goodText(), patch), base: null });
 
-/** Current = good + patch, base = good. For the append-only and immutability checks. */
+/** Current = good + patch, base = good: for verify, which checks only the archive URLs added since the base. */
 export const onGood = (patch: Patch): Snapshot => ({
   files: files(goodText(), patch),
   base: files(goodText()),
