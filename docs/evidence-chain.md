@@ -5,7 +5,7 @@ Every number in [`base_money/base_money.csv`](../base_money/base_money.csv) is b
 | Path | What it is |
 | --- | --- |
 | `base_money/base_money.csv` | `date,value,evidence_id`: quarter-end date, integer USD, repo-root path to the quarterly roll-up |
-| `base_money/quarters/YYYYQn.md` | The quarter: total, per-issuer table (links to the issuer README, the FX extract and the adopted extract), what's left out, checks, overall audit notes, and the machine-readable arithmetic block; no source or archive URLs outside that block (failed archive attempts and rejected sources are lines under each extract) |
+| `base_money/quarters/YYYYQn.md` | The quarter: total, per-issuer table (links to the issuer README, the FX table row and the adopted extract), what's left out, checks, overall audit notes, and the machine-readable arithmetic block; no source or archive URLs outside that block (failed archive attempts and rejected sources are lines under each extract) |
 | `base_money/issuers/<ISS>/README.md` | The issuer's static facts and a list of its year files |
 | `base_money/issuers/<ISS>/<YYYY>.md` | Append-only extracts per issuer and year, one `## YYYYQn` heading per quarter; each source's URLs, archive links, capture checks and caveats sit under its extract |
 | `base_money/FX/<YYYY>.md` | FX-rate extracts, one adopted rate per currency per quarter |
@@ -21,9 +21,9 @@ Each roll-up lists every issuer's figure, the exchange rate used and the total, 
 
 Each extract quotes the bank's figure word for word, with `- Retrieved:`, `- Original URL:` (the bank's page), `- Archive URL:` (a web.archive.org snapshot), `- Archive URL 2:` (archive.today) and `- Archive URL 3:` (Ghostarchive), each a capture or a recorded attempt. See the [extract template](methodology/base_money.md#extract-template).
 
-## FX extracts
+## FX rate tables
 
-Each non-USD currency has one adopted quarter-end rate in `base_money/FX/<YYYY>.md`, per the [FX rule](methodology/base_money.md#fx-rule).
+`base_money/FX/<YYYY>.md` is a rate table, not an extract file: supporting data, regenerable and not archived. Under each quarter heading it has one row per non-USD currency of the quarter's machine block, anchored `fx-<yyyyqn>-<ccy>`, giving the market close on the linked issuer extract's count date (its As of), the date rule, the pair, the rate and one source link, per the [FX rule](methodology/base_money.md#fx-rule). The machine block's `fx_rate` is derived from that row (lint L9).
 
 ## Audit trail
 
@@ -31,4 +31,4 @@ Each quarter file's Audit trail records overall notes: the basket version, rejec
 
 ## Append-only and revisions
 
-Committed lines in `base_money/` are never changed or deleted. A value changes only through an appended `## Revision` section with a new machine block (lint L4).
+Committed lines in the issuer extract files are never changed or deleted, and a quarter's machine blocks are locked. A value changes only through an appended `## Revision` section with a new machine block (lint L4). The one exception is FX: the FX rate tables may be edited in place, and a diff that changes them may update a block's `fx_rate`, `total_usd` and `coverage_pct` (and the CSV value) in place.

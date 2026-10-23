@@ -1,5 +1,5 @@
 // bun run readme: rewrite README.md's generated blocks, the quarter list and each issuer/FX folder README's "## Years" list from base_money/base_money.csv, the roll-ups
-// and catalog.json (lib/readme.ts). Lint (L13) fails when either file differs from what this writes.
+// and catalog.json (lib/readme.ts). Lint (L13) fails when any file it writes differs from what this would write.
 // Exit 0 written, 2 when an input cannot be read or a README marker is missing.
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";

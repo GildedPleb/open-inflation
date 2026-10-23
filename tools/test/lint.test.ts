@@ -8,10 +8,11 @@ import {
   catalog,
   ECB,
   extract,
-  failedLog,
   files,
   folderReadme,
-  fxExtract,
+  fxFile,
+  fxRow,
+  fxSection,
   good,
   goodText,
   index,
@@ -23,6 +24,17 @@ import {
   rollup,
   skeletonText,
 } from "./fixture.ts";
+
+const BOJ_PATH = "base_money/issuers/BOJ/2026.md";
+/**
+ * The good repo's BOJ file with its extract reference-only and As of the quarter-end: a non-USD reference value's FX
+ * row links that extract, not an adopted one.
+ */
+const bojReference = (): string =>
+  (goodText()[BOJ_PATH] as string).replace(
+    "- Adopted: yes",
+    "- As of: 2026-09-30\n- Adopted: no (reference-only: coverage weight, never summed)",
+  );
 
 /** The injected clock: every test sees the same "now". */
 const NOW = Date.parse("2026-10-22T16:00:00Z");
@@ -197,6 +209,7 @@ describe("L4 append-only (no committed line changes)", () => {
   test("roll-up may append a revision block; the last block is authoritative", () =>
     passes(
       onGood({
+        "base_money/FX/2026.md": fxFile(fxSection("2026Q3")),
         [ROLLUP]: revisedRollup(
           machineBlock({
             components: [
@@ -214,6 +227,48 @@ describe("L4 append-only (no committed line changes)", () => {
     ));
   test("evidence index is not append-only", () =>
     passes(onGood({ "base_money/README.md": index().replace("# Index", "# Evidence index") })));
+});
+
+// A base_money/FX/ change (supporting data, regenerable) may update fx_rate, total_usd and coverage_pct in place.
+describe("L4 in-place FX edit (fx_rate, total_usd and coverage_pct with a base_money/FX/ change)", () => {
+  const FXF = "base_money/FX/2026.md";
+  const ecbAt = (fx: string, local = "200.25") =>
+    [
+      "  - issuer: FED",
+      "    anchor: base_money/issuers/FED/2026.md#2026q3",
+      "    local_currency: USD",
+      '    local_value: "1001"',
+      '    fx_rate: "1"',
+      "  - issuer: ECB",
+      "    anchor: base_money/issuers/ECB/2026.md#2026q3",
+      "    local_currency: EUR",
+      `    local_value: "${local}"`,
+      `    fx_rate: "${fx}"`,
+    ].join("\n");
+  // EUR 1.1 -> 1.2: 1001 + 200.25 * 1.2 = 1241.3, so total_usd 1241.
+  const edited = rollup(machineBlock({ components: ecbAt("1.2"), total: "1241" }));
+  const newRate = { [FXF]: fxFile(fxSection("2026Q3", fxRow("EUR", { rate: "1.2" }))) };
+  const row = (v: string) => csv(`2026-09-30,${v},base_money/quarters/2026Q3.md`);
+  test("fx_rate, total_usd, coverage_pct and the CSV value edited in place with the FX row passes", () =>
+    passes(onGood({ ...newRate, [ROLLUP]: edited, ...row("1241") })));
+  test("the same edit without a base_money/FX/ change fails L4", () =>
+    fails(onGood({ [ROLLUP]: edited, ...row("1241") }), ["L4", "L9"], /committed machine block 1 .* changed/));
+  test("an FX change does not unlock any other field (local_value)", () =>
+    fails(
+      onGood({
+        ...newRate,
+        [ROLLUP]: rollup(machineBlock({ components: ecbAt("1.2", "201"), total: "1242" })),
+        ...row("1242"),
+      }),
+      ["L4"],
+      /committed machine block 1 .* changed .*local_value/,
+    ));
+  test("the CSV value must equal the in-place total_usd", () =>
+    fails(
+      onGood({ ...newRate, [ROLLUP]: edited, ...row("1240") }),
+      ["L4", "L9"],
+      /in-place FX edit needs its total_usd/,
+    ));
 });
 
 describe("L4 base_money/base_money.csv rows", () => {
@@ -271,7 +326,13 @@ describe("L4 base_money/base_money.csv rows", () => {
       /revision total_usd 1002/,
     ));
   test("editing a value with a matching revision block passes", () =>
-    passes(onGood({ [ROLLUP]: revised(fedOnly("1002", "1002")), ...csv(Q3("1002")) })));
+    passes(
+      onGood({
+        [ROLLUP]: revised(fedOnly("1002", "1002")),
+        "base_money/FX/2026.md": fxFile(fxSection("2026Q3")),
+        ...csv(Q3("1002")),
+      }),
+    ));
   test("changing a committed row's evidence_id fails", () =>
     fails(
       onGood({
@@ -430,7 +491,7 @@ describe("L5 quarter reader text links only repo-relative paths (source and arch
     );
     expect(fs.length).toBe(2);
   });
-  test("URLs inside the machine block and the failed_attempts log are fine", () =>
+  test("URLs inside the machine block are fine", () =>
     passes(
       good({
         [ROLLUP]: rollup(
@@ -439,7 +500,6 @@ describe("L5 quarter reader text links only repo-relative paths (source and arch
               "# source https://www.federalreserve.gov/releases/h41/\n# https://web.archive.org/web/20261002000000/https://x.test/",
           }),
           machineBlock({}),
-          failedLog("# https://archive.ph/abcd\nfailed_attempts: []"),
         ),
       }),
     ));
@@ -659,6 +719,12 @@ describe("verify: L8 archive resolution (fake network)", () => {
   });
   test("404 fails and names the status", () =>
     fails(onGood({ [FED]: added }), ["L8"], /HTTP 404/, fake({ kind: "http", status: 404 }).opts));
+  test("an FX rate table's Source links are supporting data: verify never HEADs them", async () => {
+    const f = fake({ kind: "http", status: 404 });
+    const source = "[Close](<https://web.archive.org/web/20261002000000/https://fx.example.test/EUR>)";
+    await passes(onGood({ "base_money/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("EUR", { source }))) }), f.opts);
+    expect([f.heads, f.avail]).toEqual([[], []]);
+  });
   for (const status of [404, 410])
     test(`HTTP ${status} passes when the same diff adds a Re-archive note`, () =>
       passes(onGood({ [FED]: noted }), fake({ kind: "http", status }).opts));
@@ -935,7 +1001,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
   test("no base: every archive URL is new", async () => {
     const f = fake({ kind: "ok", status: 200 });
     await passes(good(), f.opts);
-    expect(f.heads.length).toBe(4); // FED, ECB, BOJ (reference only) and FX extracts
+    expect(f.heads.length).toBe(3); // FED, ECB and BOJ (reference only); the FX rate tables are not archived
   });
   test("an archive URL is HEADed once: citing a committed URL again is not re-checked", async () => {
     const f = fake({ kind: "http", status: 404 });
@@ -1038,6 +1104,9 @@ describe("L9 aggregation", () => {
           total,
         }),
       ),
+      // FED reports in EUR here: its extract carries the count date and the EUR row links it.
+      [FED]: (goodText()[FED] as string).replace("- Adopted: yes", "- As of: 2026-09-30\n- Adopted: yes"),
+      "base_money/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("EUR", { issuer: "FED" }))),
       ...csv(`2026-09-30,${value},base_money/quarters/2026Q3.md`),
     });
   test("total does not match recomputed sum", () =>
@@ -1067,6 +1136,8 @@ describe("L9 aggregation", () => {
   const withRevision = (first: string, last: string, value: string) =>
     good({
       [ROLLUP]: revisedRollup(last, first),
+      // The FX table holds the last (current) block's currencies.
+      "base_money/FX/2026.md": fxFile(fxSection("2026Q3", ...(last.includes("EUR") ? [fxRow("EUR")] : []))),
       ...csv(`2026-09-30,${value},base_money/quarters/2026Q3.md`),
     });
   test("several valid blocks pass; the CSV value is the last block's total", () =>
@@ -1197,8 +1268,8 @@ describe("L9 aggregation", () => {
       ["L9"],
       /fx_source_anchor/,
     ));
-  // R1-11 (methodology FX rule): every non-USD currency a component uses in a quarter has an FX extract for that
-  // quarter, "- Currency: <ISO>", under "## <quarter>" in base_money/FX/<YYYY>.md.
+  // R1-11 (methodology FX rule): every non-USD currency of the quarter's current block has one row in the FX table
+  // under "## <quarter>" in base_money/FX/<YYYY>.md, anchored fx-<yyyyqn>-<ccy>.
   const FX = "base_money/FX/2026.md";
   const FED_ONLY = [
     "  - issuer: FED",
@@ -1212,45 +1283,49 @@ describe("L9 aggregation", () => {
       .split("components:\n")[1]
       ?.split("\nexclusions")[0]
       ?.replace("local_currency: EUR", "local_currency: JPY") ?? "";
-  test("a component currency with an FX extract for the quarter passes", () => passes(good({})));
-  test("a component currency with no FX extract fails", () =>
+  test("a component currency with an FX table row for the quarter passes", () => passes(good({})));
+  test("a component currency with no FX table row fails (and the FX cell's anchor L5)", () =>
     fails(
-      good({ [FX]: issuerFile("FX", "2026Q3", fxExtract("JPY")) }),
+      good({ [FX]: fxFile(fxSection("2026Q3")) }),
       ["L9", "L5"],
-      /components\[1\] \(ECB\) local_currency EUR has no FX extract .*"- Currency: EUR".*## 2026Q3.*base_money\/FX\/2026\.md/,
+      /components\[1\] \(ECB\) local_currency EUR has no row in the FX table under ## 2026Q3 in base_money\/FX\/2026\.md \(anchor fx-2026q3-eur\)/,
     ));
-  test("an FX extract under another quarter does not count", () =>
+  test("a row under another quarter does not count", () =>
     fails(
-      good({ [FX]: `${issuerFile("FX", "2026Q2", fxExtract("EUR"))}\n## 2026Q3\n\n${fxExtract("JPY")}` }),
-      ["L9"],
-      /local_currency EUR has no FX extract/,
-    ));
-  test("a Currency line outside an extract or inside a code fence does not count", () =>
-    fails(
-      good({
-        [FX]: `# FX 2026\n\n## 2026Q3\n\n- Currency: EUR\n\n${extract({ title: "FX note" })}\n\`\`\`\n- Currency: EUR\n\`\`\`\n`,
-      }),
-      // The "FX note" extract has no FX fields, so L7 reports it too.
-      ["L9", "L7", "L5"],
-      /local_currency EUR has no FX extract/,
+      good({ [FX]: fxFile(fxSection("2026Q2", fxRow("EUR", { q: "2026Q2" })), fxSection("2026Q3")) }),
+      ["L9", "L5"],
+      /local_currency EUR has no row in the FX table/,
     ));
   test("no FX file at all fails for a non-USD component", () =>
-    fails(good({ [FX]: null, "base_money/FX/README.md": null }), ["L9", "L5"], /local_currency EUR has no FX extract/));
-  test("a USD-only quarter needs no FX extract", () =>
+    fails(
+      good({ [FX]: null, "base_money/FX/README.md": null }),
+      ["L9", "L5"],
+      /local_currency EUR has no row in the FX table/,
+    ));
+  test("a USD-only quarter needs no FX table row", () =>
     passes(
       good({
-        [FX]: issuerFile("FX", "2026Q3"),
+        [FX]: fxFile(fxSection("2026Q3")),
         "base_money/base_money.csv": `${CSV_HEADER}2026-09-30,1000,base_money/quarters/2026Q3.md\n`,
         [ROLLUP]: rollup(machineBlock({ components: FED_ONLY, total: "1000" }).replace(/fx_source_anchor: .*\n/, "")),
       }),
     ));
-  test("an earlier block whose currency has no FX extract fails too", () =>
-    fails(
+  test("an earlier block's currency needs no row: the table holds the current block's rates", () =>
+    passes(
       good({
         [ROLLUP]: revisedRollup(machineBlock({}), machineBlock({ components: ECB_JPY, total: "1221" })),
       }),
+    ));
+  test("an earlier block's USD entry still needs fx_rate 1", () =>
+    fails(
+      good({
+        [ROLLUP]: revisedRollup(
+          machineBlock({}),
+          machineBlock({ components: FED_ONLY.replace('fx_rate: "1"', 'fx_rate: "1.0"'), total: "1000" }),
+        ),
+      }),
       ["L9"],
-      /machine block 1 of 2 .*local_currency JPY has no FX extract/,
+      /machine block 1 of 2 .*local_currency USD needs fx_rate "1", not 1\.0/,
     ));
   test("fx_rate must be positive", () =>
     fails(good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1.1"', 'fx_rate: "0"')) }), ["L9"], /fx_rate/));
@@ -1486,8 +1561,8 @@ describe("L9 the quarter's reader table equals its current machine block", () =>
   test("the same rate quoted the other way round matches", async () => {
     const block = machineBlock({}).replace('fx_rate: "1.1"', 'fx_rate: "0.5"').replace('"1221"', '"1101"');
     const fs = await lint(good({ [ROLLUP]: rollup(block).replace("0.5 USD per EUR", "2 EUR per USD") }), OFF);
-    // Only the planted FX-extract mismatch (the extract says 1.1); the table itself agrees with the block.
-    expect(fs.filter((f) => /table|Total/.test(f.message))).toEqual([]);
+    // Only the planted FX table mismatch (the row says 1.1); the reader table itself agrees with the block.
+    expect(fs.filter((f) => /table|Total/.test(f.message) && !/FX table row/.test(f.message))).toEqual([]);
   });
   test("a Total that differs fails", () => fails(table("**$1,221**", "**$1,222**"), ["L9"], /Total/));
   test("a missing component row fails", () =>
@@ -1549,24 +1624,28 @@ describe("L9 the quarter's reader table equals its current machine block", () =>
     ));
   test("an unlinked FX cell for a non-USD row fails", () =>
     fails(
-      table("[1.1 USD per EUR](../FX/2026.md#fx-eur)", "1.1 USD per EUR"),
+      table("[1.1 USD per EUR](../FX/2026.md#fx-2026q3-eur)", "1.1 USD per EUR"),
       ["L9"],
-      /FX cell must link the adopted EUR extract/,
+      /FX cell must link the EUR row of the FX table/,
     ));
-  test("an FX cell linking another currency's extract fails", () =>
+  test("an FX cell linking another currency's row fails", () =>
     fails(
       good({
-        [ROLLUP]: rollup().replace("(../FX/2026.md#fx-eur)", "(../FX/2026.md#fx-jpy)"),
-        "base_money/FX/2026.md": `${goodText()["base_money/FX/2026.md"]}\n${fxExtract("JPY")}`,
+        [ROLLUP]: rollup().replace("(../FX/2026.md#fx-2026q3-eur)", "(../FX/2026.md#fx-2026q3-jpy)"),
+        "base_money/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("EUR"), fxRow("JPY"))),
       }),
       ["L9"],
-      /FX cell must link the adopted EUR extract under ## 2026Q3 in base_money\/FX\/2026\.md \(\.\.\/FX\/2026\.md#fx-eur\), not "\.\.\/FX\/2026\.md#fx-jpy"/,
+      /FX cell must link the EUR row of the FX table \(\.\.\/FX\/2026\.md#fx-2026q3-eur\), not "\.\.\/FX\/2026\.md#fx-2026q3-jpy"/,
     ));
   test("an FX cell linking the quarter heading fails", () =>
-    fails(table("(../FX/2026.md#fx-eur)", "(../FX/2026.md#2026q3)"), ["L9"], /FX cell must link the adopted EUR/));
+    fails(
+      table("(../FX/2026.md#fx-2026q3-eur)", "(../FX/2026.md#2026q3)"),
+      ["L9"],
+      /FX cell must link the EUR row of the FX table/,
+    ));
   test("a USD row's FX cell with a link fails", () =>
     fails(
-      table("none (already USD)", "[none (already USD)](../FX/2026.md#fx-eur)"),
+      table("none (already USD)", "[none (already USD)](../FX/2026.md#fx-2026q3-eur)"),
       ["L9"],
       /a USD row's FX cell has no link/,
     ));
@@ -1888,7 +1967,10 @@ describe("L9 reference_values and coverage_pct", () => {
         ...(coverage === undefined ? {} : { coverage }),
         total: fed,
       },
-      { "base_money/base_money.csv": `${CSV_HEADER}2026-09-30,${fed},${ROLLUP}\n` },
+      {
+        "base_money/FX/2026.md": fxFile(fxSection("2026Q3")),
+        "base_money/base_money.csv": `${CSV_HEADER}2026-09-30,${fed},${ROLLUP}\n`,
+      },
     );
   const boj10 = `reference_values:\n${ref("BOJ", "10")}`;
   // Hand-computed: 1220.775 / (1220.775 + 10) x 100 = 99.18750...  -> 99.19
@@ -2136,16 +2218,17 @@ describe("L9 reference_values and coverage_pct", () => {
       ["L9"],
       /reference_values\[0\]\.local_value/,
     ));
-  test("a non-USD reference needs an FX extract for its currency", () =>
+  test("a non-USD reference needs an FX table row for its currency", () =>
     fails(
       blk({ referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.00100000000000000000")}` }),
       ["L9"],
-      /reference_values\[0\] \(BOJ\) local_currency JPY has no FX extract/,
+      /reference_values\[0\] \(BOJ\) local_currency JPY has no row in the FX table/,
     ));
-  test("a non-USD reference with its FX extract passes", () =>
+  test("a non-USD reference with its FX table row passes", () =>
     passes(
       good({
-        "base_money/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR"), fxExtract("JPY")),
+        "base_money/issuers/BOJ/2026.md": bojReference(),
+        "base_money/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("EUR"), fxRow("JPY"))),
         [ROLLUP]: rollup(
           machineBlock({
             referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.00100000000000000000")}`,
@@ -2153,10 +2236,43 @@ describe("L9 reference_values and coverage_pct", () => {
         ),
       }),
     ));
+  test("a non-USD reference's FX row may link the issuer's adopted extract", () =>
+    passes(
+      good({
+        "base_money/issuers/BOJ/2026.md": (goodText()[BOJ_PATH] as string).replace(
+          "- Adopted: yes",
+          "- As of: 2026-09-30\n- Adopted: yes",
+        ),
+        "base_money/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("EUR"), fxRow("JPY"))),
+        [ROLLUP]: rollup(
+          machineBlock({
+            referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.00100000000000000000")}`,
+          }),
+        ),
+      }),
+    ));
+  test("a non-USD reference's FX row linking a confirming extract fails", () =>
+    fails(
+      good({
+        "base_money/issuers/BOJ/2026.md": (goodText()[BOJ_PATH] as string).replace(
+          "- Adopted: yes",
+          "- As of: 2026-09-30\n- Adopted: no, confirming",
+        ),
+        "base_money/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("EUR"), fxRow("JPY"))),
+        [ROLLUP]: rollup(
+          machineBlock({
+            referenceValues: `reference_values:\n${ref("BOJ", "10000", "JPY", "0.00100000000000000000")}`,
+          }),
+        ),
+      }),
+      ["L9"],
+      /must link an adopted \("- Adopted: yes" or, for a reference value, "- Adopted: no \(reference-only"\) extract under ## 2026Q3/,
+    ));
   test("fx_source_anchor is required when only a reference is non-USD", () =>
     fails(
       good({
-        "base_money/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("JPY")),
+        "base_money/issuers/BOJ/2026.md": bojReference(),
+        "base_money/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("JPY"))),
         [ROLLUP]: rollup(
           machineBlock({
             components: [
@@ -2183,7 +2299,6 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
     good({ [path]: `${goodText()[path] ?? issuerFile(iss, "2026Q3")}\n## 2026Q2\n\n${block}`, ...patch });
   const issuer = (asOf: string, title = "FED H.4.1 Q2", extra: string[] = []) =>
     q2(FED, "FED", extract({ title, fields: [`- As of: ${asOf}`, ...extra] }));
-  const fx = (asOf: string) => q2("base_money/FX/2026.md", "FX", fxExtract("EUR", { title: "FX EUR Q2", asOf }));
   test("issuer As of 2026-06-30 (quarter end) under Q2 passes", () => passes(issuer("2026-06-30")));
   test("issuer As of 2026-04-01 under Q2 passes", () => passes(issuer("2026-04-01")));
   test("issuer As of with a parenthetical note passes", () => passes(issuer("2026-06-30 (end of period)")));
@@ -2214,21 +2329,6 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
   test("a confirming extract out of quarter fails too", () =>
     fails(issuer("2026-07-01", "FED confirming", ["- Adopted: no, confirming"]), ["L7"], /outside its quarter/));
   test("Retrieved is unconstrained (an October retrieval under Q2 passes)", () => passes(issuer("2026-05-15")));
-  test("FX As of 2026-06-27 (quarter end minus 3 days) passes", () => passes(fx("2026-06-27")));
-  test("FX As of 2026-06-30 passes", () => passes(fx("2026-06-30")));
-  test("FX As of 2026-06-26 fails", () =>
-    fails(fx("2026-06-26"), ["L7"], /FX As of 2026-06-26 is outside 2026-06-27\.\.2026-06-30/));
-  test("FX As of 2026-07-01 fails", () => fails(fx("2026-07-01"), ["L7"], /FX As of 2026-07-01 is outside/));
-  test("FX As of in month form fails", () =>
-    fails(fx("2026-06"), ["L7"], /FX As of "2026-06" must be a full YYYY-MM-DD/));
-  test("FX window for Q1 ends 03-31 and starts 03-28", async () => {
-    const q1 = (asOf: string) =>
-      good({
-        "base_money/FX/2026.md": `${goodText()["base_money/FX/2026.md"]}\n## 2026Q1\n\n${fxExtract("EUR", { title: "FX EUR Q1", asOf })}`,
-      });
-    await passes(q1("2026-03-28"));
-    await fails(q1("2026-03-27"), ["L7"], /outside 2026-03-28\.\.2026-03-31/);
-  });
 
   // Assay: a start_of_day issuer's As of must be exactly the first day of the next quarter (no in-quarter date).
   const cbr = (asOf: string, convention = true, confirming?: string) =>
@@ -2338,11 +2438,7 @@ describe("L12 placement", () => {
       }),
     ));
   test("base_money/FX/<YYYY>.md passes though FX is not a basket issuer", () =>
-    passes(
-      good({
-        "base_money/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")),
-      }),
-    ));
+    passes(good({ "base_money/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("EUR"))) })));
   // Assay (a): FX is an exact, case-sensitive folder name, and issuer folders are upper-case ids, even when no
   // valid catalog basket exists to compare against.
   for (const p of [
@@ -2364,7 +2460,7 @@ describe("L12 placement", () => {
       ]);
     });
   test("FX is a folder of base_money/, not an issuer: base_money/issuers/FX/<YYYY>.md is misplaced", async () => {
-    const fs = await lint(good({ "base_money/issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")) }), OFF);
+    const fs = await lint(good({ "base_money/issuers/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("EUR"))) }), OFF);
     expect(fs.some((f) => f.check === "L12" && f.file === "base_money/issuers/FX/2026.md")).toBe(true);
   });
   test(".gitkeep files, and files outside the data folders, pass", () =>
@@ -2391,11 +2487,12 @@ describe("L12 placement", () => {
   });
 });
 
-describe("L7/L9 fx_rate from the adopted FX extract", () => {
+describe("L9 fx_rate from the FX table row", () => {
   const FXF = "base_money/FX/2026.md";
-  const fxFile = (...blocks: string[]) => ({ [FXF]: issuerFile("FX", "2026Q3", ...blocks) });
-  /** The default good repo with only the EUR FX extract replaced. */
-  const eur = (o: Parameters<typeof fxExtract>[1]) => good(fxFile(fxExtract("EUR", o)));
+  /** The FX file with one 2026Q3 section holding `rows`. */
+  const fxq3 = (...rows: string[]) => ({ [FXF]: fxFile(fxSection("2026Q3", ...rows)) });
+  /** The default good repo with only the EUR row replaced. */
+  const eur = (o: Parameters<typeof fxRow>[1]) => good(fxq3(fxRow("EUR", o)));
   const refEntry = (cur: string, fx: string, value = "10000") =>
     [
       "  - issuer: BOJ",
@@ -2404,84 +2501,60 @@ describe("L7/L9 fx_rate from the adopted FX extract", () => {
       `    local_value: "${value}"`,
       `    fx_rate: "${fx}"`,
     ].join("\n");
-  /** BOJ (excluded) as a reference value in `cur` at `fx`, with `extra` FX extracts beside the EUR one. */
+  /** BOJ (excluded, its extract reference-only) as a reference value in `cur` at `fx`, with `extra` FX rows. */
   const withRef = (cur: string, fx: string, extra: string[], value = "10000") =>
     good({
-      ...fxFile(fxExtract("EUR"), ...extra),
+      ...fxq3(fxRow("EUR"), ...extra),
+      [BOJ_PATH]: bojReference(),
       [ROLLUP]: rollup(machineBlock({ referenceValues: `reference_values:\n${refEntry(cur, fx, value)}` })),
     });
+  /** A BOJ reference row in `ccy`. */
+  const bojRow = (ccy: string, pair: string, rate: string) => fxRow(ccy, { issuer: "BOJ", pair, rate });
   const ecbFx = (fx: string) =>
     good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1.1"', `fx_rate: "${fx}"`)) });
 
-  // Block fx_rate against the derived value.
-  test("a component fx_rate that differs from the adopted extract's derived value fails", () =>
+  test("a component fx_rate that differs from the row's derived value fails", () =>
     fails(
-      eur({ quote: "1.2", fx: "1.2" }),
+      eur({ rate: "1.2" }),
       ["L9"],
-      /components\[1\] \(ECB\) fx_rate 1\.1 does not equal 1\.2 derived from the adopted FX extract "FX EUR" \(Rate 1\.2, USD per EUR\)/,
+      /components\[1\] \(ECB\) fx_rate 1\.1 does not equal 1\.2 derived from the FX table row #fx-2026q3-eur \(Rate 1\.2, USD per EUR\)/,
     ));
   test("fx_rate is compared as a string: 1.10 is not the derived 1.1", () =>
     fails(ecbFx("1.10"), ["L9"], /components\[1\] \(ECB\) fx_rate 1\.10 does not equal 1\.1 derived/));
-  test("a USD-per-unit quote passes with fx_rate equal to the quote, digit for digit", () =>
+  test("a USD-per-unit row passes with fx_rate equal to the Rate, digit for digit", () =>
     passes(
       good({
-        ...fxFile(fxExtract("EUR", { quote: "1.1000", fx: "1.1000" })),
+        ...fxq3(fxRow("EUR", { rate: "1.1000" })),
         [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1.1"', 'fx_rate: "1.1000"')),
       }),
     ));
-  test("a per-USD quote passes with fx_rate 1 / Rate at 20 decimal places", () =>
-    passes(withRef("JPY", "0.00100000000000000000", [fxExtract("JPY")])));
+  test("a per-USD row passes with fx_rate 1 / Rate at 20 decimal places", () =>
+    passes(withRef("JPY", "0.00100000000000000000", [fxRow("JPY")])));
   test("a per-USD fx_rate not written at 20 decimal places fails", () =>
     fails(
-      withRef("JPY", "0.001", [fxExtract("JPY")]),
+      withRef("JPY", "0.001", [fxRow("JPY")]),
       ["L9"],
       /reference_values\[0\] \(BOJ\) fx_rate 0\.001 does not equal 0\.00100000000000000000 derived/,
     ));
   test("a reference value fx_rate that differs from the derived value fails", () =>
     fails(
-      withRef("JPY", "0.00100000000000000001", [fxExtract("JPY")]),
+      withRef("JPY", "0.00100000000000000001", [fxRow("JPY")]),
       ["L9"],
       /reference_values\[0\] \(BOJ\) fx_rate 0\.00100000000000000001 does not equal 0\.00100000000000000000/,
     ));
-  test("RUB quoted with a decimal comma passes (Rate is the quote with a point)", () =>
-    passes(
-      withRef(
-        "RUB",
-        "0.01286109121214498565",
-        [fxExtract("RUB", { quote: "77,7539", direction: "RUB per USD", fx: "0.01286109121214498565" })],
-        "10",
-      ),
-    ));
+  test("a RUB per USD row passes at 20 decimal places", () =>
+    passes(withRef("RUB", "0.01286109121214498565", [bojRow("RUB", "RUB per USD", "77.7539")], "10")));
   test("1 / Rate rounds half-to-even at 20 decimal places: an exact tie keeps the even digit", () =>
     // 1 / 8000000000000000000 = 0.000000000000000000125: the 21st decimal is an exact 5 after an even 2.
-    passes(
-      withRef("CHF", "0.00000000000000000012", [
-        fxExtract("CHF", { quote: "8000000000000000000", fx: "0.00000000000000000012" }),
-      ]),
-    ));
+    passes(withRef("CHF", "0.00000000000000000012", [bojRow("CHF", "CHF per USD", "8000000000000000000")])));
   test("rounding a tie up (half-up) at 20 decimal places fails", () =>
     fails(
-      withRef("CHF", "0.00000000000000000013", [
-        fxExtract("CHF", { quote: "8000000000000000000", fx: "0.00000000000000000013" }),
-      ]),
-      ["L7", "L9"],
-      /fx_rate \(USD per unit\) 0\.00000000000000000013 does not equal 0\.00000000000000000012 derived from Rate 8000000000000000000 \(CHF per USD\)/,
+      withRef("CHF", "0.00000000000000000013", [bojRow("CHF", "CHF per USD", "8000000000000000000")]),
+      ["L9"],
+      /fx_rate 0\.00000000000000000013 does not equal 0\.00000000000000000012 derived from the FX table row #fx-2026q3-chf \(Rate 8000000000000000000, CHF per USD\)/,
     ));
   test("a USD-per-unit fx_rate is the Rate itself, never rounded, even past 20 decimals", () =>
-    passes(
-      withRef(
-        "GBP",
-        "1.000000000000000000015",
-        [
-          fxExtract("GBP", {
-            quote: "1.000000000000000000015",
-            direction: "USD per GBP",
-            fx: "1.000000000000000000015",
-          }),
-        ],
-        "10",
-      ),
-    ));
+    passes(withRef("GBP", "1.000000000000000000015", [bojRow("GBP", "USD per GBP", "1.000000000000000000015")], "10")));
   test("a USD entry needs fx_rate exactly 1", () =>
     fails(
       good({ [ROLLUP]: rollup(machineBlock({}).replace('fx_rate: "1"', 'fx_rate: "1.0"')) }),
@@ -2502,73 +2575,213 @@ describe("L7/L9 fx_rate from the adopted FX extract", () => {
       /reference_values\[0\] \(BOJ\) local_currency USD needs fx_rate "1", not 0\.1935/,
     ));
   test("a USD reference value at fx_rate 1 passes", () => passes(withRef("USD", "1", [], "10")));
+});
 
-  // The FX extract itself (L7).
-  test("a missing Rate fails, and the roll-up cannot be verified", async () => {
-    const fs = await fails(eur({ rate: null }), ["L7", "L9"], /extract "FX EUR" \(line \d+\) has no - Rate: line/);
-    expect(fs.some((f) => f.check === "L9" && /cannot verify fx_rate/.test(f.message))).toBe(true);
+describe("L9 FX rate tables (base_money/FX/<YYYY>.md)", () => {
+  const FXF = "base_money/FX/2026.md";
+  const fxq3 = (...rows: string[]) => ({ [FXF]: fxFile(fxSection("2026Q3", ...rows)) });
+  const eur = (o: Parameters<typeof fxRow>[1]) => good(fxq3(fxRow("EUR", o)));
+  const at = String.raw`## 2026Q3 table line \d+: `;
+  const L9 = (re: string) => new RegExp(at + re);
+
+  // The row anchor.
+  test("a row with no <a id> anchor fails (and the quarter has no EUR row)", async () => {
+    const fs = await fails(
+      eur({ issuerCell: "[ECB](../issuers/ECB/2026.md#ecb-weekly-statement)" }),
+      ["L9", "L5"],
+      L9('the Issuer cell must open with <a id="fx-2026q3-<ccy>"></a>$'),
+    );
+    expect(fs.some((f) => /local_currency EUR has no row in the FX table/.test(f.message))).toBe(true);
   });
-  test("a Rate that differs from the Quote as published fails", () =>
+  test("an anchor for another quarter fails", () =>
+    fails(eur({ anchor: "fx-2026q2-eur" }), ["L9", "L5"], L9('the Issuer cell must open .*, not "fx-2026q2-eur"')));
+  test("an anchor that is not fx-<yyyyqn>-<ccy> fails", () =>
+    fails(eur({ anchor: "fx-eur" }), ["L9", "L5"], L9('the Issuer cell must open .*, not "fx-eur"')));
+  test('an <a id> inside a code fence is no anchor (L5 "no heading or <a id> anchor")', () =>
     fails(
-      eur({ rate: "1.10", fx: "1.10" }),
-      ["L7", "L9"],
-      /Rate 1\.10 is not the Quote as published 1\.1 normalized \(1\.1\)/,
+      good({ [FXF]: `${fxFile(fxSection("2026Q3"))}\n\`\`\`\n<a id="fx-2026q3-eur"></a>\n\`\`\`\n` }),
+      ["L5", "L9"],
+      /no heading or <a id> anchor #fx-2026q3-eur/,
     ));
-  test("a Rate with a decimal comma fails (Rate is normalized)", () =>
-    fails(eur({ quote: "1,1", rate: "1,1" }), ["L7", "L9"], /Rate "1,1" must match/));
-  test("a grouped quote cannot be normalized: 1,000.5 is not Rate 1000.5", () =>
-    fails(
-      eur({ quote: "1,000.5", rate: "1000.5", fx: "1000.5" }),
-      ["L7", "L9"],
-      /Rate 1000\.5 is not the Quote as published 1,000\.5 normalized \(1\.000\.5\)/,
-    ));
-  test("a zero Rate fails", () => fails(eur({ quote: "0", fx: "0" }), ["L7", "L9"], /Rate 0 must be positive/));
-  test("a missing Quote as published fails", () =>
-    fails(eur({ quote: null, rate: "1.1" }), ["L7", "L9"], /has no - Quote as published:/));
-  test("a second Rate line fails", () =>
-    fails(
-      good(fxFile(fxExtract("EUR").replace("- Rate: 1.1\n", "- Rate: 1.1\n- Rate: 1.1\n"))),
-      ["L7", "L9"],
-      /has more than one - Rate:/,
-    ));
-  test("a Quote direction that does not parse fails", () =>
-    fails(eur({ direction: "EUR/USD" }), ["L7", "L9"], /Quote direction "EUR\/USD" must be/));
-  test("a Quote direction naming another currency fails", () =>
-    fails(
-      eur({ direction: "USD per GBP" }),
-      ["L7", "L9"],
-      /Quote direction USD per GBP names GBP, not the extract's Currency EUR/,
-    ));
-  test("an extract fx_rate (USD per unit) that differs from the derived value fails", () =>
-    fails(
-      eur({ fx: "1.10" }),
-      ["L7", "L9"],
-      /fx_rate \(USD per unit\) 1\.10 does not equal 1\.1 derived from Rate 1\.1 \(USD per EUR\)/,
-    ));
-  test("a missing fx_rate (USD per unit) fails", () =>
-    fails(eur({ fx: null }), ["L7", "L9"], /has no - fx_rate \(USD per unit\):/));
 
-  // Which extract is adopted.
-  test("a confirming extract with another rate does not change the derivation", () =>
-    passes(
-      good(
-        fxFile(
-          fxExtract("EUR", { title: "FX EUR confirming", quote: "1.2", fx: "1.2", adopted: "no, confirming" }),
-          fxExtract("EUR"),
-        ),
+  // Pair and Rate.
+  test("a Pair that does not parse fails, and fx_rate cannot be verified", async () => {
+    const fs = await fails(
+      eur({ pair: "EUR/USD" }),
+      ["L9"],
+      L9('Pair "EUR/USD" must be "<CCY> per USD" or "USD per <CCY>"'),
+    );
+    expect(fs.some((f) => /cannot verify fx_rate: the FX table row #fx-2026q3-eur is invalid/.test(f.message))).toBe(
+      true,
+    );
+  });
+  test("a Pair naming another currency fails", () =>
+    fails(eur({ pair: "USD per GBP" }), ["L9"], L9("Pair USD per GBP names GBP, not the row's EUR")));
+  test("a Rate with a decimal comma fails", () => fails(eur({ rate: "1,1" }), ["L9"], L9('Rate "1,1" must match')));
+  test("a grouped Rate fails", () => fails(eur({ rate: "1,000.5" }), ["L9"], L9('Rate "1,000.5" must match')));
+  test("a zero Rate fails", () => fails(eur({ rate: "0" }), ["L9"], L9("Rate 0 must be positive")));
+  test("a second row for the same currency fails, and fx_rate cannot be verified", async () => {
+    const fs = await fails(good(fxq3(fxRow("EUR"), fxRow("EUR"))), ["L9"], L9("a second EUR row"));
+    expect(fs.some((f) => /cannot verify fx_rate: 2 FX table rows/.test(f.message))).toBe(true);
+  });
+  test("a row for a currency the current machine block does not use fails", () =>
+    fails(
+      good(fxq3(fxRow("EUR"), fxRow("GBP", { issuer: "ECB" }))),
+      ["L9"],
+      L9("GBP is not a non-USD currency of the current machine block of base_money/quarters/2026Q3\\.md"),
+    ));
+
+  // Date rule, Source.
+  test("an unknown Date rule fails", () =>
+    fails(eur({ rule: "nearest" }), ["L9"], L9('Date rule "nearest" must be one of "same day", "month average"')));
+  test("a Source with no link fails", () =>
+    fails(
+      eur({ source: "ECB reference rate" }),
+      ["L9"],
+      L9("the Source cell must hold exactly one http\\(s\\) link \\(it has 0"),
+    ));
+  test("a Source with two links fails", () =>
+    fails(
+      eur({ source: "[a](<https://a.test/>) [b](<https://b.test/>)" }),
+      ["L9"],
+      L9("the Source cell must hold exactly one http\\(s\\) link \\(it has 2"),
+    ));
+  test("a Source linking a repo file fails", () =>
+    fails(eur({ source: "[x](../README.md)" }), ["L9"], L9("the Source cell must hold exactly one http\\(s\\) link")));
+
+  // The Issuer cell link and the count date.
+  test("an Issuer cell linking no extract fails", () =>
+    fails(
+      eur({ issuerCell: '<a id="fx-2026q3-eur"></a>[ECB](../quarters/2026Q3.md#2026q3)' }),
+      ["L9"],
+      L9(
+        "the Issuer cell must link the adopted EUR issuer extract under ## 2026Q3 in base_money/issuers/<ISSUER>/2026\\.md",
       ),
     ));
-  test("no adopted extract for a currency fails", () =>
+  test("an Issuer cell linking another issuer's extract fails", () =>
+    fails(eur({ issuer: "FED" }), ["L9"], L9("the Issuer cell links FED, but EUR is reported by ECB")));
+  test("an Issuer cell linking a confirming extract fails", () =>
     fails(
-      eur({ adopted: "no, confirming" }),
+      good({
+        ...fxq3(fxRow("EUR", { issuerCell: '<a id="fx-2026q3-eur"></a>[ECB](../issuers/ECB/2026.md#ecb-confirming)' })),
+        [ECB]: `${goodText()[ECB]}\n${extract({ title: "ECB confirming", fields: ["- As of: 2026-09-30", "- Adopted: no, confirming"] })}`,
+      }),
       ["L9"],
-      /components\[1\] \(ECB\) cannot verify fx_rate: no adopted FX extract \("- Adopted: yes"\) for EUR under ## 2026Q3/,
+      L9('the Issuer cell must link an adopted \\("- Adopted: yes"\\) extract under ## 2026Q3'),
     ));
-  test("two adopted extracts for a currency fail", () =>
+  test("a linked extract with no As of fails", () =>
     fails(
-      good(fxFile(fxExtract("EUR"), fxExtract("EUR", { title: "FX EUR again" }))),
+      good({ [ECB]: (goodText()[ECB] as string).replace("- As of: 2026-09-30\n", "") }),
       ["L9"],
-      /cannot verify fx_rate: 2 adopted FX extracts for EUR under ## 2026Q3/,
+      L9(
+        'cannot check the count date: the linked extract \\(base_money/issuers/ECB/2026\\.md line \\d+\\) has no single "- As of:" date',
+      ),
+    ));
+  test("a Report count date other than the extract's As of fails", () =>
+    fails(
+      eur({ count: "2026-09-29 (start of day)" }),
+      ["L9"],
+      L9(`Report count date "2026-09-29 \\(start of day\\)" must be the linked extract's As of 2026-09-30`),
+    ));
+  test("a Report count date with a note passes", () => passes(eur({ count: "2026-09-30 (end of day)" })));
+
+  // Sections.
+  test("a section for a quarter of another year fails", () =>
+    fails(
+      good({ [FXF]: fxFile(fxSection("2026Q3", fxRow("EUR")), fxSection("2025Q4")) }),
+      ["L9"],
+      /## 2025Q4 \(line \d+\) is not a quarter of 2026/,
+    ));
+  test("a quarter section with no FX table fails", () =>
+    fails(
+      good({ [FXF]: fxFile(fxSection("2026Q3", fxRow("EUR")), "\n## 2026Q2\n\nNo rates yet.\n") }),
+      ["L9"],
+      /## 2026Q2 \(line \d+\) has no FX table \(a table with Issuer, Report count date, Date rule, Rate date, Pair, Rate, Source columns\)/,
+    ));
+  test("the FX file is not an extract file: L7 never reads it", () =>
+    passes(
+      good({ [FXF]: `${fxFile(fxSection("2026Q3", fxRow("EUR")))}\n## Notes\n\n### Method\n- Retrieved: soon\n` }),
+    ));
+  test("an older quarter's section passes without a quarter file (no current block to compare)", () =>
+    passes(
+      good({
+        [ECB]: `${goodText()[ECB]}${quarterSection("ECB", "2026Q2")}`,
+        [FXF]: fxFile(fxSection("2026Q3", fxRow("EUR")), fxSection("2026Q2", fxRow("EUR", { q: "2026Q2" }))),
+      }),
+    ));
+});
+
+describe("L9 FX Date rule", () => {
+  const FXF = "base_money/FX/2026.md";
+  /** ECB's adopted extract As of `asOf`, and its EUR row counted on that date. */
+  const on = (asOf: string, o: Parameters<typeof fxRow>[1]) =>
+    good({
+      [ECB]: (goodText()[ECB] as string).replace("- As of: 2026-09-30", `- As of: ${asOf}`),
+      [FXF]: fxFile(fxSection("2026Q3", fxRow("EUR", { count: asOf, ...o }))),
+    });
+  test("same day: the rate date is the count date", () => passes(on("2026-09-30", { rule: "same day" })));
+  test("same day: another date fails", () =>
+    fails(
+      on("2026-09-30", { rule: "same day", rateDate: "2026-09-29" }),
+      ["L9"],
+      /Rate date "2026-09-29" must equal the count date 2026-09-30 \(same day\)/,
+    ));
+  test("same day: a month count date fails", () =>
+    fails(
+      on("2026-09", { rule: "same day" }),
+      ["L9"],
+      /Date rule "same day" needs a full YYYY-MM-DD count date, not "2026-09"/,
+    ));
+  test("month average: the rate date starts with the count month", () =>
+    passes(
+      on("2026-09", { count: "2026-09 (monthly average)", rule: "month average", rateDate: "2026-09 (average)" }),
+    ));
+  test("month average: another month fails", () =>
+    fails(
+      on("2026-09", { rule: "month average", rateDate: "2026-08" }),
+      ["L9"],
+      /Rate date "2026-08" must start with the count month 2026-09 \(month average\)/,
+    ));
+  test("month average: a full count date fails", () =>
+    fails(
+      on("2026-09-30", { rule: "month average", rateDate: "2026-09" }),
+      ["L9"],
+      /"month average" needs a YYYY-MM count date/,
+    ));
+  test("prior close: the day before, across a month boundary", () =>
+    passes(on("2026-07-01", { rule: "prior close", rateDate: "2026-06-30" })));
+  test("prior close: the count date itself fails", () =>
+    fails(
+      on("2026-07-01", { rule: "prior close", rateDate: "2026-07-01" }),
+      ["L9"],
+      /Rate date "2026-07-01" must be 2026-06-30, the day before the count date 2026-07-01 \(prior close\)/,
+    ));
+  test("prior close: across a year boundary", () =>
+    passes(
+      good({
+        [ECB]: `${goodText()[ECB]}\n## 2026Q1\n\n${extract({ title: "ECB 2026Q1", fields: ["- As of: 2026-01-01"] })}`,
+        [FXF]: fxFile(
+          fxSection("2026Q3", fxRow("EUR")),
+          fxSection(
+            "2026Q1",
+            fxRow("EUR", { q: "2026Q1", count: "2026-01-01", rule: "prior close", rateDate: "2025-12-31" }),
+          ),
+        ),
+      }),
+    ));
+  test("last close before: 4 days before passes", () =>
+    passes(on("2026-07-06", { rule: "last close before", rateDate: "2026-07-02" })));
+  test("last close before: 5 days before fails", () =>
+    fails(
+      on("2026-07-06", { rule: "last close before", rateDate: "2026-07-01" }),
+      ["L9"],
+      /Rate date "2026-07-01" must be before the count date 2026-07-06 and no earlier than 2026-07-02 \(last close before, within 4 days\)/,
+    ));
+  test("last close before: the count date itself fails", () =>
+    fails(
+      on("2026-07-06", { rule: "last close before", rateDate: "2026-07-06" }),
+      ["L9"],
+      /must be before the count date 2026-07-06/,
     ));
 });
 
@@ -2598,22 +2811,6 @@ describe("L7 As of not after Retrieved (P6-n7)", () => {
       ["L7"],
       /As of 2026-09 \(taken as its last day, 2026-09-30\) is after Retrieved 2026-09-29/,
     ));
-  test("an FX extract As of after Retrieved fails", () =>
-    fails(
-      good({
-        "base_money/FX/2026.md": issuerFile(
-          "FX",
-          "2026Q3",
-          fxExtract("EUR", {
-            asOf: "2026-09-30",
-            retrieved: "2026-09-29T12:00:00Z",
-            archive: "https://web.archive.org/web/20260929120000/https://example.test/FX-EUR",
-          }),
-        ),
-      }),
-      ["L7"],
-      /As of 2026-09-30 is after Retrieved 2026-09-29/,
-    ));
 });
 
 // Assay (3): "2 is 1 and 1 is none". Every extract carries exactly one Archive URL 2: an archive.today capture, or a
@@ -2626,14 +2823,6 @@ describe("L7 Archive URL 2", () => {
     passes(with2("https://archive.is/20261002140500/https://example.test/FED-H.4.1")));
   test("a dated attempt with a reason passes", () => passes(with2("attempted 2026-10-02: blocked by a CAPTCHA")));
   test("missing fails", () => fails(with2(null), ["L7"], /has no Archive URL 2/));
-  test("missing on an FX extract fails too", () =>
-    fails(
-      good({
-        "base_money/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR").replace(/- Archive URL 2: .*\n/, "")),
-      }),
-      ["L7"],
-      /has no Archive URL 2/,
-    ));
   test("repeated fails", () =>
     fails(
       good(fed(extract({ title: "FED H.4.1", fields: [`- Archive URL 2: ${TODAY}`] }))),
@@ -3171,7 +3360,17 @@ describe("L9 whole-dollar USD", () => {
   const JPY_FX = "0.00100000000000000000";
   const withFx = (o: Parameters<typeof machineBlock>[0], total: string) =>
     good({
-      [FXF]: issuerFile("FX", "2026Q3", fxExtract("EUR"), fxExtract("JPY")),
+      // One row per non-USD currency of the block (EUR when ECB's default component or a reference uses it).
+      [FXF]: fxFile(
+        fxSection(
+          "2026Q3",
+          ...(o.components === undefined || `${o.components}${o.referenceValues ?? ""}`.includes("EUR")
+            ? [fxRow("EUR")]
+            : []),
+          fxRow("JPY"),
+        ),
+      ),
+      [BOJ_PATH]: (goodText()[BOJ_PATH] as string).replace("- Adopted: yes", "- As of: 2026-09-30\n- Adopted: yes"),
       [ROLLUP]: rollup(machineBlock({ ...o, total })),
       ...csv(`2026-09-30,${total},${ROLLUP}`),
     });
@@ -3279,125 +3478,93 @@ describe("L9 whole-dollar USD", () => {
     fails(cov("93", "500", "5", "93", "93.94"), ["L9"], /coverage 93\.93\d*…?% is below the basket 1 floor 94%/));
 });
 
-describe("failed attempts log (L9 form, L4 append-only; never a machine block)", () => {
-  const entry = (o: Record<string, string> = {}) => {
-    const f: Record<string, string> = {
-      kind: "archive",
-      issuer: "FED",
-      url: "https://www.federalreserve.gov/releases/h41/",
-      target: "archive.today",
-      attempted: "2026-10-02T14:03:00Z",
-      method: "script",
-      outcome: "captcha",
-      http_status: "429",
-      detail: '"archive.ph served a CAPTCHA"',
-      ...o,
-    };
-    return Object.entries(f)
-      .filter(([, v]) => v !== "DROP")
-      .map(([k, v], i) => `${i === 0 ? "  - " : "    "}${k}: ${v}`)
-      .join("\n");
-  };
-  const section = (...entries: string[]) =>
-    failedLog(`failed_attempts:${entries.length === 0 ? " []" : `\n${entries.join("\n")}`}`);
-  const bare = () => rollup(machineBlock({}), machineBlock({}), "");
-  const withLog = (log: string) => `${bare()}${log}`;
-  const q = (log: string) => good({ [ROLLUP]: withLog(log) });
-  const A = entry();
-  const B = entry({
-    kind: "source",
-    issuer: "null",
-    url: "null",
-    target: "null",
-    method: "null",
-    outcome: "rejected",
-    http_status: "null",
-    detail: '"a mirror only"',
+describe("per-extract Archive attempt, Link audit and Rejected source lines (L7; L4 append-only)", () => {
+  /** FED's adopted extract (retrieved 2026-10-02) carrying `lines`. */
+  const withLines = (...lines: string[]) => good(fed(extract({ title: "FED H.4.1", fields: lines })));
+  const ATTEMPT = "- Archive attempt 2026-10-02: archive.today served a CAPTCHA.";
+  const AUDIT = "- Link audit 2026-10-20: Original URL now redirects to the release index.";
+  const REJECTED = "- Rejected source: a press summary: it rounds the figure to billions.";
+  test("good lines of each kind pass", () => passes(withLines(ATTEMPT, AUDIT, REJECTED)));
+  test("an attempt naming Ghostarchive or Wayback passes", () =>
+    passes(
+      withLines(
+        "- Archive attempt 2026-10-03: Ghostarchive timed out.",
+        "- Archive attempt 2026-10-04: Wayback Save Page Now refused the page.",
+      ),
+    ));
+  test("an Archive attempt with no archive named fails", () =>
+    fails(
+      withLines("- Archive attempt 2026-10-02: the page timed out."),
+      ["L7"],
+      /line \d+: Archive attempt "the page timed out" must name the archive tried: archive\.today, Ghostarchive or Wayback/,
+    ));
+  test("an impossible date fails", () =>
+    fails(
+      withLines("- Archive attempt 2026-02-30: archive.today failed."),
+      ["L7"],
+      /Archive attempt date "2026-02-30" is not a real YYYY-MM-DD date/,
+    ));
+  test("a line with no date fails", () =>
+    fails(
+      withLines("- Link audit: the Original URL is gone."),
+      ["L7"],
+      /Link audit line must read "- Link audit YYYY-MM-DD: <text>\." \(non-empty text ending with a period\)/,
+    ));
+  test("a line with no closing period fails", () =>
+    fails(withLines("- Link audit 2026-10-20: still live"), ["L7"], /Link audit line must read/));
+  test("a line with empty text fails", () =>
+    fails(withLines("- Archive attempt 2026-10-02: ."), ["L7"], /Archive attempt line must read/));
+  test("a date before Retrieved fails", () =>
+    fails(
+      withLines("- Archive attempt 2026-10-01: archive.today served a CAPTCHA."),
+      ["L7"],
+      /Archive attempt date 2026-10-01 is before Retrieved 2026-10-02T14:03:00Z .*; it is made at or after retrieval/,
+    ));
+  test("a future date fails", () =>
+    fails(withLines("- Link audit 2026-10-24: checked early."), ["L7"], /Link audit date 2026-10-24 is in the future/));
+  test("a Rejected source with a URL fails", () =>
+    fails(
+      withLines("- Rejected source: a mirror at mirror.example.com: it is not the issuer."),
+      ["L7"],
+      /Rejected source line contains a URL/,
+    ));
+  test("a Rejected source with an empty part fails", async () => {
+    await fails(withLines("- Rejected source: a mirror."), ["L7"], /Rejected source line must read/);
+    await fails(withLines("- Rejected source: : no reason given."), ["L7"], /Rejected source line must read/);
   });
-  const C = entry({ issuer: "ECB", target: "ghostarchive", outcome: "cloudflare_challenge", http_status: "403" });
-  /** Base has `was` as the quarter's log, the working tree `now`. */
-  const logs = (was: string, now: string): Snapshot => ({
-    files: files(goodText(), { [ROLLUP]: withLog(now) }),
-    base: files(goodText(), { [ROLLUP]: withLog(was) }),
+  test("a line outside any extract fails", () =>
+    fails(
+      good({ [FED]: issuerFile("FED", "2026Q3", `${ATTEMPT}\n\n`, extract({ title: "FED H.4.1" })) }),
+      ["L7"],
+      /line 5: Archive attempt, Link audit or Rejected source line outside an ### extract block/,
+    ));
+  test("appending a line to a committed extract passes; editing or removing one fails L4", async () => {
+    const base = files(goodText(), fed(extract({ title: "FED H.4.1", fields: [ATTEMPT] })));
+    await passes({ files: files(goodText(), fed(extract({ title: "FED H.4.1", fields: [ATTEMPT, AUDIT] }))), base });
+    await fails(
+      {
+        files: files(goodText(), fed(extract({ title: "FED H.4.1", fields: [ATTEMPT.replace("CAPTCHA", "403")] }))),
+        base,
+      },
+      ["L4"],
+      /base line \d+ was removed or changed .*Archive attempt 2026-10-02: archive\.today served a CAPTCHA/,
+    );
+    await fails(
+      { files: files(goodText(), fed(extract({ title: "FED H.4.1" }))), base },
+      ["L4"],
+      /base line \d+ was removed or changed .*Archive attempt 2026-10-02/,
+    );
   });
+});
 
-  test("the fixture quarter carries an empty log and passes", () => passes(good()));
-  test("a quarter with no failed_attempts block fails L9 (required)", () =>
-    fails(good({ [ROLLUP]: bare() }), ["L9"], /has no failed_attempts block/));
-  test("valid entries pass (date or Z datetime; source with null issuer, url, target, method, http_status)", () =>
-    passes(q(section(A, B, entry({ attempted: "2026-10-02", http_status: "null", detail: "null" })))));
-  test("appending entries to a committed log passes", () => passes(logs(section(A), section(A, B, C))));
-  test("adding the log to a committed quarter passes", () => passes(logs("", section(A))));
-  test("mutant: a bad enum value fails L9", () =>
-    fails(q(section(entry({ outcome: "blocked" }))), ["L9"], /outcome "blocked" is not one of/));
-  test("mutant: a bad target fails L9", () =>
-    fails(q(section(entry({ target: "archive.ph" }))), ["L9"], /target "archive.ph"/));
-  test("a missing field fails L9", () => fails(q(section(entry({ url: "DROP" }))), ["L9"], /missing url/));
-  test("an unknown field fails L9", () => fails(q(section(`${A}\n    note: x`)), ["L9"], /unknown field note/));
-  test("kind archive needs a url, target and method", async () => {
-    await fails(q(section(entry({ target: "null" }))), ["L9"], /kind archive needs a target/);
-    await fails(q(section(entry({ method: "null" }))), ["L9"], /kind archive needs a method/);
-    await fails(q(section(entry({ url: "null" }))), ["L9"], /kind archive needs a url/);
-  });
-  test("kind source needs outcome rejected and a null target and method", async () => {
-    await fails(q(section(B.replace("outcome: rejected", "outcome: not_found"))), ["L9"], /needs outcome rejected/);
-    await fails(q(section(B.replace("method: null", "method: browser"))), ["L9"], /kind source needs method: null/);
-    await fails(q(section(B.replace("target: null", "target: wayback"))), ["L9"], /kind source needs target: null/);
-  });
-  test("attempted: a real date, or a UTC datetime with Z; offsets and bare times fail L9", async () => {
-    await fails(q(section(entry({ attempted: "2026-13-02" }))), ["L9"], /attempted "2026-13-02"/);
-    await fails(q(section(entry({ attempted: "2026-10-02T14:03:00+02:00" }))), ["L9"], /attempted/);
-    await fails(q(section(entry({ attempted: "2026-10-02T14:03:00" }))), ["L9"], /attempted/);
-    await passes(q(section(entry({ attempted: "2026-10-02T14:03Z" }))));
-  });
-  test("http_status not an integer fails L9", () =>
-    fails(q(section(entry({ http_status: '"429"' }))), ["L9"], /http_status "429"/));
-  test("mutant: a malformed block fails L9", () =>
-    fails(q(section(`${A}\n  - [unclosed`)), ["L9"], /failed_attempts block .* not valid YAML/));
-  test("mutant: failed_attempts that is not a list fails L9", () =>
-    fails(q(failedLog("failed_attempts: none")), ["L9"], /must hold only a failed_attempts: list/));
-  test("two failed_attempts blocks fail L9", () =>
-    fails(q(section(A) + section(B)), ["L9"], /has 2 failed_attempts blocks/));
-  test("mutant: an edited committed entry fails L4", () =>
-    fails(logs(section(A, B), section(A, B.replace("a mirror", "a copy"))), ["L4"], /entry 2 changed/));
-  test("mutant: a reorder fails L4", () =>
-    fails(logs(section(A, B), section(B, A)), ["L4"], /committed failed_attempts entry 1 changed/));
-  test("mutant: an insert in the middle fails L4", () =>
-    fails(logs(section(A, B), section(A, C, B)), ["L4"], /committed failed_attempts entry 2 changed/));
-  test("a removed committed entry fails L4", () =>
-    fails(logs(section(A, B), section(A)), ["L4"], /entry 2 was removed/));
-  test("a removed committed log fails L4 (and L9: it is required)", () =>
-    fails(logs(section(A), ""), ["L4", "L9"], /committed failed_attempts block was removed/));
-  test("mutant: the log is not a machine block (no L9 arithmetic, no table check, CSV still matches)", () =>
-    passes(q(section(A, C))));
-  test("mutant: the log is not a machine block for the lock (committed block 1 is still compared to block 1)", () =>
-    passes(logs(section(A), section(A, B))));
-  test("a log placed before the machine block does not shift the lock or the current block", () =>
-    passes(onGood({ [ROLLUP]: bare().replace("## Machine block", `${section(A)}\n## Machine block`) })));
-  test("a failed_attempts block with a leading comment is still the log", () =>
-    passes(q(section(A).replace("```yaml\n", "```yaml\n# attempts that failed\n"))));
-  test("on a quarter rename the log is compared against the old path's content", async () => {
-    const OLD_Q3 = "evidence/base_money/2026Q3.md";
-    const toOld = (t: string) =>
-      t
-        .replaceAll("base_money/base_money.csv", "base_money.csv")
-        .replaceAll("base_money/quarters/", "evidence/base_money/")
-        .replaceAll("base_money/FX/", "issuers/FX/")
-        .replaceAll("base_money/issuers/", "issuers/");
-    const legacy = (log: string): Record<string, string> =>
-      Object.fromEntries(
-        Object.entries(goodText()).map(([p, t]) => [
-          toOld(p),
-          p === ROLLUP ? toOld(withLog(log)) : p === "base_money/base_money.csv" ? toOld(t) : t,
-        ]),
-      );
-    const moved = (was: string, now: string): Snapshot => ({
-      files: files(goodText(), { [ROLLUP]: withLog(now) }),
-      base: files(legacy(was)),
-    });
-    expect(OLD_Q3 in legacy("")).toBe(true);
-    await passes(moved(section(A), section(A, B)));
-    const fs = await lint(moved(section(A, B), section(B, A)), OFF);
-    expect(fs.some((f) => f.check === "L4" && /committed failed_attempts entry 1 changed/.test(f.message))).toBe(true);
-  });
+describe("no failed-attempts log in quarter files", () => {
+  const LOG = "\n```yaml\n# failed attempts\nfailed_attempts: []\n```\n";
+  test("a failed_attempts block in a quarter file fails L9", () =>
+    fails(
+      good({ [ROLLUP]: `${rollup()}${LOG}` }),
+      ["L9"],
+      /has a failed_attempts block \(line \d+\); quarter files hold no failed-attempts log: record each failed attempt as a "- Archive attempt YYYY-MM-DD: <text>\." line/,
+    ));
+  test("removing a committed failed_attempts block passes (it was never a machine block)", () =>
+    passes({ files: files(goodText()), base: files(goodText(), { [ROLLUP]: `${rollup()}${LOG}` }) }));
 });

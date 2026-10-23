@@ -10,9 +10,12 @@ export const QUARTER_LIST = "base_money/README.md";
 export const QUARTERS_DIR = "base_money/quarters";
 /** Issuer-year extracts: <ISSUERS_DIR>/<ISS>/<YYYY>.md. */
 export const ISSUERS_DIR = "base_money/issuers";
-/** FX extracts (the sources fx_source_anchor cites; not a basket issuer): <FX_DIR>/<YYYY>.md. */
+/**
+ * FX rate tables (what fx_source_anchor cites; not a basket issuer): <FX_DIR>/<YYYY>.md, one table per quarter of
+ * market closes on each report's count date. Supporting data, regenerable: not append-only, not archived.
+ */
 export const FX_DIR = "base_money/FX";
-/** The id the FX extracts go by in messages and in extractOf. */
+/** The id the FX folder goes by in messages and in extractOf. */
 export const FX_ID = "FX";
 
 /** The series CSV (date,value,evidence_id); its evidence_id values are repo-root paths. */
@@ -72,7 +75,7 @@ export const quarterOfPath = (p: string): string | undefined => QUARTER_RE.exec(
 export const anyQuarterOfPath = (p: string): string | undefined =>
   quarterOfPath(p) ?? LEGACY_QUARTERS.map((r) => r.exec(p)?.[1]).find((q) => q !== undefined);
 
-/** An extract at its current path: its issuer (FX_ID for an FX file) and year; else undefined. */
+/** An issuer-year file or FX year file at its current path: its issuer (FX_ID for an FX file) and year; else undefined. */
 export function extractOf(p: string): { issuer: string; year: string } | undefined {
   const fx = FX_RE.exec(p);
   if (fx) return { issuer: FX_ID, year: fx[1] as string };
@@ -81,9 +84,16 @@ export function extractOf(p: string): { issuer: string; year: string } | undefin
   return { issuer: m[1] as string, year: m[2] as string };
 }
 
-/** A committed file that is a strictly append-only extract (current or earlier layout): not a quarter, not a list. */
+/** An FX rate table at its current path (base_money/FX/<YYYY>.md). */
+export const isFxPath = (p: string) => FX_RE.test(p);
+
+/**
+ * A committed file that is a strictly append-only extract (current or earlier layout): not a quarter, not a list, not
+ * an FX rate table (regenerable supporting data).
+ */
 export const isExtractPath = (p: string) =>
   p.endsWith(".md") &&
+  !isFxPath(p) &&
   EXTRACT_ROOTS.some((r) => p.startsWith(r)) &&
   p !== QUARTER_LIST &&
   !LEGACY_LISTS.includes(p) &&

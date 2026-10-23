@@ -27,7 +27,7 @@ export const extract = (o: {
   /** The Archive URL 3 value; null drops the line. Default: a dated attempt, so no fixture HEADs Ghostarchive. */
   archive3?: string | null;
   quote?: string;
-  /** Extra field lines, e.g. "- Currency: EUR" for an FX extract. */
+  /** Extra field lines, e.g. "- As of: 2026-09-30". */
   fields?: string[];
 }): string => {
   const original = o.original ?? `https://example.test/${o.title.replaceAll(" ", "-")}`;
@@ -50,54 +50,63 @@ export const extract = (o: {
   ].join("\n");
 };
 
-/** Synthetic FX quotes: EUR is quoted USD per EUR (so fx_rate is the quote), JPY is JPY per USD (1 / quote). */
-const FX_QUOTES: Record<string, { quote: string; direction: "per USD" | "USD per"; fx: string }> = {
-  EUR: { quote: "1.1", direction: "USD per", fx: "1.1" },
-  JPY: { quote: "1000", direction: "per USD", fx: "0.00100000000000000000" },
+/** Synthetic FX rates: EUR is quoted USD per EUR (so fx_rate is the Rate), JPY is JPY per USD (1 / Rate). */
+const FX_RATES: Record<string, { pair: string; rate: string; issuer: string }> = {
+  EUR: { pair: "USD per EUR", rate: "1.1", issuer: "ECB" },
+  JPY: { pair: "JPY per USD", rate: "1000", issuer: "BOJ" },
 };
+/**
+ * The fixture's count date in quarter `q`: the quarter-end, or the quarter's first day for a quarter still open at the
+ * fixture retrieval date (2026-10-02), since an As of is never after Retrieved.
+ */
+export const countDateOf = (q: string): string => {
+  const end = `${q.slice(0, 4)}-${({ 1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31" } as Record<string, string>)[q.slice(5)]}`;
+  return end < "2026-10-02"
+    ? end
+    : `${q.slice(0, 4)}-${({ 1: "01", 2: "04", 3: "07", 4: "10" } as Record<string, string>)[q.slice(5)]}-01`;
+};
+export const FX_HEADER = [
+  "| Issuer | Report count date | Date rule | Rate date | Pair | Rate | Source |",
+  "| :-- | :-- | :-- | :-- | :-- | --: | :-- |",
+].join("\n");
 
 /**
- * An FX extract for one currency in the methodology FX extract format: Currency, Quote as published, Quote
- * direction, Rate (the quote normalized), fx_rate (USD per unit) and Adopted. Each field can be overridden, or
- * dropped with null.
+ * One FX table row in the methodology FX table format: the anchored Issuer cell linking the issuer's adopted extract,
+ * Report count date, Date rule, Rate date, Pair, Rate and one Source link. Every cell can be overridden.
  */
-export const fxExtract = (
-  currency: string,
+export const fxRow = (
+  ccy: string,
   o: {
-    title?: string;
-    quote?: string | null;
-    direction?: string | null;
-    rate?: string | null;
-    fx?: string | null;
-    adopted?: string | null;
-    asOf?: string;
-    retrieved?: string;
-    archive?: string;
+    q?: string;
+    anchor?: string;
+    /** The whole Issuer cell (anchor and link). */
+    issuerCell?: string;
+    /** The issuer whose adopted extract the Issuer cell links. */
+    issuer?: string;
+    count?: string;
+    rule?: string;
+    rateDate?: string;
+    pair?: string;
+    rate?: string;
+    source?: string;
   } = {},
 ): string => {
-  const d = FX_QUOTES[currency] ?? { quote: "1", direction: "per USD", fx: "1.00000000000000000000" };
-  const quote = o.quote === undefined ? d.quote : o.quote;
-  const dir = d.direction === "USD per" ? `USD per ${currency}` : `${currency} per USD`;
-  const field = (label: string, v: string | null | undefined, dflt: string | null) => {
-    const x = v === undefined ? dflt : v;
-    return x === null ? [] : [`- ${label}: ${x}`];
-  };
-  return extract({
-    title: o.title ?? `FX ${currency}`,
-    ...(o.retrieved ? { retrieved: o.retrieved } : {}),
-    ...(o.archive ? { archive: o.archive } : {}),
-    fields: [
-      `- Currency: ${currency}`,
-      ...(o.asOf ? [`- As of: ${o.asOf}`] : []),
-      ...field("Quote as published", quote, null),
-      ...field("Quote direction", o.direction, dir),
-      ...field("Rate", o.rate, quote === null ? null : quote.replaceAll(",", ".")),
-      ...field("fx_rate (USD per unit)", o.fx, d.fx),
-      ...field("Adopted", o.adopted, "yes"),
-    ],
-    quote: `${currency} (synthetic): ${quote ?? d.quote}`,
-  });
+  const q = o.q ?? "2026Q3";
+  const d = FX_RATES[ccy] ?? { pair: `${ccy} per USD`, rate: "1", issuer: ccy };
+  const iss = o.issuer ?? d.issuer;
+  const end = countDateOf(q);
+  const anchor = o.anchor ?? `fx-${q.toLowerCase()}-${ccy.toLowerCase()}`;
+  const issuerCell =
+    o.issuerCell ??
+    `<a id="${anchor}"></a>[${iss}](${relLink(FX, extractPath(iss, q.slice(0, 4)))}#${slugOf(adoptedTitle(iss, q))})`;
+  const source = o.source ?? `[Synthetic close](<https://fx.example.test/${ccy}?d=${end}>)`;
+  return `| ${issuerCell} | ${o.count ?? end} | ${o.rule ?? "same day"} | ${o.rateDate ?? end} | ${o.pair ?? d.pair} | ${o.rate ?? d.rate} | ${source} |`;
 };
+/** A `## <quarter>` FX table section: the header and the given rows. */
+export const fxSection = (q: string, ...rows: string[]): string => `\n## ${q}\n\n${FX_HEADER}\n${rows.join("\n")}\n`;
+/** An FX rate table file (base_money/FX/2026.md) with the given sections. */
+export const fxFile = (...sections: string[]): string =>
+  ["# FX 2026", "", "Synthetic rates (supporting data, not archived).", ...sections].join("\n");
 
 export const issuerFile = (iss: string, quarter: string, ...blocks: string[]): string =>
   [`# ${iss} 2026`, "", `## ${quarter}`, "", ...blocks].join("\n");
@@ -107,7 +116,7 @@ export const BASKET = ["FED", "ECB", "BOJ"];
 /** The fixture catalog's baskets: version 1 only, coverage floor 94%. */
 export const BASKETS = [{ version: 1, issuers: BASKET, floor_pct: "94" }];
 
-/** Synthetic reference value for an excluded issuer: 1 USD (USD, so no FX extract is needed; a whole dollar, as
+/** Synthetic reference value for an excluded issuer: 1 USD (USD, so no FX table row is needed; a whole dollar, as
  * every USD figure is; small, so coverage stays above any floor unless a test sets reference_values itself). */
 const REF_VALUE = "1";
 
@@ -237,9 +246,9 @@ const slugOf = (title: string) =>
     .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
     .replace(/ /g, "-");
 /**
- * The fixture's adopted extract titles: under 2026Q3 the goodText extracts, under any other quarter `<ISS> <quarter>`
- * (`FX <CCY> <quarter>` for FX). A reader-table USD cell links the issuer's adopted extract under the component's
- * anchor, an FX cell the currency's adopted FX extract; a test adding another quarter adds these (quarterSection).
+ * The fixture's adopted extract titles: under 2026Q3 the goodText extracts, under any other quarter `<ISS> <quarter>`.
+ * A reader-table USD cell links the issuer's adopted extract under the component's anchor, an FX cell the currency's
+ * FX table row; a test adding another quarter adds these (quarterSection).
  */
 const ADOPTED_TITLE: Record<string, string> = {
   FED: "FED H.4.1",
@@ -248,12 +257,14 @@ const ADOPTED_TITLE: Record<string, string> = {
 };
 export const adoptedTitle = (iss: string, q: string): string =>
   q === "2026Q3" ? (ADOPTED_TITLE[iss] ?? iss) : `${iss} ${q}`;
-export const fxTitle = (ccy: string, q: string): string => (q === "2026Q3" ? `FX ${ccy}` : `FX ${ccy} ${q}`);
-/** A `## <quarter>` section holding the issuer's adopted extract (or, for FX, the given currencies' FX extracts). */
+/**
+ * A `## <quarter>` section holding the issuer's adopted extract, As of the quarter-end (or, for FX, an FX table with
+ * the given currencies' rows).
+ */
 export const quarterSection = (iss: string, q: string, ...ccys: string[]): string =>
   iss === "FX"
-    ? `\n## ${q}\n\n${ccys.map((c) => fxExtract(c, { title: fxTitle(c, q) })).join("\n")}`
-    : `\n## ${q}\n\n${extract({ title: adoptedTitle(iss, q) })}`;
+    ? fxSection(q, ...ccys.map((c) => fxRow(c, { q })))
+    : `\n## ${q}\n\n${extract({ title: adoptedTitle(iss, q), fields: [`- As of: ${countDateOf(q)}`] })}`;
 /** The link from the quarter file to the adopted extract under a repo anchor (path#yyyyqn). */
 const adoptedLink = (anchor: string, title: (q: string) => string) => {
   const [p = "", frag = ""] = anchor.split("#");
@@ -265,14 +276,14 @@ export const folderReadme = (name: string, ...years: string[]): string =>
 
 /**
  * The reader table for a block (its last ```yaml block): one row per component with "CCY amount", the FX quote as
- * "fx_rate USD per CCY" (or "none" for USD) and the whole-dollar USD, and the **Total** row = total_usd. So every
+ * "fx_rate USD per CCY" linking its FX table row (or "none" for USD) and the whole-dollar USD, and the **Total** row = total_usd. So every
  * fixture quarter's table equals its machine block unless a test plants a difference.
  */
 export const readerTable = (block: string): string => {
   const yaml = block.split("```yaml").at(-1) ?? "";
   const comps = (yaml.split(/^components:$/m)[1] ?? "").split(/^[a-z_]+:/m)[0] ?? "";
   const fxAnchor = /fx_source_anchor: "?([^"\n]*)"?/.exec(yaml)?.[1] ?? "";
-  // The FX cell links the adopted extract under the block's own quarter in that FX file.
+  // The FX cell links the currency's row of the FX table under the block's own quarter.
   const quarter = /^quarter: "?(\d{4}Q[1-4])/m.exec(yaml)?.[1];
   const fxFile = fxAnchor.split("#")[0] ?? "";
   const rows = comps
@@ -290,7 +301,7 @@ export const readerTable = (block: string): string => {
         ccy === "USD"
           ? "none (already USD)"
           : fxAnchor
-            ? `[${fx} USD per ${ccy}](${adoptedLink(quarter ? `${fxFile}#${quarter.toLowerCase()}` : fxAnchor, (q) => fxTitle(ccy, q))})`
+            ? `[${fx} USD per ${ccy}](${link(fxFile)}#fx-${(quarter ?? "").toLowerCase()}-${ccy.toLowerCase()})`
             : `${fx} USD per ${ccy}`;
       const dollars = `$${group(usd([[v || "0", fx || "1"]]).toString())}`;
       return `| [${iss}](${link(folderReadmePath(iss))}) | ${amount} | ${quote} | [${dollars}](${adoptedLink(f("anchor"), (q) => adoptedTitle(iss, q))}) |`;
@@ -304,22 +315,18 @@ export const readerTable = (block: string): string => {
   ].join("\n");
 };
 
-/** The quarter file's closing failed-attempts section; required in every quarter file. */
-export const failedLog = (body = "failed_attempts: []"): string =>
-  `\n## Failed attempts (machine-readable)\n\n\`\`\`yaml\n${body}\n\`\`\`\n`;
-
 const rollups = new Map<string, string>();
-/** The fixture quarter file. Pure in its arguments, so built once per distinct (block, table, log). */
-export const rollup = (block = machineBlock({}), tableFrom = block, log = failedLog()): string => {
-  const key = `${block}\0${tableFrom}\0${log}`;
+/** The fixture quarter file. Pure in its arguments, so built once per distinct (block, table). */
+export const rollup = (block = machineBlock({}), tableFrom = block): string => {
+  const key = `${block}\0${tableFrom}`;
   let r = rollups.get(key);
   if (r === undefined) {
-    r = buildRollup(block, tableFrom, log);
+    r = buildRollup(block, tableFrom);
     rollups.set(key, r);
   }
   return r;
 };
-const buildRollup = (block: string, tableFrom: string, log: string): string =>
+const buildRollup = (block: string, tableFrom: string): string =>
   [
     "# 2026Q3 base money",
     "",
@@ -338,7 +345,7 @@ const buildRollup = (block: string, tableFrom: string, log: string): string =>
     "## Machine block",
     "",
     block,
-  ].join("\n") + log;
+  ].join("\n");
 
 /** The fixture quarter with `block` appended as a revision; its reader table now shows that block (the last one). */
 export const revisedRollup = (block: string, first = machineBlock({})): string =>
@@ -385,10 +392,10 @@ const buildGoodText = (): Record<string, string> => ({
   "methodology/base_money.md": "# Methodology\n",
   [Q3]: rollup(),
   [FED]: issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
-  [ECB]: issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement" })),
+  [ECB]: issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement", fields: ["- As of: 2026-09-30"] })),
   // Reference-only issuer: every quarter heading exists so default reference_values anchors resolve.
   [BOJ]: `${issuerFile("BOJ", "2026Q3", extract({ title: "BOJ monetary base (reference only)" }))}\n## 2026Q1\n\n## 2026Q2\n\n## 2026Q4\n`,
-  [FX]: issuerFile("FX", "2026Q3", fxExtract("EUR")),
+  [FX]: fxFile(fxSection("2026Q3", fxRow("EUR"))),
   [folderReadmePath("FED")]: folderReadme("FED", "2026"),
   [folderReadmePath("ECB")]: folderReadme("ECB", "2026"),
   [folderReadmePath("BOJ")]: folderReadme("BOJ", "2026"),
