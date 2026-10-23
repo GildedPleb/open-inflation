@@ -18,8 +18,12 @@ export interface Finding {
   readonly message: string;
 }
 
+/** What a Ghostarchive 200 holds (see ghostPage in archive.ts). */
+export type GhostPage = "capture" | "error" | "other";
+
 export type HeadResult =
-  | { readonly kind: "ok"; readonly status: number }
+  /** `page` only for a Ghostarchive capture URL, which is read with a bounded GET (R5-n1). */
+  | { readonly kind: "ok"; readonly status: number; readonly page?: GhostPage }
   | {
       readonly kind: "http";
       readonly status: number;
@@ -54,10 +58,13 @@ export type AvailResult =
 
 /** The network seam that keeps tests offline: everything L8 may ask of archive.org. */
 export interface Net {
-  /** HEAD a capture URL: a Wayback snapshot, an archive.today or a Ghostarchive capture. */
+  /** HEAD a capture URL: a Wayback snapshot or an archive.today capture; a Ghostarchive capture gets a bounded GET. */
   readonly head: Head;
-  /** https://archive.org/wayback/available?url=<original>&timestamp=<ts>, used when web.archive.org is unreachable. */
-  readonly available: (original: string, timestamp: string) => Promise<AvailResult>;
+  /**
+   * https://archive.org/wayback/available?url=<original>&timestamp=<ts>, used when web.archive.org is unreachable;
+   * `form` picks one of AVAILABILITY_FORMS (default 0), the equivalent ways to encode the original (R5-m1).
+   */
+  readonly available: (original: string, timestamp: string, form?: number) => Promise<AvailResult>;
   /**
    * GET the URL once and say whether the answer is a challenge or CAPTCHA page (see CHALLENGE_BODY). pacedNet asks
    * this once per host, after the host's first 429/503, to tell a block from a rate limit.
@@ -77,9 +84,9 @@ export interface VerifyOptions {
   /** Per-URL progress lines (the CLI writes them to stderr). */
   readonly progress?: (line: string) => void;
   /**
-   * The archive.today summary, when any new archive.today URL got a verified or rate-limited answer:
-   * `archive.today: N verified, M unverified (rate-limited)`, then each unverified URL on its own line, sorted
-   * (the CLI writes them to stdout, unprefixed).
+   * The archive.today and Ghostarchive summaries, when any new URL of that archive got a verified or no-verdict
+   * answer: `archive.today: N verified, M unverified (R rate-limited, B blocked[, U unconfirmed])`, M = R + B + U (U
+   * shown only when not 0), then each unverified URL on its own line, sorted (the CLI writes them to stdout, unprefixed).
    */
   readonly summary?: (line: string) => void;
   /**
@@ -91,7 +98,8 @@ export interface VerifyOptions {
   readonly clock?: Clock;
   /**
    * Each URL left with no verdict, and why: still rate-limited at the cap, blocked by a challenge/CAPTCHA, or
-   * unconfirmed (web.archive.org unreachable and archive.org availability did not list the exact capture).
+   * unconfirmed: the capture itself was not seen (web.archive.org unreachable and archive.org availability did not
+   * list the exact capture under any query form, or a Ghostarchive 200 that is neither a capture nor its error page).
    */
   readonly noVerdict?: (url: string, why: NoVerdict) => void;
 }

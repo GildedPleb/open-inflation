@@ -534,11 +534,11 @@ describe("verify: L8 archive resolution (fake network)", () => {
     return { fs, line: lines.find((l) => l.endsWith(NEW)), nv };
   };
   for (const [name, a, said] of [
-    ["no snapshot listed", { kind: "ok", timestamp: null }, "no snapshot listed"],
+    ["no snapshot listed", { kind: "ok", timestamp: null }, "no snapshot listed (asked 3 ways)"],
     [
       "a different snapshot",
       { kind: "ok", timestamp: "20261002140501" },
-      "closest snapshot 20261002140501, not the recorded 20261002140500",
+      "closest snapshot 20261002140501, not the recorded 20261002140500 (asked 3 ways)",
     ],
     ["HTTP 429", { kind: "http", status: 429 }, "HTTP 429 (rate-limited)"],
     ["HTTP 503", { kind: "http", status: 503 }, "HTTP 503"],
@@ -552,6 +552,40 @@ describe("verify: L8 archive resolution (fake network)", () => {
         `L8 [1/1] unconfirmed (web.archive.org unreachable (ECONNREFUSED); archive.org availability: ${said}; no verdict) ${NEW}`,
       );
     });
+  // R5-m1: each query form is asked while the index answers without the capture; an HTTP or network error stops.
+  test("availability: each form asked in turn, stopping at the exact capture or at an error", async () => {
+    const asked = async (answers: AvailResult[]) => {
+      const forms: (number | undefined)[] = [];
+      const lines: string[] = [];
+      const net: Net = {
+        head: async () => DOWN,
+        available: async (_o, _t, form) => {
+          forms.push(form);
+          return answers[forms.length - 1] ?? { kind: "ok", timestamp: null };
+        },
+      };
+      const fs = await lint(onGood({ [FED]: added }), {
+        ...OFF,
+        archive: "added",
+        net,
+        progress: (l) => lines.push(l),
+      });
+      return { fs, forms, line: lines.at(-1) };
+    };
+    const none: AvailResult = { kind: "ok", timestamp: null };
+    const hit: AvailResult = { kind: "ok", timestamp: TS };
+    expect(await asked([none, hit])).toEqual({
+      fs: [],
+      forms: [0, 1],
+      line: `L8 [1/1] ok (archive.org availability, ${TS}, query form 2) ${NEW}`,
+    });
+    expect((await asked([none, none, none])).forms).toEqual([0, 1, 2]);
+    const stop = await asked([none, { kind: "http", status: 429 }]);
+    expect(stop.forms).toEqual([0, 1]);
+    expect(stop.line).toBe(
+      `L8 [1/1] unconfirmed (web.archive.org unreachable (ECONNREFUSED); archive.org availability: no snapshot listed / HTTP 429 (rate-limited) (asked 2 ways); no verdict) ${NEW}`,
+    );
+  });
   test("web.archive.org HEAD HTTP 429 at the cap is no verdict (rate-limited), not a finding", async () => {
     const nv: [string, string][] = [];
     const lines: string[] = [];
@@ -564,7 +598,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
     expect(fs).toEqual([]);
     expect(nv).toEqual([[NEW, "rate-limited"]]);
     expect(lines.at(-1)).toBe(
-      `L8 [1/1] rate-limited (gave up after 5 tries over 1 min 30 s; HTTP 429, web.archive.org; no verdict) ${NEW}`,
+      `L8 [1/1] rate-limited (gave up after 5 tries over 1 min 30 s; web.archive.org HTTP 429; no verdict) ${NEW}`,
     );
   });
   test("progress: one stderr line per checked URL, counted; none without new URLs", async () => {
@@ -2450,17 +2484,48 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     expect(fs).toEqual([]);
     expect(f.heads).toEqual([WAYBACK, GHOST]);
     expect(progress.at(-1)).toBe(`L8 [2/2] ok (HTTP 200, Ghostarchive) ${GHOST}`);
-    expect(summary).toEqual(["ghostarchive: 1 verified, 0 unverified"]);
+    expect(summary).toEqual(["ghostarchive: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
   test("HTTP 403 and 503 (its Cloudflare challenge) and 429 (its rate limit) are no verdict, not a fail", async () => {
     for (const status of [403, 429, 503]) {
       const { fs, progress, summary } = await run(onGood({ [FED]: added }), fake({ kind: "http", status }).opts);
       expect(fs).toEqual([]);
-      const why = status === 429 ? "rate limit" : "challenge";
+      const why = status === 429 ? "rate limit" : "Cloudflare challenge";
       const word = status === 429 ? "rate-limited (" : "blocked (challenge/CAPTCHA; ";
-      expect(progress.at(-1)).toBe(`L8 [2/2] ${word}HTTP ${status}, Ghostarchive ${why}; no verdict) ${GHOST}`);
-      expect(summary).toEqual(["ghostarchive: 0 verified, 1 unverified", GHOST]);
+      // Assay (#19): the host and the HTTP status on every no-verdict line.
+      expect(progress.at(-1)).toBe(`L8 [2/2] ${word}ghostarchive.org HTTP ${status}, ${why}; no verdict) ${GHOST}`);
+      const split = status === 429 ? "1 rate-limited, 0 blocked" : "0 rate-limited, 1 blocked";
+      expect(summary).toEqual([`ghostarchive: 0 verified, 1 unverified (${split})`, GHOST]);
     }
+  });
+  // R5-n1: Ghostarchive answers 200 for its failed captures too; the page decides.
+  test("a 200 that is Ghostarchive's Archiving error page is a finding, which a Re-archive note does not excuse", async () => {
+    const f = fake({ kind: "ok", status: 200, page: "error" });
+    const re =
+      /is Ghostarchive's "Archiving error" page \(HTTP 200\), not a capture; record the attempt as "attempted <YYYY-MM-DD>: <reason>" instead/;
+    await fails(onGood({ [FED]: added }), ["L8"], re, f.opts);
+    await fails(onGood({ [FED]: noted }), ["L8"], re, f.opts);
+    const { summary } = await run(onGood({ [FED]: added }), f.opts);
+    expect(summary).toEqual([]);
+  });
+  test("a 200 with no capture on it (loading, in progress) is unconfirmed: no verdict, counted U in the summary", async () => {
+    const nv: string[] = [];
+    const f = fake({ kind: "ok", status: 200, page: "other" });
+    const { fs, progress, summary } = await run(onGood({ [FED]: added }), {
+      ...f.opts,
+      noVerdict: (u, w) => nv.push(`${w} ${u}`),
+    });
+    expect([fs, nv]).toEqual([[], [`unconfirmed ${GHOST}`]]);
+    expect(progress.at(-1)).toBe(
+      `L8 [2/2] unconfirmed (ghostarchive.org HTTP 200, no capture on the page (loading, in progress or unrecognised); no verdict) ${GHOST}`,
+    );
+    expect(summary).toEqual([
+      "ghostarchive: 0 verified, 1 unverified (0 rate-limited, 0 blocked, 1 unconfirmed)",
+      GHOST,
+    ]);
+    expect(
+      (await run(onGood({ [FED]: added }), fake({ kind: "ok", status: 200, page: "capture" }).opts)).summary,
+    ).toEqual(["ghostarchive: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
   test("HTTP 404, 410 and 500 fail (only 403/429/503 are no verdict); a Re-archive note excuses 404 and 410", async () => {
     for (const status of [404, 410, 500]) {
@@ -2524,8 +2589,8 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     const { fs, summary } = await run(onGood({ [FED]: text }), { ...OFF, archive: "added", net } as Opts);
     expect(fs).toEqual([]);
     expect(summary).toEqual([
-      "archive.today: 1 verified, 0 unverified (rate-limited)",
-      "ghostarchive: 1 verified, 2 unverified",
+      "archive.today: 1 verified, 0 unverified (0 rate-limited, 0 blocked)",
+      "ghostarchive: 1 verified, 2 unverified (0 rate-limited, 2 blocked)",
       M,
       Z,
     ]);
@@ -2577,7 +2642,7 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
       const { fs, lines } = await progressOf(onGood({ [FED]: added }), f);
       expect(fs).toEqual([]);
       const word = status === 429 ? "rate-limited (" : "blocked (challenge/CAPTCHA; ";
-      expect(lines.at(-1)).toBe(`L8 [2/2] ${word}HTTP ${status}, archive.today; no verdict) ${TODAY}`);
+      expect(lines.at(-1)).toBe(`L8 [2/2] ${word}archive.ph HTTP ${status}; no verdict) ${TODAY}`);
       expect(f.avail).toEqual([]);
     });
   test("404 fails and names archive.today", () =>
@@ -2650,14 +2715,14 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
     });
     const { fs, lines } = await summaryOf(several([Z, A, D, M]), opts);
     expect(fs.map((f) => f.check)).toEqual(["L8"]);
-    expect(lines).toEqual(["archive.today: 1 verified, 2 unverified (rate-limited)", M, Z]);
+    expect(lines).toEqual(["archive.today: 1 verified, 2 unverified (1 rate-limited, 1 blocked)", M, Z]);
   });
   test("summary: all verified prints the count line alone", async () => {
     const { lines } = await summaryOf(
       several([A, M]),
       byUrl({ [A]: { kind: "ok", status: 200 }, [M]: { kind: "ok", status: 200 } }),
     );
-    expect(lines).toEqual(["archive.today: 2 verified, 0 unverified (rate-limited)"]);
+    expect(lines).toEqual(["archive.today: 2 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
   test("summary: none when no new archive.today URL got a verified or rate-limited answer", async () => {
     expect((await summaryOf(several([D]), byUrl({ [D]: { kind: "http", status: 404 } }))).lines).toEqual([]);
@@ -2681,7 +2746,7 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
     });
     expect(fs).toEqual([]);
     expect(nv).toEqual([`rate-limited ${WAYBACK}`]);
-    expect(summary).toEqual(["archive.today: 1 verified, 0 unverified (rate-limited)"]);
+    expect(summary).toEqual(["archive.today: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
 });
 

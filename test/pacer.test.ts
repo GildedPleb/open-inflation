@@ -181,6 +181,20 @@ describe("pacedNet: blocked vs rate-limited", () => {
     return { net, heads, checks };
   };
   const http = (status: number, more = {}) => ({ kind: "http", status, ...more }) as HeadResult;
+  test("the availability query form reaches the net unchanged (R5-m1)", async () => {
+    const { clock, drive } = fakeClock();
+    const forms: (number | undefined)[] = [];
+    const net: Net = {
+      head: async () => http(200),
+      available: async (_o, t, form) => {
+        forms.push(form);
+        return { kind: "ok", timestamp: t };
+      },
+    };
+    const pn = pacedNet(net, createPacer(PACE, clock), clock);
+    await drive(pn.available("https://example.test/x", "20261002140500", 2));
+    expect(forms).toEqual([2]);
+  });
   test("429 with a CAPTCHA page: blocked, never retried, one check per host", async () => {
     const { clock, drive } = fakeClock();
     const n = netOf({ [T("1")]: [http(429)], [T("2")]: [http(429)] }, true);
@@ -270,9 +284,9 @@ describe("paced verify and audit", () => {
       );
       expect([progress.find((l) => l.endsWith(TODAY))?.replace(/^L8 \[\d\/2\] /, ""), why]).toEqual(
         captcha
-          ? [`blocked (challenge/CAPTCHA; HTTP 429, archive.today; no verdict) ${TODAY}`, [`blocked ${TODAY}`]]
+          ? [`blocked (challenge/CAPTCHA; archive.ph HTTP 429; no verdict) ${TODAY}`, [`blocked ${TODAY}`]]
           : [
-              `rate-limited (gave up after 3 tries over 3 min 00 s; HTTP 429, archive.today; no verdict) ${TODAY}`,
+              `rate-limited (gave up after 3 tries over 3 min 00 s; archive.ph HTTP 429; no verdict) ${TODAY}`,
               [`rate-limited ${TODAY}`],
             ],
       );

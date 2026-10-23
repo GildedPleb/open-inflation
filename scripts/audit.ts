@@ -7,10 +7,14 @@
 // hosts in parallel, with a timeout and a User-Agent; 429/503 retried with Retry-After or backoff. The expected time
 // is printed first; links left rate-limited or blocked (challenge/CAPTCHA) end the run with a loud INCOMPLETE line.
 // Findings are appended by Assay to research/base_money/<YYYY>Q<n>.md under "## Link audit <YYYY-MM-DD>".
-// Exit 0 when the audit ran (whatever it found), 2 on usage, repository or store errors.
+// Exit 0 when the audit ran (whatever it found), 2 on usage, repository or store errors (or any internal error,
+// lib/exit.ts).
 import { CLASSES, defaultStore, runAudit, storeProblem } from "./lib/audit.ts";
+import { exitOnCrash } from "./lib/exit.ts";
 import { loadSnapshot } from "./lib/git.ts";
 import { createPacer, duration, hostKey, type PaceConfig, paceFromEnv, realClock } from "./lib/pacer.ts";
+
+exitOnCrash("audit");
 
 const USAGE = "usage: bun run audit   (store: $OBM_ARCHIVE_DIR, else ~/open-inflation-archive/)";
 if (process.argv.length > 2) {

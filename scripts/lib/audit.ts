@@ -8,7 +8,8 @@
 //               URL than last time
 //   lost        404, 410, or the host name does not exist (DNS ENOTFOUND) while a canary host still answers
 //   no verdict  403, 429 or blocked (on every host, Ghostarchive included), and 503 on Ghostarchive (its Cloudflare
-//               challenge); also any other status, a
+//               challenge); a Ghostarchive 200 that is its "Archiving error" page or any other page without the
+//               capture (loading, in progress), which is not saved; also any other status, a
 //               timeout, a reset, a redirect loop, any other DNS error, or no network at all (no canary answers):
 //               retried next audit
 
@@ -16,7 +17,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { bounded } from "./archive.ts";
+import { bounded, ghostPage, PAGE_READ_BYTES } from "./archive.ts";
 import { extractLinks } from "./checks.ts";
 import {
   CHALLENGE_BODY,
@@ -28,7 +29,7 @@ import {
   realClock,
   retryAfterMs,
 } from "./pacer.ts";
-import type { Files } from "./types.ts";
+import type { Files, GhostPage } from "./types.ts";
 
 export const AUDIT_USER_AGENT = "open-inflation-audit (+https://github.com/GildedPleb/open-inflation)";
 export const STORE_NAME = "open-inflation-archive";
@@ -144,6 +145,8 @@ export function classify(
     readonly gaveUp?: { tries: number; elapsedMs: number };
     /** No canary answered: the network or our resolver is down, so nothing is lost. */
     readonly offline?: boolean;
+    /** R5-n1: what a Ghostarchive 200 holds (ghostPage); only "capture" is a capture. */
+    readonly page?: GhostPage;
   } = {},
 ): { status: LinkClass; detail: string } {
   if (p.httpStatus === null) {
@@ -165,6 +168,15 @@ export function classify(
     return { status: "no verdict", detail: `HTTP ${p.httpStatus} (blocked or rate-limited)` };
   if (p.httpStatus < 200 || p.httpStatus > 299 || p.sha256 === null || p.finalUrl === null)
     return { status: "no verdict", detail: p.error ?? `HTTP ${p.httpStatus}` };
+  // R5-n1: not lost (only ENOTFOUND, 404 or 410 are, Assay): a failed or unfinished Ghostarchive capture is no
+  // verdict, for the researcher to open; its page is not saved as a copy.
+  if (paced.page === "error")
+    return { status: "no verdict", detail: `HTTP ${p.httpStatus}, Ghostarchive "Archiving error" page, not a capture` };
+  if (paced.page === "other")
+    return {
+      status: "no verdict",
+      detail: `HTTP ${p.httpStatus}, no capture on the Ghostarchive page (loading, in progress or unrecognised)`,
+    };
   if (!prior) return { status: "ok", detail: `HTTP ${p.httpStatus}, first saved copy` };
   const why: string[] = [];
   if (p.finalUrl !== prior.finalUrl) why.push(`final URL ${p.finalUrl}, was ${prior.finalUrl}`);
@@ -379,13 +391,16 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
     const last = history.at(-1) ?? null;
     const prior = last && { date: last.date, sha256: last.sha256, finalUrl: last.finalUrl };
     const offline = p.httpStatus === null && NXDOMAIN.test(p.error ?? "") && !(await networkUp());
+    const page =
+      body && GHOST.test(link.url) ? ghostPage(new TextDecoder().decode(body.subarray(0, PAGE_READ_BYTES))) : null;
     const { status, detail } = classify(p, prior, link.url, {
       ...(r.challenge ? { challenge: true } : {}),
       ...(gaveUp ? { gaveUp } : {}),
       ...(offline ? { offline } : {}),
+      ...(page ? { page } : {}),
     });
     let saved: string | null = null;
-    if (body && p.sha256 && p.finalUrl) {
+    if (body && p.sha256 && p.finalUrl && status !== "no verdict") {
       const key = createHash("sha256").update(link.url).digest("hex").slice(0, 16);
       saved = join("files", key, `${o.date}-${p.sha256.slice(0, 12)}.${extOf(contentType, p.finalUrl)}`);
       put(join(o.store, saved), body);
@@ -452,7 +467,7 @@ export function renderMarkdown(r: Report): string {
     "Classes: ok (resolves, same content as the last saved copy; on a first run any resolving URL is ok), changed",
     "(resolves, but its sha256 differs from the last saved copy, or it redirects to a different final URL than last",
     "time), lost (404, 410, or host not found while a canary host answers), no verdict (403, 429, blocked;",
-    "Ghostarchive also 503; any other DNS error; no network, when no canary answers; retried at the next audit). The script does not judge content: open each changed link and record whether it still shows the",
+    'Ghostarchive also 503, and a 200 with no capture (its "Archiving error" page, or loading); any other DNS error; no network, when no canary answers; retried at the next audit). The script does not judge content: open each changed link and record whether it still shows the',
     "figure used.",
     "",
     "Wayback captures are fetched raw (the `id_` modifier) for hashing. Originals are hashed as served: a dynamic",

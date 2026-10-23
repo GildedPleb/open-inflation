@@ -1,5 +1,5 @@
 import { CHALLENGE_BODY, type Clock, hostKey, type Pacer, RETRY_STATUSES, retryAfterMs } from "./pacer.ts";
-import type { AvailResult, Head, HeadResult, Net } from "./types.ts";
+import type { AvailResult, GhostPage, Head, HeadResult, Net } from "./types.ts";
 
 type Network = { readonly kind: "network"; readonly message: string };
 
@@ -38,11 +38,16 @@ export function httpHead(fetchImpl: typeof fetch, timeoutMs: number): Head {
   return (url) =>
     bounded<HeadResult>(timeoutMs, async (signal) => {
       const recorded = SNAPSHOT.exec(url)?.[1];
+      // R5-n1: a Ghostarchive capture URL answers 200 whatever it holds, so it is read (GET, PAGE_READ_BYTES at most).
+      const method = GHOST.test(url) ? "GET" : "HEAD";
       let at = url;
       for (let hop = 0; ; hop++) {
-        const res = await fetchImpl(at, { method: "HEAD", redirect: "manual", signal, headers });
+        const res = await fetchImpl(at, { method, redirect: "manual", signal, headers });
         const loc = res.headers.get("location");
         if (res.status < 300 || res.status > 399 || loc === null) {
+          if (res.ok && method === "GET")
+            return { kind: "ok", status: res.status, page: ghostPage(await readStart(res)) };
+          await res.body?.cancel();
           if (res.ok) return { kind: "ok", status: res.status };
           const ra = res.headers.get("retry-after");
           // Cloudflare marks its challenge page (Ghostarchive's 403/503) with cf-mitigated: challenge.
@@ -54,6 +59,7 @@ export function httpHead(fetchImpl: typeof fetch, timeoutMs: number): Head {
             ...(challenge ? { challenge } : {}),
           };
         }
+        await res.body?.cancel();
         const location = new URL(loc, at).href;
         const same = TODAY.test(url) ? TODAY : GHOST.test(url) ? GHOST : null;
         if (same) {
@@ -72,13 +78,65 @@ export function httpHead(fetchImpl: typeof fetch, timeoutMs: number): Head {
     });
 }
 
+/** At most this much of a Ghostarchive page is read to tell a capture from its error or loading page. */
+export const PAGE_READ_BYTES = 256 * 1024;
+/** The first `max` bytes of a response body, as text; the rest is not downloaded. */
+export async function readStart(res: Response, max = PAGE_READ_BYTES): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) return "";
+  const parts: Uint8Array[] = [];
+  let got = 0;
+  while (got < max) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    got += value.length;
+  }
+  await reader.cancel();
+  const all = new Uint8Array(got);
+  let at = 0;
+  for (const p of parts) {
+    all.set(p, at);
+    at += p.length;
+  }
+  return new TextDecoder().decode(all.subarray(0, max));
+}
+
+/**
+ * R5-n1: Ghostarchive answers HTTP 200 for a failed capture too (Probe R5 and a live GET of /archive/jA3hU: a 475-byte
+ * page, `<title>ghostarchive.org</title><h1>Archiving error</h1>`), so a 200 alone is not a capture. A real capture
+ * page carries its replay wrapper: a `<replay-web-page` element and an "Archive date:" line (all 23 #11 capture pages Probe fetched).
+ */
+export const GHOST_ERROR = /<h1>\s*Archiving error\s*<\/h1>/i;
+export const GHOST_CAPTURE = /<replay-web-page\b|>\s*Archive date:/i;
+/**
+ * What a Ghostarchive 200 holds: a capture, its "Archiving error" page, or anything else (a loading or in-progress
+ * page, or a page this check does not know), which is no verdict.
+ */
+export const ghostPage = (html: string): GhostPage =>
+  GHOST_ERROR.test(html) ? "error" : GHOST_CAPTURE.test(html) ? "capture" : "other";
+
 export const AVAILABILITY_API = "https://archive.org/wayback/available";
 
-/** archive.org's availability API: the timestamp of the snapshot closest to `timestamp`, or null. */
+/**
+ * R5-m1: equivalent ways to put the original URL in the availability query. The API caches each exact query string
+ * for up to 6 h (`cache-control: max-age=21600`, `x-page-cache: MISS` then `HIT`), so an empty answer computed before a
+ * capture was indexed is replayed to that same string for hours while an equivalent string is answered fresh (Probe
+ * R5: SNB 20261022171830 empty to the encodeURIComponent form, found with `=` left bare; both found once the cache
+ * aged out). verify asks them in turn: fully encoded; `&`, `#` and `+` encoded only; the same without the scheme.
+ */
+export const AVAILABILITY_FORMS: readonly ((original: string) => string)[] = [
+  (u) => encodeURIComponent(u),
+  (u) => encodeURI(u).replace(/[&#+]/g, encodeURIComponent),
+  (u) => encodeURI(u.replace(/^https?:\/\//, "")).replace(/[&#+]/g, encodeURIComponent),
+];
+
+/** archive.org's availability API, asked with query form `form`: the timestamp of the snapshot closest to `timestamp`, or null. */
 export function httpAvailable(fetchImpl: typeof fetch, timeoutMs: number): Net["available"] {
-  return (original, timestamp) =>
+  return (original, timestamp, form = 0) =>
     bounded<AvailResult>(timeoutMs, async (signal) => {
-      const url = `${AVAILABILITY_API}?url=${encodeURIComponent(original)}&timestamp=${timestamp}`;
+      const q = (AVAILABILITY_FORMS[form] ?? encodeURIComponent)(original);
+      const url = `${AVAILABILITY_API}?url=${q}&timestamp=${timestamp}`;
       const res = await fetchImpl(url, { method: "GET", redirect: "follow", signal, headers });
       if (!res.ok) return { kind: "http", status: res.status };
       const closest = ((await res.json()) as { archived_snapshots?: { closest?: Record<string, unknown> } })
@@ -147,10 +205,10 @@ export function pacedNet(net: Net, pacer: Pacer, clock: Clock): Net {
       ? { ...p.result, gaveUp: { tries: p.tries, elapsedMs: p.elapsedMs } }
       : p.result;
   };
-  const available: Net["available"] = async (original, timestamp) =>
+  const available: Net["available"] = async (original, timestamp, form) =>
     (
       await pacer.run<AvailResult>(AVAILABILITY_API, async () => {
-        const a = await net.available(original, timestamp);
+        const a = await net.available(original, timestamp, form);
         const retry = a.kind === "http" && RETRY_STATUSES.includes(a.status);
         return { result: a, retry: retry ? { status: a.status, retryAfterMs: null } : null };
       })

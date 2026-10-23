@@ -22,7 +22,7 @@ import {
   runAudit,
   storeProblem,
 } from "../scripts/lib/audit.ts";
-import { extract, files, goodText } from "./fixture.ts";
+import { extract, files, GHOST_CAPTURE_PAGE, GHOST_ERROR_PAGE, goodText } from "./fixture.ts";
 
 // #18: `bun run audit`, local only. Every Original URL, Archive URL and Archive URL 2 is re-checked by HTTP status
 // and content hash against the last saved copy in a store outside the repository. Fake fetch, temp dirs only.
@@ -156,6 +156,19 @@ describe("audit: classes (one per class)", () => {
     expect(classify({ httpStatus: 403, finalUrl: null, sha256: null, error: null }, prior, ORIG).detail).toMatch(
       /blocked or rate-limited/,
     );
+  });
+  // R5-n1: a Ghostarchive 200 is a capture only with its replay wrapper; lost stays ENOTFOUND, 404 or 410 (Assay).
+  test("no verdict on Ghostarchive: a 200 that is its Archiving error page, or no capture at all", () => {
+    const p = { httpStatus: 200, finalUrl: GHOST, sha256: "b".repeat(64), error: null };
+    expect(classify(p, prior, GHOST, { page: "error" })).toEqual({
+      status: "no verdict",
+      detail: 'HTTP 200, Ghostarchive "Archiving error" page, not a capture',
+    });
+    expect(classify(p, null, GHOST, { page: "other" })).toEqual({
+      status: "no verdict",
+      detail: "HTTP 200, no capture on the Ghostarchive page (loading, in progress or unrecognised)",
+    });
+    expect(classify(p, null, GHOST, { page: "capture" }).status).toBe("ok");
   });
 });
 
@@ -292,8 +305,28 @@ describe("audit: run, manifest and report", () => {
     });
     // The report's class line names Ghostarchive's 503 among the no-verdict statuses.
     expect(readFileSync(r.mdPath, "utf8").replace(/\n/g, " ")).toContain(
-      "no verdict (403, 429, blocked; Ghostarchive also 503; any other DNS error; no network, when no canary answers; retried at the next audit).",
+      'no verdict (403, 429, blocked; Ghostarchive also 503, and a 200 with no capture (its "Archiving error" page, or loading); any other DNS error; no network, when no canary answers; retried at the next audit).',
     );
+  });
+  test("a Ghostarchive Archiving error page (HTTP 200) is no verdict and is not saved; a capture page is", async () => {
+    const fs = files(
+      {},
+      {
+        [FED]: `# FED 2026\n\n## 2026Q3\n\n${extract({ title: "FED src", original: ORIG, archive2: TODAY, archive3: GHOST })}`,
+      },
+    );
+    const store = join(tmp(), "store");
+    const r = await run(store, "2026-10-22", { ...healthy, [GHOST]: [200, GHOST_ERROR_PAGE] }, fs);
+    expect(r.report.links.find((l) => l.url === GHOST)).toMatchObject({
+      status: "no verdict",
+      detail: 'HTTP 200, Ghostarchive "Archiving error" page, not a capture',
+      saved: null,
+    });
+    const manifest = JSON.parse(readFileSync(join(store, "manifest.json"), "utf8"));
+    expect(manifest[GHOST]).toBeUndefined();
+    const ok = await run(store, "2026-10-23", { ...healthy, [GHOST]: [200, GHOST_CAPTURE_PAGE] }, fs);
+    expect(ok.report.links.find((l) => l.url === GHOST)).toMatchObject({ status: "ok" });
+    expect(JSON.parse(readFileSync(join(store, "manifest.json"), "utf8"))[GHOST]).toHaveLength(1);
   });
   test("a same-date rerun is idempotent: same report, one manifest entry per date, compared with the earlier date", async () => {
     const store = join(tmp(), "store");

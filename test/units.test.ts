@@ -1,11 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { archiveNet, httpAvailable, httpHead, USER_AGENT } from "../scripts/lib/archive.ts";
+import {
+  AVAILABILITY_FORMS,
+  archiveNet,
+  ghostPage,
+  httpAvailable,
+  httpHead,
+  PAGE_READ_BYTES,
+  USER_AGENT,
+} from "../scripts/lib/archive.ts";
 import { archive2Problem } from "../scripts/lib/checks.ts";
 import { parseDecimal, roundHalfEven, sumOfProducts, usdPerUnit, wholeUsd } from "../scripts/lib/decimal.ts";
+import { EXIT, exitOnCrash } from "../scripts/lib/exit.ts";
 import { chooseBase } from "../scripts/lib/lint-base.ts";
 import { headings, links, slugs } from "../scripts/lib/markdown.ts";
 import { verify } from "../scripts/lib/verify.ts";
-import { extract, good, goodText, onGood } from "./fixture.ts";
+import { extract, GHOST_CAPTURE_PAGE, GHOST_ERROR_PAGE, good, goodText, onGood } from "./fixture.ts";
 
 const d = (s: string) => {
   const v = parseDecimal(s);
@@ -208,8 +217,56 @@ describe("httpHead on Ghostarchive (fake fetch, by URL)", () => {
   const G2 = "https://ghostarchive.org/archive/XyZ34";
   test("a redirect to another ghostarchive.org/archive/ URL is followed", async () => {
     const { f, urls } = routes({ [G]: [301, G2], [G2]: [200] });
-    expect(await httpHead(f, 1000)(G)).toEqual({ kind: "ok", status: 200 });
+    expect(await httpHead(f, 1000)(G)).toEqual({ kind: "ok", status: 200, page: "other" });
     expect(urls).toEqual([G, G2]);
+  });
+  // R5-n1: a 200 alone is not a capture. The page is read with a GET (PAGE_READ_BYTES at most) and classified.
+  const page = (body: string | Uint8Array) => {
+    const methods: string[] = [];
+    let cancelled = false;
+    const f = (async (_u: string, init: RequestInit) => {
+      methods.push(init.method ?? "GET");
+      const bytes = typeof body === "string" ? new TextEncoder().encode(body) : body;
+      const chunk = 64 * 1024;
+      let at = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        pull(c) {
+          if (at >= bytes.length) return c.close();
+          c.enqueue(bytes.subarray(at, at + chunk));
+          at += chunk;
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      return new Response(stream, { status: 200 });
+    }) as unknown as typeof fetch;
+    return { f, methods, read: () => cancelled };
+  };
+  test("Ghostarchive: GET, and the page says capture, error (its Archiving error page) or other", async () => {
+    for (const [body, kind] of [
+      [GHOST_CAPTURE_PAGE, "capture"],
+      [GHOST_ERROR_PAGE, "error"],
+      ["<html><body>Archiving in progress, please wait</body></html>", "other"],
+      ["", "other"],
+    ] as const) {
+      const p = page(body);
+      expect(await httpHead(p.f, 1000)(G)).toEqual({ kind: "ok", status: 200, page: kind });
+      expect(p.methods).toEqual(["GET"]);
+    }
+  });
+  test("Ghostarchive: no more than PAGE_READ_BYTES is read; a marker past it is not seen", async () => {
+    const pad = "x".repeat(PAGE_READ_BYTES);
+    const late = page(`${pad}${GHOST_CAPTURE_PAGE}`);
+    expect(await httpHead(late.f, 1000)(G)).toEqual({ kind: "ok", status: 200, page: "other" });
+    expect(late.read()).toBe(true);
+    const edge = page(`${"x".repeat(PAGE_READ_BYTES - 20)}<replay-web-page src>`);
+    expect(await httpHead(edge.f, 1000)(G)).toEqual({ kind: "ok", status: 200, page: "capture" });
+  });
+  test("a Wayback or archive.today URL is still a HEAD, with no page", async () => {
+    const p = page(GHOST_ERROR_PAGE);
+    expect(await httpHead(p.f, 1000)("https://archive.ph/AbC12")).toEqual({ kind: "ok", status: 200 });
+    expect(p.methods).toEqual(["HEAD"]);
   });
   for (const to of [
     "https://example.test/x",
@@ -256,6 +313,92 @@ describe("L8 near-miss on both paths (archiveNet over a fake fetch)", () => {
     expect(await net(down, TS).available(ORIG, TS)).toEqual({ kind: "ok", timestamp: TS });
     expect(await net(down, "20250107055932").available(ORIG, TS)).toEqual({ kind: "ok", timestamp: "20250107055932" });
     expect(await net(down, null).available(ORIG, TS)).toEqual({ kind: "ok", timestamp: null });
+  });
+});
+
+describe("ghostPage (R5-n1)", () => {
+  test("the capture wrapper, the Archiving error page, anything else", () => {
+    expect(ghostPage(GHOST_CAPTURE_PAGE)).toBe("capture");
+    expect(ghostPage("<li><span>Archive date: Fri, 23 Oct 2026 03:11:06 GMT</span></li>")).toBe("capture");
+    expect(ghostPage("<replay-web-page embed>")).toBe("capture");
+    expect(ghostPage(GHOST_ERROR_PAGE)).toBe("error");
+    expect(ghostPage("<H1> archiving ERROR </h1>")).toBe("error");
+    // The error page wins over a stray marker; the replay script's URL alone is not the element.
+    expect(ghostPage(`${GHOST_ERROR_PAGE}<replay-web-page>`)).toBe("error");
+    for (const s of ['<script src="/replay-web-page234/ui.js"></script>', "Archive date", "Archiving error", ""])
+      expect(ghostPage(s)).toBe("other");
+  });
+});
+
+// R5-m1: Probe's SNB case. web.archive.org unreachable; the availability API's cached empty answer for the fully
+// encoded query string, while the same URL with `=` left bare is answered from the index and lists the capture.
+describe("SNB: availability asked under each query form (archiveNet over a fake fetch)", () => {
+  const ORIG = "https://data.snb.ch/api/cube/snbmoba/data/json/en?fromDate=2026-06&toDate=2026-06";
+  const TS = "20261022171830";
+  const WB = `https://web.archive.org/web/${TS}/${ORIG}`;
+  const FED = "issuers/FED/2026.md";
+  const text =
+    (goodText()[FED] as string) +
+    extract({
+      title: "SNB moba",
+      original: ORIG,
+      archive: WB,
+      retrieved: "2026-10-22T17:17:00Z",
+      archive2: "attempted 2026-10-22: the page showed a CAPTCHA challenge",
+      archive3: "attempted 2026-10-22: the page showed a CAPTCHA challenge",
+    });
+  const API = "https://archive.org/wayback/available?url=";
+  const run = async (stale: (query: string) => boolean) => {
+    const asked: string[] = [];
+    const f = (async (u: string) => {
+      if (u.startsWith("https://web.archive.org/")) throw new TypeError("unknown certificate verification error");
+      if (!u.startsWith(API)) throw new Error(`unrouted ${u}`);
+      const q = u.slice(API.length, u.lastIndexOf("&timestamp="));
+      asked.push(q);
+      const snap = stale(q) ? {} : { closest: { available: true, status: "200", timestamp: TS } };
+      return new Response(JSON.stringify({ archived_snapshots: snap }));
+    }) as unknown as typeof fetch;
+    const progress: string[] = [];
+    const nv: string[] = [];
+    const fs = await verify(onGood({ [FED]: text }), {
+      net: archiveNet(f, 1000),
+      now: Date.parse("2026-10-23T04:00:00Z"),
+      progress: (l) => progress.push(l),
+      noVerdict: (u, w) => nv.push(`${w} ${u}`),
+    });
+    return { fs, asked, nv, line: progress.find((l) => l.endsWith(WB)) };
+  };
+  test("the query forms: fully encoded; & # + encoded only; the same without the scheme", () => {
+    const u = "https://example.test/a b?x=1&y=2+3#f";
+    expect(AVAILABILITY_FORMS.map((form) => form(u))).toEqual([
+      "https%3A%2F%2Fexample.test%2Fa%20b%3Fx%3D1%26y%3D2%2B3%23f",
+      "https://example.test/a%20b?x=1%26y=2%2B3%23f",
+      "example.test/a%20b?x=1%26y=2%2B3%23f",
+    ]);
+  });
+  test("empty to the encoded form, found to the second: ok, with no finding and no INCOMPLETE", async () => {
+    const r = await run((q) => q.includes("%3D"));
+    expect([r.fs, r.nv]).toEqual([[], []]);
+    expect(r.line).toBe(`L8 [1/1] ok (archive.org availability, ${TS}, query form 2) ${WB}`);
+    expect(r.asked).toEqual([
+      "https%3A%2F%2Fdata.snb.ch%2Fapi%2Fcube%2Fsnbmoba%2Fdata%2Fjson%2Fen%3FfromDate%3D2026-06%26toDate%3D2026-06",
+      "https://data.snb.ch/api/cube/snbmoba/data/json/en?fromDate=2026-06%26toDate=2026-06",
+    ]);
+  });
+  test("found to the first form: asked once", async () => {
+    const r = await run(() => false);
+    expect([r.line, r.asked.length]).toEqual([`L8 [1/1] ok (archive.org availability, ${TS}) ${WB}`, 1]);
+  });
+  test("found only without the scheme: the third form", async () => {
+    const r = await run((q) => q.startsWith("http"));
+    expect([r.line, r.asked.length]).toEqual([`L8 [1/1] ok (archive.org availability, ${TS}, query form 3) ${WB}`, 3]);
+  });
+  test("empty to every form: unconfirmed, no verdict, never a finding", async () => {
+    const r = await run(() => true);
+    expect([r.fs, r.nv, r.asked.length]).toEqual([[], [`unconfirmed ${WB}`], 3]);
+    expect(r.line).toBe(
+      `L8 [1/1] unconfirmed (web.archive.org unreachable (unknown certificate verification error); archive.org availability: no snapshot listed (asked 3 ways); no verdict) ${WB}`,
+    );
   });
 });
 
@@ -378,7 +521,7 @@ describe("verify over an injected fetch", () => {
   test("200 on both archives: clean, with the summary line", async () => {
     const r = await run(added, { [WB]: [200], [TODAY]: [200] });
     expect(r.fs).toEqual([]);
-    expect(r.summary).toEqual(["archive.today: 1 verified, 0 unverified (rate-limited)"]);
+    expect(r.summary).toEqual(["archive.today: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
   for (const status of [404, 410]) {
     test(`Wayback ${status} without a Re-archive note fails and asks for one`, async () => {
@@ -405,7 +548,10 @@ describe("verify over an injected fetch", () => {
     test(`archive.today ${status}: no verdict, not a failure; counted unverified and listed`, async () => {
       const r = await run(added, { [WB]: [200], [TODAY]: [status] });
       expect(r.fs).toEqual([]);
-      expect(r.summary).toEqual(["archive.today: 0 verified, 1 unverified (rate-limited)", TODAY]);
+      expect(r.summary).toEqual([
+        `archive.today: 0 verified, 1 unverified (${status === 403 ? "0 rate-limited, 1 blocked" : "1 rate-limited, 0 blocked"})`,
+        TODAY,
+      ]);
     });
   test("a same-capture redirect chain is followed to its 200", async () => {
     const h1 = `https://web.archive.org/web/${TS}/http://example.test/FED-new`;
@@ -434,7 +580,7 @@ describe("verify over an injected fetch", () => {
     for (const m of text.matchAll(/https:\/\/web\.archive\.org\/web\/\S+/g)) table[m[0]] = [200];
     const r = await run(text, table);
     expect(r.fs).toEqual([]);
-    expect(r.summary).toEqual(["archive.today: 1 verified, 2 unverified (rate-limited)", A, Z]);
+    expect(r.summary).toEqual(["archive.today: 1 verified, 2 unverified (1 rate-limited, 1 blocked)", A, Z]);
   });
 });
 
@@ -722,5 +868,37 @@ describe("httpHead on archive.today (fake fetch, by URL)", () => {
     const { f, urls } = routes({ [DATED]: [302, a], [a]: [302, DATED] });
     expect(await httpHead(f, 1000)(DATED)).toMatchObject({ kind: "redirect", reason: "loop" });
     expect(urls.length).toBe(6);
+  });
+});
+
+// Assay (#19): 0 clean, 1 findings, 2 usage or error, 3 incomplete. An uncaught error must not exit 1 ("findings").
+describe("exit codes", () => {
+  test("EXIT, and exitOnCrash: an uncaught exception or rejection logs one line and exits 2", () => {
+    expect(EXIT).toEqual({ clean: 0, findings: 1, error: 2, incomplete: 3 });
+    const on: Record<string, (e: unknown) => void> = {};
+    const codes: number[] = [];
+    const lines: string[] = [];
+    const proc = {
+      on: (ev: string, f: (e: unknown) => void) => {
+        on[ev] = f;
+      },
+      exit: (c: number) => {
+        codes.push(c);
+        return undefined as never;
+      },
+    };
+    exitOnCrash("verify", proc, (l) => lines.push(l));
+    expect(Object.keys(on).sort()).toEqual(["uncaughtException", "unhandledRejection"]);
+    const e = new Error("boom");
+    e.stack = "Error: boom\n    at x";
+    on.uncaughtException?.(e);
+    on.unhandledRejection?.("plain");
+    on.uncaughtException?.(Object.assign(new Error("no stack"), { stack: undefined }));
+    expect(codes).toEqual([2, 2, 2]);
+    expect(lines).toEqual([
+      "verify: internal error: Error: boom\n    at x",
+      "verify: internal error: plain",
+      "verify: internal error: no stack",
+    ]);
   });
 });
