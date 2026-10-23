@@ -195,7 +195,7 @@ Where it saves:
 - It writes `manifest.json`, with each URL's sha256 and final URL.
 - It writes dated reports, `reports/audit-<YYYY-MM-DD>.md` and `.json`.
 - The store is private. Never commit or publish it.
-- Append findings to the quarter file's Audit trail, `base_money/quarters/<YYYY>Q<n>.md`, under `### Link audit <YYYY-MM-DD>`.
+- Append each finding as a `- Link audit <YYYY-MM-DD>: ...` line under that link's extract in `base_money/issuers/<ISS>/<YYYY>.md`. Quarter files get nothing.
 
 What it prints:
 
