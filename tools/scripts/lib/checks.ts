@@ -71,6 +71,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   extractSchema(ctx, emit);
   rearchiveNotes(ctx, emit);
   aggregation(ctx, rows, emit);
+  failedAttempts(ctx, emit);
   catalog(ctx, emit);
   placement(ctx, emit);
   generated(ctx, emit);
@@ -149,6 +150,15 @@ function checkTarget(ctx: Ctx, from: string, what: string, target: string, rootR
     );
 }
 
+/**
+ * A quarter file's ```yaml fences split by role: a fence whose first top-level key is `failed_attempts` is the
+ * failed-attempts log (never a machine block); every other ```yaml fence is an arithmetic machine block.
+ */
+const isFailedAttempts = (body: string) =>
+  /^failed_attempts\s*:/.test(body.split("\n").find((l) => l.trim() !== "" && !l.trim().startsWith("#")) ?? "");
+const machineFences = (body: string) => fencedBlocks(body, ["yaml", "yml"]).filter((b) => !isFailedAttempts(b.body));
+const failedFences = (body: string) => fencedBlocks(body, ["yaml", "yml"]).filter((b) => isFailedAttempts(b.body));
+
 export type Machine = { ok: true; data: unknown; line: number; source: string } | { ok: false; error: string };
 
 /** Every ```yaml machine block, in order. A roll-up has one or more; each later one is an appended revision. */
@@ -156,7 +166,7 @@ export const machines: (body: string) => readonly Machine[] = memoText(parseMach
 function parseMachines(body: string): Machine[] {
   if (/^---\r?\n/.test(body))
     return [{ ok: false, error: "front-matter is not a machine block; use a fenced ```yaml block only" }];
-  const blocks = fencedBlocks(body, ["yaml", "yml"]);
+  const blocks = machineFences(body);
   if (blocks.length === 0) return [{ ok: false, error: "has no ```yaml machine block" }];
   return blocks.map((block): Machine => {
     try {
@@ -358,8 +368,8 @@ function rewriteRenamedPaths(ctx: Ctx, body: string): string {
 function quarterLock(ctx: Ctx, p: string, old: string, emit: Emit) {
   const now = ctx.text.get(p);
   if (now === undefined) return;
-  const was = fencedBlocks(old, ["yaml", "yml"]);
-  const cur = fencedBlocks(now, ["yaml", "yml"]);
+  const was = machineFences(old);
+  const cur = machineFences(now);
   for (const [i, b] of was.entries()) {
     const want = rewriteRenamedPaths(ctx, b.body);
     const got = cur[i];
@@ -397,7 +407,7 @@ function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
   const now = new Map(rows.map((r) => [r.date, r]));
   // A row L1 rejects is still present: L1 reports it. Only a date absent from the raw lines was deleted.
   const present = new Set((ctx.text.get(CSV) ?? "").split("\n").map((l) => l.replace(BOM, "").split(",")[0]));
-  const blocks = (body: string | undefined) => (body === undefined ? 0 : fencedBlocks(body, ["yaml", "yml"]).length);
+  const blocks = (body: string | undefined) => (body === undefined ? 0 : machineFences(body).length);
   for (const line of old.split("\n").slice(1)) {
     const [date, value, evidenceId, ...rest] = line.split(",");
     if (!date || value === undefined || evidenceId === undefined || rest.length > 0) continue;
@@ -1136,6 +1146,122 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     }
     const last = all.at(-1);
     if (last?.ok && isObj(last.data)) for (const m of tableProblems(p, body, last.data)) e(m);
+  }
+}
+
+// ---------- failed attempts (L9 form, L4 append-only) ----------
+
+const ATTEMPT_FIELDS = ["kind", "issuer", "url", "target", "attempted", "method", "outcome", "http_status", "detail"];
+const ATTEMPT_ENUMS: Record<string, { values: readonly string[]; nullable: boolean }> = {
+  kind: { values: ["archive", "source"], nullable: false },
+  target: { values: ["archive.today", "ghostarchive", "wayback"], nullable: true },
+  method: { values: ["script", "browser"], nullable: true },
+  outcome: {
+    values: ["captcha", "cloudflare_challenge", "archiving_error", "empty_capture", "not_found", "rejected", "other"],
+    nullable: false,
+  },
+};
+/** attempted: YYYY-MM-DD, or YYYY-MM-DDThh:mm[:ss]Z (UTC only), a real date and time. */
+const isAttempted = (s: string) => {
+  const m = /^(\d{4}-\d{2}-\d{2})(T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?Z)?$/.exec(s);
+  return m !== null && isIsoDate(m[1] as string);
+};
+/** The failed_attempts list of a quarter file: absent (no block), a list, or an error. */
+function parseFailed(body: string): { list: unknown[] | null; line: number } | { error: string } {
+  const fs = failedFences(body);
+  if (fs.length === 0) return { list: null, line: 0 };
+  const f = fs[0] as { body: string; line: number };
+  if (fs.length > 1)
+    return {
+      error: `has ${fs.length} failed_attempts blocks (lines ${fs.map((b) => b.line).join(", ")}); keep one and append to its list`,
+    };
+  let d: unknown;
+  try {
+    d = Bun.YAML.parse(f.body);
+  } catch (e) {
+    return { error: `failed_attempts block (line ${f.line}) is not valid YAML: ${(e as Error).message}` };
+  }
+  if (!isObj(d) || Object.keys(d).length !== 1 || !Array.isArray(d.failed_attempts))
+    return { error: `failed_attempts block (line ${f.line}) must hold only a failed_attempts: list ([] when empty)` };
+  return { list: d.failed_attempts, line: f.line };
+}
+
+/**
+ * The optional failed-attempts log in each quarter file: one ```yaml fence whose top key is failed_attempts, a list
+ * of {kind, issuer, url, target, attempted, method, outcome, http_status, detail}. L9 checks its form; L4 keeps it
+ * append-only like the machine blocks (committed entries unchanged and in order, new entries only at the end),
+ * against the old path's content when the quarter file moved.
+ */
+function failedAttempts(ctx: Ctx, emit: Emit) {
+  for (const [p, body] of md(ctx, QUARTER_FILE)) {
+    const r = parseFailed(body);
+    if ("error" in r) {
+      emit("L9", p, r.error);
+      continue;
+    }
+    if (r.list === null) {
+      emit(
+        "L9",
+        p,
+        "has no failed_attempts block; end the file with ## Failed attempts (machine-readable) and a ```yaml block holding failed_attempts: ([] when empty)",
+      );
+      const old = baseOf(ctx, p);
+      if (old !== undefined && failedFences(old).length > 0)
+        emit("L4", p, "committed failed_attempts block was removed; it is append-only");
+      continue;
+    }
+    for (const [i, a] of r.list.entries()) {
+      const e = (m: string) => emit("L9", p, `failed_attempts entry ${i + 1} (block line ${r.line}): ${m}`);
+      if (!isObj(a)) {
+        e("is not a mapping");
+        continue;
+      }
+      const missing = ATTEMPT_FIELDS.filter((k) => !(k in a));
+      if (missing.length > 0) e(`missing ${missing.join(", ")} (write null when not applicable)`);
+      const extra = Object.keys(a).filter((k) => !ATTEMPT_FIELDS.includes(k));
+      if (extra.length > 0) e(`unknown field ${extra.join(", ")}`);
+      for (const [k, { values, nullable }] of Object.entries(ATTEMPT_ENUMS)) {
+        if (!(k in a) || (nullable && a[k] === null)) continue;
+        if (typeof a[k] !== "string" || !values.includes(a[k] as string))
+          e(`${k} ${show(a[k])} is not one of ${values.join(", ")}${nullable ? ", null" : ""}`);
+      }
+      if ("issuer" in a && a.issuer !== null && !nonEmpty(a.issuer)) e("issuer must be a non-empty string or null");
+      if ("url" in a && a.url !== null && !nonEmpty(a.url)) e("url must be a non-empty string or null");
+      if (a.kind === "archive")
+        for (const k of ["url", "target", "method"]) if (k in a && a[k] === null) e(`kind archive needs a ${k}`);
+      if (a.kind === "source") {
+        if (a.outcome !== "rejected") e(`kind source needs outcome rejected, not ${show(a.outcome)}`);
+        for (const k of ["target", "method"]) if (k in a && a[k] !== null) e(`kind source needs ${k}: null`);
+      }
+      if ("attempted" in a && !(typeof a.attempted === "string" && isAttempted(a.attempted)))
+        e(`attempted ${show(a.attempted)} is not YYYY-MM-DD or YYYY-MM-DDThh:mm[:ss]Z`);
+      if (
+        "http_status" in a &&
+        a.http_status !== null &&
+        !(Number.isInteger(a.http_status) && typeof a.http_status === "number")
+      )
+        e(`http_status ${show(a.http_status)} must be an integer or null`);
+      if ("detail" in a && a.detail !== null && typeof a.detail !== "string") e("detail must be a string or null");
+    }
+    const old = baseOf(ctx, p);
+    if (old === undefined) continue;
+    const was = parseFailed(old);
+    if ("error" in was || was.list === null) continue;
+    for (const [i, a] of was.list.entries()) {
+      const got = r.list[i];
+      if (got === undefined) {
+        emit("L4", p, `committed failed_attempts entry ${i + 1} was removed; the list is append-only`);
+        break;
+      }
+      if (canon(got) !== canon(a)) {
+        emit(
+          "L4",
+          p,
+          `committed failed_attempts entry ${i + 1} changed (${show(a)} -> ${show(got)}); committed entries stay unchanged and in order, new entries are appended at the end`,
+        );
+        break;
+      }
+    }
   }
 }
 
