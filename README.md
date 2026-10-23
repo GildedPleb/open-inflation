@@ -29,7 +29,7 @@ The CSV has three columns: `date` (the quarter's last day), `value` (whole US do
 - **Load the data:** [base_money.csv](base_money.csv).
 - **Check a number:** [How to check a number](#how-to-check-a-number).
 - **Understand the method:** [In plain words](#what-base-money-means-here), then the [full methodology](docs/methodology/base_money.md).
-- **See every source file:** [Evidence index](docs/evidence-index.md).
+- **See every quarter:** [Quarters](evidence/); each quarter file links to its sources.
 - **Reuse or cite:** [Reuse and citation](#reuse-and-citation).
 
 ## Quarterly base money
@@ -40,8 +40,8 @@ US dollars, trillions (T), converted at each quarter-end exchange rate. The exac
 
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
-| 2026 Q2 | $22.04T | —¹ | [Sources](base_money/2026Q2.md) |
-| 2026 Q1 | $22.33T | —¹ | [Sources](base_money/2026Q1.md) |
+| 2026 Q2 | $22.04T | —¹ | [Sources](evidence/2026Q2.md) |
+| 2026 Q1 | $22.33T | —¹ | [Sources](evidence/2026Q1.md) |
 
 <!-- END GENERATED table -->
 
@@ -97,7 +97,7 @@ Suggested citation: *open-inflation, base_money dataset, version [as shown above
 ## More
 
 - [Full methodology](docs/methodology/base_money.md): definitions, exchange-rate rule, rounding, revisions and gaps
-- [Evidence index](docs/evidence-index.md): every source file, and each quarter's basket and coverage (it was `INDEX.md` until v1.1.0)
+- [Quarters](evidence/): every quarter, with its date and total
 - [How the evidence is organised](docs/evidence-chain.md)
 - [Versions and releases](docs/releases.md)
 - For contributors: [running the checks](docs/running.md) and [what the checks enforce](docs/lint.md)

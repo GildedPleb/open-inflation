@@ -5,10 +5,10 @@ Every number in `base_money.csv` is backed by an append-only chain of Markdown f
 | Path | What it is |
 | --- | --- |
 | `base_money.csv` | `date,value,evidence_id`: quarter-end date, integer USD, path to the quarterly roll-up |
-| `base_money/YYYYQn.md` | The quarter: total, per-issuer table with sources, checks, audit trail and the machine-readable arithmetic block |
-| `base_money/sources/<ISS>/<YYYY>.md` | Append-only extracts per issuer and year, one `## YYYYQn` heading per quarter |
-| `base_money/sources/FX/<YYYY>.md` | FX-rate extracts, one adopted rate per currency per quarter |
-| `docs/evidence-index.md` | Links every roll-up and issuer-year file (generated) |
+| `evidence/YYYYQn.md` | The quarter: total, per-issuer table with sources, checks, audit trail and the machine-readable arithmetic block |
+| `evidence/<ISS>/<YYYY>.md` | Append-only extracts per issuer and year, one `## YYYYQn` heading per quarter |
+| `evidence/FX/<YYYY>.md` | FX-rate extracts, one adopted rate per currency per quarter |
+| `evidence/README.md` | Every quarter file, with its date and total |
 | `catalog.json` | Series metadata, baskets and file paths |
 | `docs/methodology/` | How the numbers are defined and built |
 
@@ -22,7 +22,7 @@ Each extract quotes the bank's figure word for word, with `- Retrieved:`, `- Ori
 
 ## FX extracts
 
-Each non-USD currency has one adopted quarter-end rate in `base_money/sources/FX/<YYYY>.md`, per the [FX rule](methodology/base_money.md#fx-rule).
+Each non-USD currency has one adopted quarter-end rate in `evidence/FX/<YYYY>.md`, per the [FX rule](methodology/base_money.md#fx-rule).
 
 ## Audit trail
 
@@ -30,4 +30,4 @@ Each quarter file's Audit trail records what was tried, including rejected sourc
 
 ## Append-only and revisions
 
-Committed lines in `base_money/` are never changed or deleted. A value changes only through an appended `## Revision` section with a new machine block (lint L4).
+Committed lines in `evidence/` are never changed or deleted. A value changes only through an appended `## Revision` section with a new machine block (lint L4).

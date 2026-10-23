@@ -31,10 +31,10 @@ bun run lint --base origin/main   # integrity checks against main; no network
 
 What each check enforces is in [What lint enforces](lint.md).
 
-## The README and the evidence index
+## The README
 
 ```sh
-bun run readme    # rewrites README.md's generated blocks and docs/evidence-index.md
+bun run readme    # rewrites README.md's generated blocks
 ```
 
 Run it after adding a quarter (a CSV row, its roll-up and its issuer files). Lint check L13 fails when either file differs from what it would write.
@@ -53,7 +53,7 @@ bun run verify --base origin/main   # HEAD each archive URL the diff adds, once
 bun run audit                       # re-check every link; copies go to ~/open-inflation-archive/
 ```
 
-`bun run audit` is a local script, never in CI and never a merge gate. It re-checks every Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the repository by HTTP status and content, and classifies each as ok (resolves, and its sha256 matches the last saved copy; on a first run any resolving URL is ok), changed (resolves, but its content differs from the last saved copy, or it redirects to a different final URL than last time), lost (404, 410, or the host name does not exist, DNS ENOTFOUND, while a canary host, `www.gstatic.com` or `one.one.one.one`, still answers), or no verdict (rate-limited: a 429 or 503 still there when pacing gave up (a 429 is never a verdict); blocked: a challenge or CAPTCHA page or header, or a 403; a Ghostarchive 200 that is not a capture, its `Archiving error` page or a loading page, which is not saved; any other HTTP status; a timeout, a reset, a redirect loop or any other DNS error, such as the resolver timing out, while a canary answers; and offline, every request with no HTTP answer, whatever its error, when no canary answers, since then the network itself is down; requests then go out without pacing waits until a link answers again, so an offline run ends at once). Each no-verdict row carries its HTTP status or error code, and any no-verdict link makes the run incomplete: it prints an `audit: INCOMPLETE:` line counting them by reason and exits 3. The script does not judge whether a figure is still shown. Wayback captures are fetched raw (`https://web.archive.org/web/<timestamp>id_/<url>`) for hashing; originals are hashed as served, so a dynamic original may show as changed and needs a human look. It saves whatever still resolves, with a `manifest.json` of each URL's sha256 and final URL and dated reports `reports/audit-<YYYY-MM-DD>.md` and `.json`, to a local store outside the repository (default `~/open-inflation-archive/`, or `$OBM_ARCHIVE_DIR`; a store inside the repository, symlinks resolved, is refused). Those copies are private, never committed or published. Requests are paced per host as for verify (hosts in parallel; archive.today 30 s apart), with a timeout and a User-Agent. Findings are appended to the quarter file's Audit trail, `base_money/<YYYY>Q<n>.md`, under `### Link audit <YYYY-MM-DD>`.
+`bun run audit` is a local script, never in CI and never a merge gate. It re-checks every Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the repository by HTTP status and content, and classifies each as ok (resolves, and its sha256 matches the last saved copy; on a first run any resolving URL is ok), changed (resolves, but its content differs from the last saved copy, or it redirects to a different final URL than last time), lost (404, 410, or the host name does not exist, DNS ENOTFOUND, while a canary host, `www.gstatic.com` or `one.one.one.one`, still answers), or no verdict (rate-limited: a 429 or 503 still there when pacing gave up (a 429 is never a verdict); blocked: a challenge or CAPTCHA page or header, or a 403; a Ghostarchive 200 that is not a capture, its `Archiving error` page or a loading page, which is not saved; any other HTTP status; a timeout, a reset, a redirect loop or any other DNS error, such as the resolver timing out, while a canary answers; and offline, every request with no HTTP answer, whatever its error, when no canary answers, since then the network itself is down; requests then go out without pacing waits until a link answers again, so an offline run ends at once). Each no-verdict row carries its HTTP status or error code, and any no-verdict link makes the run incomplete: it prints an `audit: INCOMPLETE:` line counting them by reason and exits 3. The script does not judge whether a figure is still shown. Wayback captures are fetched raw (`https://web.archive.org/web/<timestamp>id_/<url>`) for hashing; originals are hashed as served, so a dynamic original may show as changed and needs a human look. It saves whatever still resolves, with a `manifest.json` of each URL's sha256 and final URL and dated reports `reports/audit-<YYYY-MM-DD>.md` and `.json`, to a local store outside the repository (default `~/open-inflation-archive/`, or `$OBM_ARCHIVE_DIR`; a store inside the repository, symlinks resolved, is refused). Those copies are private, never committed or published. Requests are paced per host as for verify (hosts in parallel; archive.today 30 s apart), with a timeout and a User-Agent. Findings are appended to the quarter file's Audit trail, `evidence/<YYYY>Q<n>.md`, under `### Link audit <YYYY-MM-DD>`.
 
 ## Exit codes
 
@@ -66,7 +66,7 @@ bun run typecheck   # tsc -p tools
 bun run check       # Biome format and code lint
 ```
 
-Biome's options are given on the command line in `package.json` (`check`), so there is no `biome.json`. Markdown formatting is off (`--md-formatter-enabled=false`): `bun run readme` writes the README table and the evidence index byte for byte, and Biome would realign them.
+Biome's options are given on the command line in `package.json` (`check`), so there is no `biome.json`. Markdown formatting is off (`--md-formatter-enabled=false`): `bun run readme` writes the README table byte for byte, and Biome would realign it.
 
 ## CI
 
@@ -84,5 +84,5 @@ Code lives in `tools/` (`tools/scripts/`, `tools/test/`, `tools/tsconfig.json`) 
 - `.gitignore`: it covers the whole tree.
 - `package.json` and `bun.lock`: CI runs `bun install --frozen-lockfile` and the `bun run` scripts from the root, and the workflow is not changed here. `package.json` also holds Biome's options and the TypeScript project path, so there is no `biome.json`, `bunfig.toml` or root `tsconfig.json`.
 - `base_money.csv` and `catalog.json`: the data and its catalog.
-- `base_money/`: one file per quarter (`base_money/YYYYQn.md`) and the quoted sources behind it (`base_money/sources/<ISS>/<YYYY>.md`).
+- `evidence/`: one file per quarter (`evidence/YYYYQn.md`) and the quoted sources behind it (`evidence/<ISS>/<YYYY>.md`).
 - `docs/` and `tools/`: the two folders everything else moved into.

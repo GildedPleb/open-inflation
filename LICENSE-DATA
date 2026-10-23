@@ -5,13 +5,13 @@ Copyright (c) 2026 Gilded Pleb
 Scope. This license covers the data in this repository:
   - base_money.csv
   - catalog.json
-  - base_money/
+  - evidence/
   - docs/methodology/
 The code (scripts/, test/ and the project configuration files) is under the
 MIT License in LICENSE.
 
 Exception. Verbatim quotes from central banks and other sources inside
-base_money/ remain under each source's own reuse terms; this
+evidence/ remain under each source's own reuse terms; this
 license covers only the selection, arrangement, annotation and derived
 figures added here.
 
