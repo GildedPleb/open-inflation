@@ -822,6 +822,35 @@ describe("archive2Problem (Archive URL 2 value)", () => {
     ])
       bad(`attempted 2026-10-02: ${r}`, /contains a URL/);
   });
+  // m-D (Probe): a malformed URL, a host:port or an IP address is a link too; archive.today's bare names stay prose.
+  test("an attempt reason may not contain a malformed URL, localhost:port or an IP address", () => {
+    for (const r of [
+      "copy at x/example.com failed",
+      "copy at http//example.com failed",
+      "copy at https:example.com failed",
+      "copy at http:/example.com failed",
+      "copy at localhost:8080 failed",
+      "copy at http:localhost failed",
+      "copy at 1.2.3.4 failed",
+      "copy at 1.2.3.4:8080 failed",
+      "copy at x/1.2.3.4 failed",
+      "copy at user@example.com failed",
+      "copy at x\\example.com failed",
+      "copy at x/archive.ph failed",
+    ])
+      bad(`attempted 2026-10-02: ${r}`, /contains a URL .*malformed URL such as x\/example\.com or localhost:8080/);
+  });
+  test("prose with slashes, colons and numbers still passes (m-D)", () => {
+    for (const r of [
+      "HTTP/1.1 403 and/or CAPTCHA",
+      "blocked at 10:30 twice, N/A",
+      "localhost was not used",
+      "the data/file.xlsx was blocked",
+      "version 1.2.3 then 256.1.1.1 blocked",
+      "blocked: archive.ph, archive.is and archive.today",
+    ])
+      ok(`attempted 2026-10-02: ${r}`);
+  });
   test("prose with dots still passes: sentence ends, abbreviations, numbers, file types, archive.today's names", () => {
     for (const r of [
       "archive.today returned a CAPTCHA, blocked.",
