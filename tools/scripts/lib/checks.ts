@@ -2,7 +2,7 @@
 // (HEAD on each new archive URL) is not here; it is `bun run verify` (lib/verify.ts), run locally, never in CI.
 import { posix } from "node:path";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
-import { fencedBlocks, headingSlugs, headings, lines, links, memoText, slugs } from "./markdown.ts";
+import { fencedBlocks, headingSlugs, headings, htmlAnchors, lines, links, memoText, slugs } from "./markdown.ts";
 import {
   anyQuarterOfPath,
   CSV_PATH,
@@ -10,6 +10,7 @@ import {
   extractOf,
   extractPath,
   FOLDER_README_TEXT,
+  FX_DIR,
   FX_ID,
   FX_TEXT,
   folderReadmeOf,
@@ -17,6 +18,7 @@ import {
   fxPath,
   ISSUER_TEXT,
   isExtractPath,
+  isFxPath,
   LEGACY_CSV,
   QUARTER_LIST,
   QUARTER_TEXT,
@@ -65,7 +67,14 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   const renames = findRenames(snap);
   const renamedFrom = new Map([...renames].map(([a, b]) => [b, a]));
   const base = snap.base && decodeAll(snap.base);
-  const ctx: Ctx = { files: snap.files, text, base, now: opts.now, renames, renamedFrom };
+  const ctx: Ctx = {
+    files: snap.files,
+    text,
+    base,
+    now: opts.now,
+    renames,
+    renamedFrom,
+  };
   const rows = csvContract(ctx, emit);
   evidenceExistence(ctx, rows, emit);
   headingImmutability(ctx, emit);
@@ -77,7 +86,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   extractSchema(ctx, emit);
   rearchiveNotes(ctx, emit);
   aggregation(ctx, rows, emit);
-  failedAttempts(ctx, emit);
+  fxTables(ctx, emit);
   catalog(ctx, emit);
   placement(ctx, emit);
   generated(ctx, emit);
@@ -148,25 +157,24 @@ function checkTarget(ctx: Ctx, from: string, what: string, target: string, rootR
   if (r.frag === null) return;
   const body = ctx.text.get(r.path);
   if (body === undefined) return emit("L5", from, `${what} "${target}": ${r.path} has no headings to anchor`);
-  if (!slugs(body).has(r.frag))
+  if (!slugs(body).has(r.frag) && !htmlAnchors(body).has(r.frag))
     emit(
       "L5",
       from,
-      `${what} "${target}": no heading with anchor #${r.frag} in ${r.path} (GitHub anchors are exact lowercase slugs)`,
+      `${what} "${target}": no heading or <a id> anchor #${r.frag} in ${r.path} (GitHub anchors are exact lowercase slugs)`,
     );
 }
 
+/** Every ```yaml fence in a quarter file is a machine block. */
+const machineFences = memoText((body: string) => fencedBlocks(body, ["yaml", "yml"]));
 /**
- * A quarter file's ```yaml fences split by role: a fence whose first top-level key is `failed_attempts` is the
- * failed-attempts log (never a machine block); every other ```yaml fence is an arithmetic machine block.
+ * A yaml fence whose first top-level key is `failed_attempts`: the retired quarter-file log (failed attempts are now
+ * per-extract lines). In a tree it is an L9 finding; on the base side it is dropped, so removing it is no L4 finding.
  */
-const isFailedAttempts = (body: string) =>
+const isFailedLog = (body: string) =>
   /^failed_attempts\s*:/.test(body.split("\n").find((l) => l.trim() !== "" && !l.trim().startsWith("#")) ?? "");
-const yamlFences = memoText((body: string) =>
-  fencedBlocks(body, ["yaml", "yml"]).map((b) => ({ ...b, failed: isFailedAttempts(b.body) })),
-);
-const machineFences = (body: string) => yamlFences(body).filter((b) => !b.failed);
-const failedFences = (body: string) => yamlFences(body).filter((b) => b.failed);
+/** A committed quarter file's machine blocks: its yaml fences less any retired failed_attempts log. */
+const committedFences = (body: string) => machineFences(body).filter((b) => !isFailedLog(b.body));
 
 export type Machine = { ok: true; data: unknown; line: number; source: string } | { ok: false; error: string };
 
@@ -174,14 +182,27 @@ export type Machine = { ok: true; data: unknown; line: number; source: string } 
 export const machines: (body: string) => readonly Machine[] = memoText(parseMachines);
 function parseMachines(body: string): Machine[] {
   if (/^---\r?\n/.test(body))
-    return [{ ok: false, error: "front-matter is not a machine block; use a fenced ```yaml block only" }];
+    return [
+      {
+        ok: false,
+        error: "front-matter is not a machine block; use a fenced ```yaml block only",
+      },
+    ];
   const blocks = machineFences(body);
   if (blocks.length === 0) return [{ ok: false, error: "has no ```yaml machine block" }];
   return blocks.map((block): Machine => {
     try {
-      return { ok: true, data: Bun.YAML.parse(block.body), line: block.line, source: block.body };
+      return {
+        ok: true,
+        data: Bun.YAML.parse(block.body),
+        line: block.line,
+        source: block.body,
+      };
     } catch (e) {
-      return { ok: false, error: `machine block (line ${block.line}) is not valid YAML: ${(e as Error).message}` };
+      return {
+        ok: false,
+        error: `machine block (line ${block.line}) is not valid YAML: ${(e as Error).message}`,
+      };
     }
   });
 }
@@ -372,17 +393,44 @@ function rewriteRenamedPaths(ctx: Ctx, body: string): string {
   return out;
 }
 
+/** The diff changes an FX rate table (a base_money/FX/ file added, removed or edited). */
+const fxChanged = (ctx: Ctx): boolean => {
+  if (!ctx.base) return false;
+  const inFx = (p: string) => p.startsWith(`${FX_DIR}/`);
+  const paths = new Set([...ctx.files.keys(), ...ctx.base.keys()].filter(inFx));
+  return [...paths].some((p) => ctx.text.get(p) !== ctx.base?.get(p));
+};
+/** The machine-block fields an FX rate table edit may change in place (with the CSV value), no revision block. */
+const FX_FIELD_LINE = /^(\s*(?:- )?(?:fx_rate|total_usd|coverage_pct):)/;
+/** `got` differs from `want` only in fx_rate, total_usd and coverage_pct values, line for line. */
+const onlyFxFields = (want: string, got: string): boolean => {
+  const x = want.split("\n");
+  const y = got.split("\n");
+  return (
+    x.length === y.length &&
+    x.every((l, i) => {
+      const k = y[i] as string;
+      if (l === k) return true;
+      const a = FX_FIELD_LINE.exec(l)?.[1];
+      return a !== undefined && a === FX_FIELD_LINE.exec(k)?.[1];
+    })
+  );
+};
+
 /**
  * A committed quarter file under L4: its prose is presentation and may be rewritten, but every committed machine
- * block survives byte for byte, in order, as the file's first blocks. The only allowed edit is a followed extract
- * rename's path inside an anchor (or comment), e.g. issuers/PBOC/2026.md -> its new extract path. Later blocks are
- * appended revisions (L9 checks them).
+ * block survives byte for byte, in order, as the file's first blocks. Allowed edits: a followed extract rename's
+ * path inside an anchor (or comment), e.g. issuers/PBOC/2026.md -> its new extract path; and, in a diff that also
+ * changes base_money/FX/, the fx_rate, total_usd and coverage_pct values in place (an FX rate table is regenerable
+ * supporting data). Later blocks are appended revisions (L9 checks them). A retired failed_attempts log on the base
+ * side is not a machine block, so removing it passes.
  */
 function quarterLock(ctx: Ctx, p: string, old: string, emit: Emit) {
   const now = ctx.text.get(p);
   if (now === undefined) return;
-  const was = machineFences(old);
+  const was = committedFences(old);
   const cur = machineFences(now);
+  const fx = fxChanged(ctx);
   for (const [i, b] of was.entries()) {
     const want = rewriteRenamedPaths(ctx, b.body);
     const got = cur[i];
@@ -394,7 +442,7 @@ function quarterLock(ctx: Ctx, p: string, old: string, emit: Emit) {
       );
       return;
     }
-    if (got.body !== want && got.body !== b.body) {
+    if (got.body !== want && got.body !== b.body && !(fx && onlyFxFields(want, got.body))) {
       const x = want.split("\n");
       const y = got.body.split("\n");
       const k = x.findIndex((l, j) => l !== y[j]);
@@ -402,7 +450,7 @@ function quarterLock(ctx: Ctx, p: string, old: string, emit: Emit) {
       emit(
         "L4",
         p,
-        `committed machine block ${i + 1} (base line ${b.line}) changed at its line ${at + 1}: ${show(x[at] ?? "")} -> ${show(y[at] ?? "")}; only a renamed extract's path may change, and a correction is an appended revision block`,
+        `committed machine block ${i + 1} (base line ${b.line}) changed at its line ${at + 1}: ${show(x[at] ?? "")} -> ${show(y[at] ?? "")}; only a renamed extract's path may change (or fx_rate, total_usd and coverage_pct with a base_money/FX/ change), and a correction is an appended revision block`,
       );
       return;
     }
@@ -410,8 +458,10 @@ function quarterLock(ctx: Ctx, p: string, old: string, emit: Emit) {
 }
 
 /**
- * The CSV under L4: committed rows are never deleted and keep their evidence_id. A value may change
- * only when the same diff appends a revision block to that roll-up and its total_usd is the new value.
+ * The CSV under L4: committed rows are never deleted and keep their evidence_id. A value may change only when the
+ * same diff appends a revision block to that roll-up and its total_usd is the new value, or, in a diff that changes
+ * base_money/FX/, when the roll-up's current total_usd was edited in place to the new value (quarterLock allows that
+ * edit only in fx_rate, total_usd and coverage_pct).
  */
 function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
   const old = ctx.base?.get(CSV) ?? ctx.base?.get(LEGACY_CSV); // the base may predate the move
@@ -420,7 +470,8 @@ function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
   const now = new Map(rows.map((r) => [r.date, r]));
   // A row L1 rejects is still present: L1 reports it. Only a date absent from the raw lines was deleted.
   const present = new Set((ctx.text.get(CSV) ?? "").split("\n").map((l) => l.replace(BOM, "").split(",")[0]));
-  const blocks = (body: string | undefined) => (body === undefined ? 0 : machineFences(body).length);
+  const blocks = (body: string | undefined) => (body === undefined ? 0 : committedFences(body).length);
+  const fx = fxChanged(ctx);
   for (const line of old.split("\n").slice(1)) {
     const [date, value, evidenceId, ...rest] = line.split(",");
     if (!date || value === undefined || evidenceId === undefined || rest.length > 0) continue;
@@ -437,9 +488,12 @@ function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
       const after = ctx.text.get(r.evidenceId);
       const m = after === undefined ? null : machine(after);
       const total = m?.ok && isObj(m.data) ? m.data.total_usd : undefined;
-      if (blocks(after) <= blocks(baseOf(ctx, r.evidenceId)))
-        e(`row for ${date}: value ${value} -> ${r.value} without appending a revision block to ${r.evidenceId}`);
-      else if (total !== r.value)
+      if (blocks(after) <= blocks(baseOf(ctx, r.evidenceId))) {
+        if (!fx || total !== r.value)
+          e(
+            `row for ${date}: value ${value} -> ${r.value} without appending a revision block to ${r.evidenceId}${fx ? ` (an in-place FX edit needs its total_usd to be the new value, not ${String(total)})` : ""}`,
+          );
+      } else if (total !== r.value)
         e(
           `row for ${date}: value ${value} -> ${r.value}, but the revision total_usd ${String(total)} in ${r.evidenceId} differs`,
         );
@@ -482,7 +536,7 @@ function linkIntegrity(ctx: Ctx, emit: Emit) {
 
 /**
  * Lines of a quarter file's reader text with an absolute http(s) URL. Reader text is everything outside the yaml
- * fences (the machine block and the failed_attempts log keep their URLs).
+ * fences, every one of which is a machine block (its cross_checks keep their URLs).
  */
 const absoluteUrls = memoText((body: string): number[] => {
   const out: number[] = [];
@@ -631,27 +685,37 @@ interface Extract {
   readonly quarter: string | null;
   /** Each `- As of:` value. */
   readonly asOf: string[];
-  /** FX extract fields (Currency, Quote as published, Quote direction, Rate, fx_rate, Adopted): every value. */
-  readonly facts: Map<FxFact, string[]>;
+  /** Each `- Archive attempt`, `- Link audit` and `- Rejected source` line: its kind, the text after the label, its line. */
+  readonly notes: {
+    readonly kind: NoteKind;
+    readonly rest: string;
+    readonly line: number;
+  }[];
   /** Each `- Re-archive:` URL in this extract (the new capture of one of its dead archive URLs), with its line. */
   readonly rearchive: { readonly url: string; readonly line: number }[];
 }
 const AS_OF_LINE = /^\s*[-*]\s+As of:\s*(.*?)\s*$/;
-const FX_FACTS = ["Currency", "Quote as published", "Quote direction", "Rate", "fx_rate (USD per unit)"] as const;
-type FxFact = (typeof FX_FACTS)[number] | "Adopted";
-const FX_FACT_LINE =
-  /^\s*[-*]\s+(Currency|Quote as published|Quote direction|Rate|fx_rate \(USD per unit\)|Adopted):\s*(.*?)\s*$/;
+/** The per-extract record lines: failed archive attempts, link-audit findings and rejected sources. */
+type NoteKind = "Archive attempt" | "Link audit" | "Rejected source";
+const NOTE_LINE = /^\s*[-*]\s+(Archive attempt|Link audit|Rejected source)\b(.*)$/;
 
 /** Extract blocks (### sections) of one issuer file, plus field lines found outside any block. */
 export const extracts: (body: string) => {
   readonly blocks: readonly Extract[];
   readonly stray: readonly number[];
   readonly strayNotes: readonly number[];
+  readonly strayRecords: readonly number[];
 } = memoText(parseExtracts);
-function parseExtracts(body: string): { blocks: Extract[]; stray: number[]; strayNotes: number[] } {
+function parseExtracts(body: string): {
+  blocks: Extract[];
+  stray: number[];
+  strayNotes: number[];
+  strayRecords: number[];
+} {
   const blocks: Extract[] = [];
   const stray: number[] = [];
   const strayNotes: number[] = [];
+  const strayRecords: number[] = [];
   let cur: Extract | null = null;
   let quarter: string | null = null;
   for (const l of lines(body)) {
@@ -669,7 +733,7 @@ function parseExtracts(body: string): { blocks: Extract[]; stray: number[]; stra
                 quote: false,
                 quarter,
                 asOf: [],
-                facts: new Map(),
+                notes: [],
                 rearchive: [],
               }
             : h[1].length < 3
@@ -681,7 +745,16 @@ function parseExtracts(body: string): { blocks: Extract[]; stray: number[]; stra
       const f = FIELD_LINE.exec(l.text);
       const near = f ? null : NEAR_FIELD.exec(l.text);
       const note = REARCHIVE_LINE.exec(l.text);
-      if (note) {
+      const rec = NOTE_LINE.exec(l.text);
+      if (rec) {
+        if (cur)
+          cur.notes.push({
+            kind: rec[1] as NoteKind,
+            rest: rec[2] ?? "",
+            line: l.line,
+          });
+        else strayRecords.push(l.line);
+      } else if (note) {
         if (cur) cur.rearchive.push({ url: note[1] ?? "", line: l.line });
         else strayNotes.push(l.line);
       } else if (f) {
@@ -689,13 +762,10 @@ function parseExtracts(body: string): { blocks: Extract[]; stray: number[]; stra
         else cur.fields.set(f[1] as Field, [...(cur.fields.get(f[1] as Field) ?? []), f[2] ?? ""]);
       } else if (near && cur) cur.wrongForm.set(near[1] as Field, l.line);
       else if (cur && AS_OF_LINE.test(l.text)) cur.asOf.push(AS_OF_LINE.exec(l.text)?.[1] ?? "");
-      else if (cur && FX_FACT_LINE.test(l.text)) {
-        const [, k, v] = FX_FACT_LINE.exec(l.text) as RegExpExecArray;
-        cur.facts.set(k as FxFact, [...(cur.facts.get(k as FxFact) ?? []), v ?? ""]);
-      } else if (cur && /^\s*>\s*\S/.test(l.text)) cur.quote = true;
+      else if (cur && /^\s*>\s*\S/.test(l.text)) cur.quote = true;
     } else if (cur && l.fence === "body" && l.text.trim() !== "") cur.quote = true;
   }
-  return { blocks, stray, strayNotes };
+  return { blocks, stray, strayNotes, strayRecords };
 }
 
 const utcMs = (y: string, mo: string, d: string, h: string, mi: string, s: string) => {
@@ -757,10 +827,16 @@ const utcDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
  * converted to UTC; an unreadable Retrieved is L7's own finding and skips this) and no later than the UTC date of
  * `now` plus the Retrieved clock skew. null when `day` (YYYY-MM-DD) is inside it.
  */
-function dateWindowProblem(what: string, day: string, retrieved?: string, now?: number): string | null {
+function dateWindowProblem(
+  what: string,
+  day: string,
+  retrieved?: string,
+  now?: number,
+  why = "archive.today is tried at or after retrieval",
+): string | null {
   const rMs = retrieved === undefined ? null : instantMs(retrieved);
   if (rMs !== null && day < utcDate(rMs))
-    return `${what} ${day} is before Retrieved ${retrieved} (UTC date ${utcDate(rMs)}); archive.today is tried at or after retrieval`;
+    return `${what} ${day} is before Retrieved ${retrieved} (UTC date ${utcDate(rMs)}); ${why}`;
   if (now !== undefined && day > utcDate(now + SKEW_MS))
     return `${what} ${day} is in the future (now ${new Date(now).toISOString()}, UTC date ${utcDate(now + SKEW_MS)} with the 10 min skew)`;
   return null;
@@ -825,6 +901,38 @@ function attemptProblem(
   if (URLISH.test(reason) || reason.split(/\s+/).some(hostWord))
     return `${label} attempt reason ${show(reason)} contains a URL (a scheme://, a bare host, IP address or host/path, or a malformed URL such as x/example.com or localhost:8080); a reason is prose (record links in their own fields)`;
   return dateWindowProblem(`${label} attempt date`, day, retrieved, now);
+}
+
+/** The archives an Archive attempt line names (one of them, in any case). */
+const ARCHIVE_NAMES = /archive\.(?:today|ph|is)\b|ghostarchive|wayback/i;
+
+/**
+ * L7 on one per-extract record line, `rest` being the text after its label:
+ * - `- Archive attempt YYYY-MM-DD: <text>.` and `- Link audit YYYY-MM-DD: <text>.`: a real date on or after the
+ *   extract's Retrieved date (UTC) and not in the future, and non-empty text; an Archive attempt names archive.today,
+ *   Ghostarchive or Wayback.
+ * - `- Rejected source: <what>: <reason>.`: both parts non-empty, no URL.
+ * null when it passes. L4 keeps these lines append-only like every other extract line.
+ */
+function noteProblem(kind: NoteKind, rest: string, retrieved: string | undefined, now: number): string | null {
+  if (kind === "Rejected source") {
+    const m = /^:\s*(.*?\S)\s*:\s+(.*\S)\s*\.$/.exec(rest);
+    if (!m || /^[.\s]*$/.test(m[2] ?? ""))
+      return `Rejected source line must read "- Rejected source: <what>: <reason>." (both parts non-empty)`;
+    const text = `${m[1]} ${m[2]}`;
+    if (URLISH.test(text) || text.split(/\s+/).some(hostWord))
+      return `Rejected source line contains a URL; name the source in words (its links live in extract fields)`;
+    return null;
+  }
+  const m = /^ (\S+): (.*\S)\s*$/.exec(rest);
+  const text = (m?.[2] ?? "").replace(/\.$/, "").trim();
+  if (!m || !(m[2] ?? "").endsWith(".") || text === "")
+    return `${kind} line must read "- ${kind} YYYY-MM-DD: <text>." (non-empty text ending with a period)`;
+  const day = m[1] ?? "";
+  if (!isIsoDate(day)) return `${kind} date ${show(day)} is not a real YYYY-MM-DD date`;
+  if (kind === "Archive attempt" && !ARCHIVE_NAMES.test(text))
+    return `Archive attempt ${show(text)} must name the archive tried: archive.today, Ghostarchive or Wayback`;
+  return dateWindowProblem(`${kind} date`, day, retrieved, now, "it is made at or after retrieval");
 }
 
 /**
@@ -923,19 +1031,26 @@ function blockProblems(b: Extract, now: number): string[] {
   return out;
 }
 
+/** The issuer-year extract files (L7, L8, verify, audit): not the FX rate tables, which are neither checked as extracts nor archived. */
 const issuerTexts = (texts: Texts | null) =>
-  [...(texts ?? [])].filter(([p]) => EXTRACT_FILE.test(p)).sort(([a], [b]) => a.localeCompare(b));
+  [...(texts ?? [])].filter(([p]) => EXTRACT_FILE.test(p) && !isFxPath(p)).sort(([a], [b]) => a.localeCompare(b));
 
 function extractSchema(ctx: Ctx, emit: Emit) {
   const startOfDay = catalogModel(ctx.text.get("catalog.json")).startOfDay;
   for (const [p, body] of issuerTexts(ctx.text)) {
-    const { blocks, stray } = extracts(body);
+    const { blocks, stray, strayRecords } = extracts(body);
     const iss = extractOf(p)?.issuer ?? "";
     for (const line of stray) emit("L7", p, `line ${line}: extract field outside an ### extract block`);
+    for (const line of strayRecords)
+      emit("L7", p, `line ${line}: Archive attempt, Link audit or Rejected source line outside an ### extract block`);
     for (const b of blocks) {
       const at = `extract "${b.title}" (line ${b.line})`;
       for (const m of blockProblems(b, ctx.now)) emit("L7", p, `${at} ${m}`);
-      if (iss === FX_FOLDER) for (const m of fxRate(b).errs) emit("L7", p, `${at} ${m}`);
+      const retrieved = b.fields.get("Retrieved");
+      for (const n of b.notes) {
+        const m = noteProblem(n.kind, n.rest, retrieved?.length === 1 ? retrieved[0] : undefined, ctx.now);
+        if (m) emit("L7", p, `${at} line ${n.line}: ${m}`);
+      }
       for (const v of b.asOf) {
         const m = asOfAfterRetrieved(v, b.fields.get("Retrieved"));
         if (m) emit("L7", p, `${at} ${m}`);
@@ -944,7 +1059,7 @@ function extractSchema(ctx: Ctx, emit: Emit) {
       // so it never changes which URLs L8 fetches.
       if (b.quarter === null) continue;
       for (const v of b.asOf) {
-        const m = asOfProblem(v, b.quarter, iss === FX_FOLDER, startOfDay.has(iss));
+        const m = asOfProblem(v, b.quarter, startOfDay.has(iss));
         if (m) emit("L7", p, `${at} ${m}`);
       }
     }
@@ -975,62 +1090,8 @@ function asOfAfterRetrieved(v: string, retrieved: string[] | undefined): string 
 const RATE = /^\d+(\.\d+)?$/;
 const DIRECTION = /^(?:([A-Z]{3}) per USD|USD per ([A-Z]{3}))$/;
 
-/** What one FX extract says about its rate, and the fx_rate (USD per unit) derived from it when it is valid. */
-interface FxRate {
-  readonly errs: string[];
-  readonly currency: string | undefined;
-  readonly rate: string | undefined;
-  readonly direction: string | undefined;
-  /** The derived fx_rate; null when the extract has any problem (L9 then fails closed). */
-  readonly fx: string | null;
-}
-
-/**
- * The fx_rate check on one FX extract (L7). Required, once each: Currency, Quote as published, Quote direction, Rate
- * and fx_rate (USD per unit). Rate is the normalized Quote as published (a decimal comma becomes a point; nothing
- * else changes, so a grouped quote cannot be normalized) and a positive plain decimal. Quote direction is
- * "<CCY> per USD" or "USD per <CCY>" for the extract's own Currency. fx_rate (USD per unit) equals the rate derived
- * from Rate and the direction (usdPerUnit), exactly as a string.
- */
-function fxRate(b: Extract): FxRate {
-  const errs: string[] = [];
-  const one = (k: FxFact) => {
-    const vs = b.facts.get(k) ?? [];
-    if (vs.length === 0) errs.push(`has no - ${k}: line`);
-    else if (vs.length > 1) errs.push(`has more than one - ${k}: line`);
-    return vs.length === 1 ? vs[0] : undefined;
-  };
-  const [currency, quote, direction, rate, stated] = FX_FACTS.map(one);
-  if (currency !== undefined && !/^[A-Z]{3}$/.test(currency))
-    errs.push(`Currency ${show(currency)} must be an ISO 4217 code`);
-  const parsed = rate !== undefined && RATE.test(rate) ? parseDecimal(rate) : null;
-  const r = parsed && parsed.digits > 0n ? parsed : null;
-  if (rate !== undefined) {
-    if (!RATE.test(rate))
-      errs.push(
-        `Rate ${show(rate)} must match ^\\d+(\\.\\d+)?$ (a plain decimal with a point; no comma, sign or separator)`,
-      );
-    else if (!r) errs.push(`Rate ${rate} must be positive`);
-    const normalized = quote?.replaceAll(",", ".");
-    if (quote !== undefined && normalized !== rate)
-      errs.push(
-        `Rate ${rate} is not the Quote as published ${quote} normalized (${normalized}): Rate is the same digits as a plain decimal with a point`,
-      );
-  }
-  const dir = direction === undefined ? null : DIRECTION.exec(direction);
-  if (direction !== undefined && !dir)
-    errs.push(`Quote direction ${show(direction)} must be "<CCY> per USD" or "USD per <CCY>"`);
-  const named = dir?.[1] ?? dir?.[2];
-  if (named !== undefined && currency !== undefined && named !== currency)
-    errs.push(`Quote direction ${direction} names ${named}, not the extract's Currency ${currency}`);
-  const fx = r && dir ? usdPerUnit(r, dir[1] ? "per USD" : "USD per") : null;
-  if (fx !== null && stated !== undefined && stated !== fx)
-    errs.push(`fx_rate (USD per unit) ${stated} does not equal ${fx} derived from Rate ${rate} (${direction})`);
-  return { errs, currency, rate, direction, fx: errs.length === 0 ? fx : null };
-}
 const QUARTER_STARTS = ["01-01", "04-01", "07-01", "10-01"];
 const quarterStart = (q: string) => `${q.slice(0, 4)}-${QUARTER_STARTS[Number(q.slice(5)) - 1]}`;
-const FX_WINDOW_DAYS = 3;
 const addDays = (date: string, n: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 
@@ -1038,22 +1099,14 @@ const addDays = (date: string, n: number) =>
  * P2-m1 (Assay): an issuer, reference-only or confirming extract's As of is inside its quarter, inclusive, by day
  * or by month (YYYY-MM is in the quarter if its month is). A start_of_day issuer (catalog issuers[]) must use exactly
  * the next quarter's first day, the start-of-day stock that equals the quarter-end stock (Assay); nothing else passes.
- * An FX extract needs a full date from quarter-end minus 3 days to quarter-end.
  */
-function asOfProblem(v: string, q: string, fx: boolean, startOfDay: boolean): string | null {
+function asOfProblem(v: string, q: string, startOfDay: boolean): string | null {
   const m = AS_OF.exec(v);
   const [y, mo, d] = [m?.[1] ?? "", m?.[2] ?? "", m?.[3]];
   const date = d === undefined ? `${y}-${mo}` : `${y}-${mo}-${d}`;
   if (!m || !isIsoDate(d === undefined ? `${date}-01` : date))
     return `As of ${show(v)} must be YYYY-MM-DD or YYYY-MM (a real date), optionally followed by one (note)`;
   const [start, end] = [quarterStart(q), quarterEnd(q)];
-  if (fx) {
-    const from = addDays(end, -FX_WINDOW_DAYS);
-    if (d === undefined) return `FX As of ${show(v)} must be a full YYYY-MM-DD from ${from} to the quarter-end ${end}`;
-    if (date < from || date > end)
-      return `FX As of ${date} is outside ${from}..${end} (quarter-end minus ${FX_WINDOW_DAYS} days to quarter-end)`;
-    return null;
-  }
   const next = addDays(end, 1);
   if (startOfDay)
     return date === next
@@ -1096,13 +1149,34 @@ export function archiveRefs(
         if (urls.has(u)) return;
         const w = ARCHIVE.exec(u);
         const t = ARCHIVE_TODAY.exec(u);
-        if (w) urls.set(u, { host: "wayback", file: p, ts: w[1] ?? "", original: w[2] ?? "", block });
-        else if (t) urls.set(u, { host: "today", file: p, ts: t[1] ?? "", original: t[2] ?? "", block });
+        if (w)
+          urls.set(u, {
+            host: "wayback",
+            file: p,
+            ts: w[1] ?? "",
+            original: w[2] ?? "",
+            block,
+          });
+        else if (t)
+          urls.set(u, {
+            host: "today",
+            file: p,
+            ts: t[1] ?? "",
+            original: t[2] ?? "",
+            block,
+          });
         else if (GHOSTARCHIVE.test(u)) urls.set(u, { host: "ghost", file: p, ts: "", original: "", block });
       };
       for (const u of b.fields.get("Archive URL") ?? []) {
         const a = ARCHIVE.exec(u);
-        if (!urls.has(u)) urls.set(u, { host: "wayback", file: p, ts: a?.[1] ?? "", original: a?.[2] ?? "", block });
+        if (!urls.has(u))
+          urls.set(u, {
+            host: "wayback",
+            file: p,
+            ts: a?.[1] ?? "",
+            original: a?.[2] ?? "",
+            block,
+          });
       }
       // Archive URL 2: only archive.today URLs are fetched; a dated "attempted" record has nothing to HEAD.
       for (const u of b.fields.get("Archive URL 2") ?? []) if (ARCHIVE_TODAY.test(u)) add(u);
@@ -1136,7 +1210,14 @@ export function extractLinks(fs: Files): ExtractLink[] {
     for (const b of extracts(body).blocks)
       for (const field of ["Original URL", "Archive URL", "Archive URL 2", "Archive URL 3"] as const)
         for (const url of b.fields.get(field) ?? [])
-          if (/^https?:\/\/\S+$/.test(url)) out.push({ file, quarter: b.quarter, extract: b.title, field, url });
+          if (/^https?:\/\/\S+$/.test(url))
+            out.push({
+              file,
+              quarter: b.quarter,
+              extract: b.title,
+              field,
+              url,
+            });
   return out;
 }
 
@@ -1185,145 +1266,37 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     const q = quarterOfPath(p) as string;
     const all = machines(body);
     const { baskets } = catalogModel(ctx.text.get("catalog.json"));
-    const fx = fxCurrencies(ctx, q);
-    const rates = adoptedRates(ctx, q);
+    const table = fxTable(ctx.text.get(fxFile(q)) ?? "").get(q);
     // Blocks already committed on the base keep their implied basket version 1; later ones are new.
     const was = baseOf(ctx, p);
-    const committed = was === undefined ? 0 : machines(was).filter((m) => m.ok).length;
+    const committed = was === undefined ? 0 : machines(was).filter((m) => m.ok && !isFailedLog(m.source)).length;
     for (const [i, m] of all.entries()) {
       const current = i === all.length - 1;
       const label =
         all.length === 1 || !m.ok ? "machine block" : `machine block ${i + 1} of ${all.length} (line ${m.line})`;
       if (!m.ok) e(m.error);
+      else if (isFailedLog(m.source))
+        e(
+          `has a failed_attempts block (line ${m.line}); quarter files hold no failed-attempts log: record each failed attempt as a "- Archive attempt YYYY-MM-DD: <text>." line and each rejected source as a "- Rejected source: <what>: <reason>." line under its extract`,
+        );
       else
         blockAggregation(
           m.data,
           q,
           label,
           current ? rows.find((r) => quarterOf(r.date) === q) : undefined,
-          { baskets, fx, rates, isNew: i >= committed, source: m.source },
+          // The FX table holds the current rates: only the current block's fx_rate is checked against it.
+          {
+            baskets,
+            fxRows: current ? (table?.rows ?? []) : null,
+            isNew: i >= committed,
+            source: m.source,
+          },
           e,
         );
     }
     const last = all.at(-1);
     if (last?.ok && isObj(last.data)) for (const m of tableProblems(p, body, last.data, ctx.text)) e(m);
-  }
-}
-
-// ---------- failed attempts (L9 form, L4 append-only) ----------
-
-const ATTEMPT_FIELDS = ["kind", "issuer", "url", "target", "attempted", "method", "outcome", "http_status", "detail"];
-const ATTEMPT_ENUMS: Record<string, { values: readonly string[]; nullable: boolean }> = {
-  kind: { values: ["archive", "source"], nullable: false },
-  target: { values: ["archive.today", "ghostarchive", "wayback"], nullable: true },
-  method: { values: ["script", "browser"], nullable: true },
-  outcome: {
-    values: ["captcha", "cloudflare_challenge", "archiving_error", "empty_capture", "not_found", "rejected", "other"],
-    nullable: false,
-  },
-};
-/** attempted: YYYY-MM-DD, or YYYY-MM-DDThh:mm[:ss]Z (UTC only), a real date and time. */
-const isAttempted = (s: string) => {
-  const m = /^(\d{4}-\d{2}-\d{2})(T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?Z)?$/.exec(s);
-  return m !== null && isIsoDate(m[1] as string);
-};
-/** The failed_attempts list of a quarter file: absent (no block), a list, or an error. Memoized per text. */
-const parseFailed = memoText(parseFailedLog);
-function parseFailedLog(body: string): { list: readonly unknown[] | null; line: number } | { error: string } {
-  const fs = failedFences(body);
-  if (fs.length === 0) return { list: null, line: 0 };
-  const f = fs[0] as { body: string; line: number };
-  if (fs.length > 1)
-    return {
-      error: `has ${fs.length} failed_attempts blocks (lines ${fs.map((b) => b.line).join(", ")}); keep one and append to its list`,
-    };
-  let d: unknown;
-  try {
-    d = Bun.YAML.parse(f.body);
-  } catch (e) {
-    return { error: `failed_attempts block (line ${f.line}) is not valid YAML: ${(e as Error).message}` };
-  }
-  if (!isObj(d) || Object.keys(d).length !== 1 || !Array.isArray(d.failed_attempts))
-    return { error: `failed_attempts block (line ${f.line}) must hold only a failed_attempts: list ([] when empty)` };
-  return { list: d.failed_attempts, line: f.line };
-}
-
-/**
- * The optional failed-attempts log in each quarter file: one ```yaml fence whose top key is failed_attempts, a list
- * of {kind, issuer, url, target, attempted, method, outcome, http_status, detail}. L9 checks its form; L4 keeps it
- * append-only like the machine blocks (committed entries unchanged and in order, new entries only at the end),
- * against the old path's content when the quarter file moved.
- */
-function failedAttempts(ctx: Ctx, emit: Emit) {
-  for (const [p, body] of md(ctx, QUARTER_FILE)) {
-    const r = parseFailed(body);
-    if ("error" in r) {
-      emit("L9", p, r.error);
-      continue;
-    }
-    if (r.list === null) {
-      emit(
-        "L9",
-        p,
-        "has no failed_attempts block; end the file with ## Failed attempts (machine-readable) and a ```yaml block holding failed_attempts: ([] when empty)",
-      );
-      const old = baseOf(ctx, p);
-      if (old !== undefined && failedFences(old).length > 0)
-        emit("L4", p, "committed failed_attempts block was removed; it is append-only");
-      continue;
-    }
-    for (const [i, a] of r.list.entries()) {
-      const e = (m: string) => emit("L9", p, `failed_attempts entry ${i + 1} (block line ${r.line}): ${m}`);
-      if (!isObj(a)) {
-        e("is not a mapping");
-        continue;
-      }
-      const missing = ATTEMPT_FIELDS.filter((k) => !(k in a));
-      if (missing.length > 0) e(`missing ${missing.join(", ")} (write null when not applicable)`);
-      const extra = Object.keys(a).filter((k) => !ATTEMPT_FIELDS.includes(k));
-      if (extra.length > 0) e(`unknown field ${extra.join(", ")}`);
-      for (const [k, { values, nullable }] of Object.entries(ATTEMPT_ENUMS)) {
-        if (!(k in a) || (nullable && a[k] === null)) continue;
-        if (typeof a[k] !== "string" || !values.includes(a[k] as string))
-          e(`${k} ${show(a[k])} is not one of ${values.join(", ")}${nullable ? ", null" : ""}`);
-      }
-      if ("issuer" in a && a.issuer !== null && !nonEmpty(a.issuer)) e("issuer must be a non-empty string or null");
-      if ("url" in a && a.url !== null && !nonEmpty(a.url)) e("url must be a non-empty string or null");
-      if (a.kind === "archive")
-        for (const k of ["url", "target", "method"]) if (k in a && a[k] === null) e(`kind archive needs a ${k}`);
-      if (a.kind === "source") {
-        if (a.outcome !== "rejected") e(`kind source needs outcome rejected, not ${show(a.outcome)}`);
-        for (const k of ["target", "method"]) if (k in a && a[k] !== null) e(`kind source needs ${k}: null`);
-      }
-      if ("attempted" in a && !(typeof a.attempted === "string" && isAttempted(a.attempted)))
-        e(`attempted ${show(a.attempted)} is not YYYY-MM-DD or YYYY-MM-DDThh:mm[:ss]Z`);
-      if (
-        "http_status" in a &&
-        a.http_status !== null &&
-        !(Number.isInteger(a.http_status) && typeof a.http_status === "number")
-      )
-        e(`http_status ${show(a.http_status)} must be an integer or null`);
-      if ("detail" in a && a.detail !== null && typeof a.detail !== "string") e("detail must be a string or null");
-    }
-    const old = baseOf(ctx, p);
-    if (old === undefined) continue;
-    const was = parseFailed(old);
-    if ("error" in was || was.list === null) continue;
-    for (const [i, a] of was.list.entries()) {
-      const got = r.list[i];
-      if (got === undefined) {
-        emit("L4", p, `committed failed_attempts entry ${i + 1} was removed; the list is append-only`);
-        break;
-      }
-      if (canon(got) !== canon(a)) {
-        emit(
-          "L4",
-          p,
-          `committed failed_attempts entry ${i + 1} changed (${show(a)} -> ${show(got)}); committed entries stay unchanged and in order, new entries are appended at the end`,
-        );
-        break;
-      }
-    }
   }
 }
 
@@ -1347,41 +1320,40 @@ const tableCells = (l: string) =>
     .map((c) => c.trim());
 
 /**
- * The quarter file's reader table equals its current (last) machine block: one row per component, linked to its
- * issuer's extract, with "CCY amount" = local_currency and local_value, the FX cell's quote = fx_rate ("X USD per
- * CCY" is fx_rate; "X CCY per USD" gives fx_rate by the methodology FX rule; a USD row says "none"), USD =
- * local_value x fx_rate in whole dollars, and the **Total** row = total_usd. The table is the first one whose header
- * has Issuer, Local amount, FX rate and USD columns.
+ * The adopted extracts ("- Adopted: yes") among the headings nested in the section that `frag` names (up to the next
+ * heading at its level or above): each one's slug and heading line.
  */
 const ADOPTED_LINE = /^\s*[-*]\s+Adopted:\s*yes\b/i;
-const CURRENCY_LINE = /^\s*[-*]\s+Currency:\s*(\S+)\s*$/;
-/**
- * The adopted extracts ("- Adopted: yes") among the headings nested in the section that `frag` names (up to the next
- * heading at its level or above): each one's slug and its "- Currency:" value, if any.
- */
-function adoptedIn(md: string, frag: string): { slug: string; currency?: string }[] {
+/** A reference_values entry's figure: an adopted extract, or a reference-only one ("- Adopted: no (reference-only"). */
+const REFERENCE_LINE = /^\s*[-*]\s+Adopted:\s*(?:yes\b|no \(reference-only\b)/i;
+function adoptedIn(md: string, frag: string, adoptedLine = ADOPTED_LINE): { slug: string; line: number }[] {
   const hs = headings(md);
   const ss = headingSlugs(md);
   const ls = lines(md);
   const i = ss.indexOf(frag);
   if (i < 0) return [];
   const level = (hs[i] as { level: number }).level;
-  const out: { slug: string; currency?: string }[] = [];
+  const out: { slug: string; line: number }[] = [];
   for (let j = i + 1; j < hs.length && (hs[j] as { level: number }).level > level; j++) {
     const end = hs[j + 1]?.line ?? ls.length + 1;
+    const line = (hs[j] as { line: number }).line;
     let adopted = false;
-    let currency: string | undefined;
-    for (let k = (hs[j] as { line: number }).line; k < end - 1; k++) {
+    for (let k = line; k < end - 1; k++) {
       const l = ls[k];
-      if (l?.fence !== "none") continue;
-      if (ADOPTED_LINE.test(l.text)) adopted = true;
-      currency ??= CURRENCY_LINE.exec(l.text)?.[1];
+      if (l?.fence === "none" && adoptedLine.test(l.text)) adopted = true;
     }
-    if (adopted) out.push(currency === undefined ? { slug: ss[j] as string } : { slug: ss[j] as string, currency });
+    if (adopted) out.push({ slug: ss[j] as string, line });
   }
   return out;
 }
 
+/**
+ * The quarter file's reader table equals its current (last) machine block: one row per component, linked to its
+ * issuer's extract, with "CCY amount" = local_currency and local_value, the FX cell's quote = fx_rate ("X USD per
+ * CCY" is fx_rate; "X CCY per USD" gives fx_rate by the methodology FX rule; a USD row says "none") linking the FX
+ * table row #fx-<yyyyqn>-<ccy>, USD = local_value x fx_rate in whole dollars, and the **Total** row = total_usd. The
+ * table is the first one whose header has Issuer, Local amount, FX rate and USD columns.
+ */
 function tableProblems(p: string, body: string, d: Record<string, unknown>, text: Texts): string[] {
   const ls = lines(body);
   let head = -1;
@@ -1474,16 +1446,14 @@ function tableProblems(p: string, body: string, d: Record<string, unknown>, text
     if (c.local_currency === "USD") {
       if (fxLink) errs.push(`${at}: a USD row's FX cell has no link (it links ${show(fxLink.target)})`);
     } else if (q !== undefined) {
-      const fxFile = fxPath(q.slice(0, 4));
-      const ok = adoptedIn(text.get(fxFile) ?? "", q.toLowerCase())
-        .filter((a) => a.currency === c.local_currency)
-        .map((a) => a.slug);
+      const file = fxFile(q);
+      const want = rowAnchor(q, String(c.local_currency));
       const got = fxLink ? resolveLink(p, fxLink.target, false) : null;
-      if (!got || got.path !== fxFile || got.frag === null || !ok.includes(got.frag))
+      if (!got || got.path !== file || got.frag !== want)
         errs.push(
-          `${at}: the FX cell must link the adopted ${String(c.local_currency)} extract under ## ${q} in ${fxFile}${
-            ok.length === 1 ? ` (${relLink(p, fxFile)}#${ok[0]})` : ""
-          }${fxLink ? `, not ${show(fxLink.target)}` : ""}`,
+          `${at}: the FX cell must link the ${String(c.local_currency)} row of the FX table (${relLink(p, file)}#${want})${
+            fxLink ? `, not ${show(fxLink.target)}` : ""
+          }`,
         );
     }
     const v = parseDecimal(String(c.local_value));
@@ -1500,87 +1470,281 @@ function tableProblems(p: string, body: string, d: Record<string, unknown>, text
 
 const group = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
-const FX_CURRENCY = /^\s*[-*]\s+Currency:\s*(\S+)\s*$/;
+const fxFile = (q: string) => fxPath(q.slice(0, 4));
+/** The FX table row anchor for a currency in quarter `q`: fx-2026q2-eur. */
+const rowAnchor = (q: string, ccy: string) => `fx-${q.toLowerCase()}-${ccy.toLowerCase()}`;
+const FX_ANCHOR = /<a id="([^"]+)"><\/a>/;
+const FX_ROW_ANCHOR = /^fx-(\d{4}q[1-4])-([a-z]{3})$/;
+const FX_COLUMNS = ["Issuer", "Report count date", "Date rule", "Rate date", "Pair", "Rate", "Source"] as const;
+const DATE_RULES = ["same day", "month average", "prior close", "last close before"] as const;
+/** A "last close before" rate date is at most this many days before the count date (a long weekend). */
+const LAST_CLOSE_DAYS = 4;
+
+/** One row of an FX rate table: its raw cells by column, its line, and its anchor (the Issuer cell's <a id>). */
+type FxRow = {
+  readonly line: number;
+  readonly anchor?: string;
+  readonly cell: Record<(typeof FX_COLUMNS)[number], string>;
+};
+/** One "## YYYYQn" section of an FX rate table: its rows, or none when it has no table (rows null). */
+type FxSection = { readonly line: number; readonly rows: FxRow[] | null };
 
 /**
- * R1-11: the currencies with an FX extract for quarter `q`: a "- Currency: <ISO>" field line inside an ### extract
- * under "## <q>" in the FX extract (paths.ts fxPath) (methodology FX extract format). Fenced lines do not count.
+ * An FX rate table file (base_money/FX/<YYYY>.md) by quarter: under each level-2 "## YYYYQn" heading, the first
+ * table whose header has Issuer, Report count date, Date rule, Rate date, Pair, Rate and Source columns, its rows
+ * running to the first non-table line. Fenced lines never count.
  */
-function fxCurrencies(ctx: Ctx, q: string): Set<string> {
-  const out = new Set<string>();
-  let inQuarter = false;
-  let inExtract = false;
-  for (const l of lines(ctx.text.get(fxFile(q)) ?? "")) {
+const fxTable: (body: string) => ReadonlyMap<string, FxSection> = memoText((body) => {
+  const out = new Map<string, FxSection>();
+  let cur: {
+    q: string;
+    line: number;
+    rows: FxRow[] | null;
+    col: number[] | null;
+    done: boolean;
+  } | null = null;
+  const close = () => {
+    if (cur && !out.has(cur.q)) out.set(cur.q, { line: cur.line, rows: cur.rows });
+  };
+  for (const l of lines(body)) {
     if (l.fence !== "none") continue;
     const h = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/.exec(l.text);
-    const level = h?.[1]?.length;
-    if (level !== undefined && level <= 2) {
-      inQuarter = level === 2 && h?.[2] === q;
-      inExtract = false;
-    } else if (level === 3) inExtract = inQuarter;
-    else if (inExtract) {
-      const c = FX_CURRENCY.exec(l.text)?.[1];
-      if (c) out.add(c);
+    if (h && (h[1] as string).length <= 2) {
+      close();
+      cur =
+        h[1] === "##" && /^\d{4}Q[1-4]$/.test(h[2] ?? "")
+          ? {
+              q: h[2] as string,
+              line: l.line,
+              rows: null,
+              col: null,
+              done: false,
+            }
+          : null;
+      continue;
     }
+    if (!cur || cur.done) continue;
+    const isRow = l.text.trim().startsWith("|");
+    if (cur.col === null) {
+      if (!isRow) continue;
+      const hd = tableCells(l.text);
+      const col = FX_COLUMNS.map((c) => hd.indexOf(c));
+      if (col.every((i) => i >= 0)) {
+        cur.col = col;
+        cur.rows = [];
+      }
+      continue;
+    }
+    if (!isRow) {
+      cur.done = true; // the table ends at its first non-table line
+      continue;
+    }
+    if (cur.rows?.length === 0 && /^\|?[\s:|-]+$/.test(l.text.trim())) continue; // the delimiter row
+    const cells = tableCells(l.text);
+    const col = cur.col;
+    const cell = Object.fromEntries(FX_COLUMNS.map((c, i) => [c, cells[col[i] as number] ?? ""])) as FxRow["cell"];
+    const anchor = FX_ANCHOR.exec(cell.Issuer)?.[1];
+    cur.rows?.push(anchor === undefined ? { line: l.line, cell } : { line: l.line, anchor, cell });
   }
+  close();
   return out;
+});
+
+/** A row's Pair and Rate: its currency, the USD per unit it derives (fx_rate), or why not. */
+function fxRowRate(r: FxRow): {
+  ccy?: string;
+  fx: string | null;
+  errs: string[];
+} {
+  const errs: string[] = [];
+  const pair = cellText(r.cell.Pair);
+  const rate = cellText(r.cell.Rate);
+  const dir = DIRECTION.exec(pair);
+  if (!dir) errs.push(`Pair ${show(pair)} must be "<CCY> per USD" or "USD per <CCY>"`);
+  const parsed = RATE.test(rate) ? parseDecimal(rate) : null;
+  if (!RATE.test(rate))
+    errs.push(
+      `Rate ${show(rate)} must match ^\\d+(\\.\\d+)?$ (a plain decimal with a point; no comma, sign or separator)`,
+    );
+  else if (!parsed || parsed.digits <= 0n) errs.push(`Rate ${rate} must be positive`);
+  const ccy = dir?.[1] ?? dir?.[2];
+  const fx = dir && parsed && parsed.digits > 0n ? usdPerUnit(parsed, dir[1] ? "per USD" : "USD per") : null;
+  return ccy === undefined ? { fx, errs } : { ccy, fx, errs };
 }
 
-const fxFile = (q: string) => fxPath(q.slice(0, 4));
-
-type Adopted = FxRate & { readonly title: string };
-
 /**
- * The adopted FX extracts of quarter `q`, by currency: ### extracts under "## <q>" in the FX extract (paths.ts fxPath) whose
- * single "- Adopted:" value starts with "yes". Confirming extracts ("- Adopted: no, confirming") never count.
+ * The fx_rate check on one components or reference_values entry (L9): USD is exactly "1" in every block; in the
+ * current block (`rows` not null) any other currency's fx_rate equals, as a string, the rate its FX table row derives
+ * (methodology FX rule). Fails closed when the row is missing, not unique or invalid (fxTables reports why). Silent on
+ * entries the field checks already reject.
  */
-function adoptedRates(ctx: Ctx, q: string): Map<string, Adopted[]> {
-  const out = new Map<string, Adopted[]>();
-  for (const b of extracts(ctx.text.get(fxFile(q)) ?? "").blocks) {
-    const adopted = b.facts.get("Adopted") ?? [];
-    if (b.quarter !== q || adopted.length !== 1 || !/^yes\b/.test(adopted[0] ?? "")) continue;
-    const x = { ...fxRate(b), title: b.title };
-    if (x.currency !== undefined) out.set(x.currency, [...(out.get(x.currency) ?? []), x]);
-  }
-  return out;
-}
-
-/**
- * The fx_rate check on one components or reference_values entry (L9): USD is exactly "1"; any other currency's
- * fx_rate equals, as a string, the rate derived from its one adopted FX extract for the quarter. Fails closed when
- * that extract is missing, not unique or invalid. Silent on entries the field checks already reject.
- */
-function fxRateEntry(
-  key: string,
-  i: number,
-  c: unknown,
-  q: string,
-  fxHave: Set<string>,
-  rates: Map<string, Adopted[]>,
-): string[] {
+function fxRateEntry(key: string, i: number, c: unknown, q: string, rows: readonly FxRow[] | null): string[] {
   if (!isObj(c) || typeof c.local_currency !== "string" || typeof c.fx_rate !== "string") return [];
   if (!parseDecimal(c.fx_rate)) return [];
   const ccy = c.local_currency;
   const who = `${key}[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""}`;
   if (ccy === "USD") return c.fx_rate === "1" ? [] : [`${who} local_currency USD needs fx_rate "1", not ${c.fx_rate}`];
-  if (!fxHave.has(ccy)) return [];
-  const a = rates.get(ccy) ?? [];
-  const where = `for ${ccy} under ## ${q} in ${fxFile(q)}`;
-  if (a.length === 0) return [`${who} cannot verify fx_rate: no adopted FX extract ("- Adopted: yes") ${where}`];
-  if (a.length > 1)
+  if (rows === null || !/^[A-Z]{3}$/.test(ccy)) return [];
+  const anchor = rowAnchor(q, ccy);
+  const mine = rows.filter((r) => r.anchor === anchor);
+  const where = `under ## ${q} in ${fxFile(q)} (anchor ${anchor})`;
+  if (mine.length === 0) return [`${who} local_currency ${ccy} has no row in the FX table ${where}`];
+  if (mine.length > 1) return [`${who} cannot verify fx_rate: ${mine.length} FX table rows ${where}`];
+  const r = mine[0] as FxRow;
+  const x = fxRowRate(r);
+  if (x.fx === null || x.errs.length > 0 || x.ccy !== ccy)
     return [
-      `${who} cannot verify fx_rate: ${a.length} adopted FX extracts ${where} (one adopted extract per currency per quarter; mark the others "- Adopted: no, confirming")`,
-    ];
-  const x = a[0] as Adopted;
-  if (x.fx === null)
-    return [
-      `${who} cannot verify fx_rate: the adopted FX extract "${x.title}" ${where} fails L7 (see its L7 findings)`,
+      `${who} cannot verify fx_rate: the FX table row #${anchor} is invalid (see its L9 findings in ${fxFile(q)})`,
     ];
   if (c.fx_rate !== x.fx)
     return [
-      `${who} fx_rate ${c.fx_rate} does not equal ${x.fx} derived from the adopted FX extract "${x.title}" (Rate ${x.rate}, ${x.direction})`,
+      `${who} fx_rate ${c.fx_rate} does not equal ${x.fx} derived from the FX table row #${anchor} (Rate ${cellText(r.cell.Rate)}, ${cellText(r.cell.Pair)})`,
     ];
   return [];
+}
+
+/** The leading date of a count-date or As of value: YYYY-MM-DD or YYYY-MM. */
+const leadingDate = (v: string) => /^\d{4}-\d{2}(?:-\d{2})?/.exec(v.trim())?.[0];
+
+/** The Rate date a row's Date rule allows given the count date (As of), or null when it passes. */
+function dateRuleProblem(rule: string, asOf: string, rateCell: string): string | null {
+  const full = /^\d{4}-\d{2}-\d{2}$/.test(asOf);
+  const rd = leadingDate(rateCell) ?? "";
+  const rdFull = isIsoDate(rd);
+  switch (rule) {
+    case "same day":
+      if (!full) return `Date rule "same day" needs a full YYYY-MM-DD count date, not ${show(asOf)}`;
+      return rd === asOf ? null : `Rate date ${show(rateCell)} must equal the count date ${asOf} (same day)`;
+    case "month average":
+      if (full) return `Date rule "month average" needs a YYYY-MM count date (a monthly-average figure), not ${asOf}`;
+      return cellText(rateCell).startsWith(asOf)
+        ? null
+        : `Rate date ${show(rateCell)} must start with the count month ${asOf} (month average)`;
+    case "prior close": {
+      if (!full) return `Date rule "prior close" needs a full YYYY-MM-DD count date, not ${show(asOf)}`;
+      const want = addDays(asOf, -1);
+      return rdFull && rd === want
+        ? null
+        : `Rate date ${show(rateCell)} must be ${want}, the day before the count date ${asOf} (prior close)`;
+    }
+    case "last close before": {
+      if (!full) return `Date rule "last close before" needs a full YYYY-MM-DD count date, not ${show(asOf)}`;
+      const from = addDays(asOf, -LAST_CLOSE_DAYS);
+      return rdFull && rd < asOf && rd >= from
+        ? null
+        : `Rate date ${show(rateCell)} must be before the count date ${asOf} and no earlier than ${from} (last close before, within ${LAST_CLOSE_DAYS} days)`;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * L9 on the FX rate tables (base_money/FX/<YYYY>.md, supporting data: regenerable, not archived). Under each
+ * "## YYYYQn", the table has one row per non-USD currency of that quarter's current machine block (components and
+ * reference_values), anchored <a id="fx-<yyyyqn>-<ccy>"></a> in its Issuer cell; the Issuer cell links the adopted
+ * extract of the entry's issuer under its quarter heading, whose As of leading date is the Report count date; the Date
+ * rule is one of DATE_RULES and the Rate date follows it; Pair names the currency and Rate is a positive plain
+ * decimal; Source holds exactly one http(s) link. The machine block's fx_rate equals the row's (fxRateEntry).
+ */
+function fxTables(ctx: Ctx, emit: Emit) {
+  for (const [p, body] of ctx.text) {
+    if (!isFxPath(p)) continue;
+    const e = (m: string) => emit("L9", p, m);
+    const year = /(\d{4})\.md$/.exec(p)?.[1] as string;
+    for (const [q, sec] of fxTable(body)) {
+      if (q.slice(0, 4) !== year) {
+        e(`## ${q} (line ${sec.line}) is not a quarter of ${year}`);
+        continue;
+      }
+      if (sec.rows === null) {
+        e(`## ${q} (line ${sec.line}) has no FX table (a table with ${FX_COLUMNS.join(", ")} columns)`);
+        continue;
+      }
+      const qBody = ctx.text.get(quarterPath(q));
+      const m = qBody === undefined ? undefined : machine(qBody);
+      const d = m?.ok && isObj(m.data) ? m.data : null;
+      // The non-USD currencies of the current block, each with the issuers that report in it (and whether as a
+      // reference value, whose figure is a reference-only extract, not an adopted one).
+      const want = new Map<string, Map<string, boolean>>();
+      for (const key of ["components", "reference_values"])
+        for (const c of d && Array.isArray(d[key]) ? (d[key] as unknown[]) : [])
+          if (isObj(c) && typeof c.local_currency === "string" && c.local_currency !== "USD" && nonEmpty(c.issuer))
+            want.set(
+              c.local_currency,
+              (want.get(c.local_currency) ?? new Map()).set(c.issuer, key === "reference_values"),
+            );
+      const seen = new Set<string>();
+      for (const r of sec.rows) {
+        const at = `## ${q} table line ${r.line}`;
+        const a = r.anchor === undefined ? null : FX_ROW_ANCHOR.exec(r.anchor);
+        if (!a || a[1] !== q.toLowerCase()) {
+          e(
+            `${at}: the Issuer cell must open with <a id="fx-${q.toLowerCase()}-<ccy>"></a>${r.anchor === undefined ? "" : `, not ${show(r.anchor)}`}`,
+          );
+          continue;
+        }
+        const ccy = (a[2] as string).toUpperCase();
+        const x = fxRowRate(r);
+        for (const m of x.errs) e(`${at}: ${m}`);
+        if (x.ccy !== undefined && x.ccy !== ccy)
+          e(`${at}: Pair ${cellText(r.cell.Pair)} names ${x.ccy}, not the row's ${ccy} (#${r.anchor})`);
+        if (seen.has(ccy)) e(`${at}: a second ${ccy} row (one row per currency per quarter)`);
+        seen.add(ccy);
+        const issuers = want.get(ccy);
+        if (d && !issuers)
+          e(`${at}: ${ccy} is not a non-USD currency of the current machine block of ${quarterPath(q)}`);
+        const rule = cellText(r.cell["Date rule"]);
+        if (!(DATE_RULES as readonly string[]).includes(rule))
+          e(`${at}: Date rule ${show(rule)} must be one of ${DATE_RULES.map((x) => `"${x}"`).join(", ")}`);
+        const src = links(r.cell.Source);
+        if (src.length !== 1 || !/^https?:\/\//i.test(src[0]?.target ?? ""))
+          e(`${at}: the Source cell must hold exactly one http(s) link (it has ${src.length} link(s))`);
+        // The Issuer cell links the adopted extract; its As of is the count date.
+        const link = links(r.cell.Issuer)[0];
+        const got = link ? resolveLink(p, link.target, false) : null;
+        const ex = got ? extractOf(got.path) : null;
+        if (!got || !ex || isFxPath(got.path) || ex.year !== year) {
+          e(
+            `${at}: the Issuer cell must link the adopted ${ccy} issuer extract under ## ${q} in base_money/issuers/<ISSUER>/${year}.md`,
+          );
+          continue;
+        }
+        if (issuers && !issuers.has(ex.issuer)) {
+          e(
+            `${at}: the Issuer cell links ${ex.issuer}, but ${ccy} is reported by ${[...issuers.keys()].join(", ")} in the current machine block`,
+          );
+          continue;
+        }
+        const md = ctx.text.get(got.path) ?? "";
+        const reference = issuers?.get(ex.issuer) === true;
+        const adopted = adoptedIn(md, q.toLowerCase(), reference ? REFERENCE_LINE : ADOPTED_LINE).find(
+          (x) => x.slug === got.frag,
+        );
+        if (!adopted) {
+          e(
+            `${at}: the Issuer cell must link an adopted ("- Adopted: yes"${reference ? ' or, for a reference value, "- Adopted: no (reference-only"' : ""}) extract under ## ${q} in ${got.path}, not ${show(link?.target)}`,
+          );
+          continue;
+        }
+        const block = extracts(md).blocks.find((b) => b.line === adopted.line);
+        const asOf = block?.asOf.length === 1 ? leadingDate(block.asOf[0] as string) : undefined;
+        if (asOf === undefined) {
+          e(
+            `${at}: cannot check the count date: the linked extract (${got.path} line ${adopted.line}) has no single "- As of:" date`,
+          );
+          continue;
+        }
+        const count = leadingDate(cellText(r.cell["Report count date"]));
+        if (count !== asOf)
+          e(
+            `${at}: Report count date ${show(cellText(r.cell["Report count date"]))} must be the linked extract's As of ${asOf}`,
+          );
+        const problem = dateRuleProblem(rule, asOf, cellText(r.cell["Rate date"]));
+        if (problem) e(`${at}: ${problem}`);
+      }
+    }
+  }
 }
 
 /**
@@ -1617,9 +1781,9 @@ type Pair = readonly [Decimal, Decimal];
 
 /**
  * One components or reference_values entry: {issuer, anchor, local_currency, local_value, fx_rate}, the anchor at
- * the issuer's quarter heading, a non-USD currency backed by an FX extract. Returns its USD pair when valid.
+ * the issuer's quarter heading. Returns its USD pair when valid.
  */
-function valueEntry(key: string, i: number, c: unknown, q: string, fxHave: Set<string>, errs: string[]): Pair | null {
+function valueEntry(key: string, i: number, c: unknown, q: string, errs: string[]): Pair | null {
   if (!isObj(c)) {
     errs.push(`${key}[${i}] must be a mapping`);
     return null;
@@ -1632,10 +1796,6 @@ function valueEntry(key: string, i: number, c: unknown, q: string, fxHave: Set<s
   }
   if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
     errs.push(`${key}[${i}].local_currency must be an ISO 4217 code`);
-  else if (c.local_currency !== "USD" && !fxHave.has(c.local_currency))
-    errs.push(
-      `${key}[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_currency ${c.local_currency} has no FX extract for ${q}: no ### extract with "- Currency: ${c.local_currency}" under ## ${q} in ${fxFile(q)}`,
-    );
   const v = typeof c.local_value === "string" ? parseDecimal(c.local_value) : null;
   const fx = typeof c.fx_rate === "string" ? parseDecimal(c.fx_rate) : null;
   if (!v) errs.push(`${key}[${i}].local_value must be a decimal string (quoted), got ${show(c.local_value)}`);
@@ -1698,16 +1858,15 @@ function blockAggregation(
   row: Row | undefined,
   ref: {
     readonly baskets: ReadonlyMap<number, Basket>;
-    readonly fx: Set<string>;
-    /** The adopted FX extracts of the quarter, by currency (the fx_rate check). */
-    readonly rates: Map<string, Adopted[]>;
+    /** The quarter's FX table rows (the fx_rate check), for the current block only; null skips the check. */
+    readonly fxRows: readonly FxRow[] | null;
     readonly isNew: boolean;
     /** The block's YAML source, to check how basket_version is written. */
     readonly source: string;
   },
   e: (m: string) => void,
 ) {
-  const { baskets, fx: fxHave } = ref;
+  const { baskets, fxRows } = ref;
   if (!isObj(d)) {
     e(`${label} is not a mapping`);
     return;
@@ -1741,8 +1900,8 @@ function blockAggregation(
   if (comps.length === 0) errs.push("components must be a non-empty list");
   const pairs: Pair[] = [];
   for (const [i, c] of comps.entries()) {
-    const pair = valueEntry("components", i, c, q, fxHave, errs);
-    errs.push(...fxRateEntry("components", i, c, q, fxHave, ref.rates));
+    const pair = valueEntry("components", i, c, q, errs);
+    errs.push(...fxRateEntry("components", i, c, q, fxRows));
     if (pair) pairs.push(pair);
   }
   const refs = Array.isArray(d.reference_values) ? d.reference_values : [];
@@ -1752,8 +1911,8 @@ function blockAggregation(
     );
   const refPairs: Pair[] = [];
   for (const [i, c] of refs.entries()) {
-    const pair = valueEntry("reference_values", i, c, q, fxHave, errs);
-    errs.push(...fxRateEntry("reference_values", i, c, q, fxHave, ref.rates));
+    const pair = valueEntry("reference_values", i, c, q, errs);
+    errs.push(...fxRateEntry("reference_values", i, c, q, fxRows));
     if (pair) refPairs.push(pair);
   }
   if ([...comps, ...refs].some((c) => isObj(c) && c.local_currency !== "USD") && !nonEmpty(d.fx_source_anchor))
@@ -2099,13 +2258,20 @@ function seriesBaskets(s: Record<string, unknown>): Map<number, Basket> {
   if (!Array.isArray(s.baskets)) return out;
   for (const [j, b] of s.baskets.entries()) {
     if (!isObj(b) || b.version !== j + 1 || !isBasket(b.issuers)) continue;
-    out.set(j + 1, { issuers: new Set(b.issuers), floor: floorOf(b.floor_pct), floorText: String(b.floor_pct) });
+    out.set(j + 1, {
+      issuers: new Set(b.issuers),
+      floor: floorOf(b.floor_pct),
+      floorText: String(b.floor_pct),
+    });
   }
   return out;
 }
 
 /** The base_money series' baskets and its start_of_day issuers, read leniently from catalog.json text. */
-function catalogModel(t: string | undefined): { baskets: Map<number, Basket>; startOfDay: Set<string> } {
+function catalogModel(t: string | undefined): {
+  baskets: Map<number, Basket>;
+  startOfDay: Set<string>;
+} {
   const s = seriesList(parseJson(t)).find((x) => x.id === SERIES);
   const startOfDay = new Set<string>();
   if (!s) return { baskets: new Map(), startOfDay };
@@ -2122,9 +2288,6 @@ const isBasket = (v: unknown): v is string[] =>
   new Set(v).size === v.length;
 
 // ---------- L12 ----------
-
-/** The FX folder (paths.ts FX_DIR) holds the FX-rate sources fx_source_anchor cites. It is not a basket issuer. */
-const FX_FOLDER = FX_ID;
 
 /** Issuers named by any valid catalog basket, all versions (the union). Lenient: L11 reports a bad catalog, and an empty set skips membership. */
 function catalogBasket(ctx: Ctx): Set<string> {
@@ -2158,7 +2321,7 @@ function placement(ctx: Ctx, emit: Emit) {
         emit(
           "L12",
           p,
-          `${EVIDENCE_ROOT} holds only the CSV ${CSV}, the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX extracts ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
+          `${EVIDENCE_ROOT} holds only the CSV ${CSV}, the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX rate tables ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
         );
       else if (iss !== FX_ID && basket.size > 0 && !basket.has(iss))
         emit(

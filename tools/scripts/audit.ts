@@ -1,5 +1,6 @@
 // bun run audit   (local only: never a CI step, never a merge gate)
-// Re-checks every Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the working tree against the last
+// Re-checks every extract's Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the working tree (not the
+// FX rate tables, which are supporting data and not archived) against the last
 // saved copy and classifies each as ok, changed, lost or no verdict (see lib/audit.ts). Copies, manifest.json and the dated reports
 // go to a store outside the repository: $OBM_ARCHIVE_DIR, else ~/open-inflation-archive/. A store inside the
 // repository (symlinks resolved) is refused. Never writes to the repository; never commit the store.
@@ -8,7 +9,7 @@
 // max(Retry-After, the host's interval), else backoff. The expected time is printed first; any link left with no
 // verdict ends the run with a loud INCOMPLETE line counting each kind (rate-limited, blocked, unconfirmed,
 // Ghostarchive error page, offline, other).
-// Findings are appended by Assay to the quarter file (paths.ts QUARTER_TEXT), Audit trail, "### Link audit <YYYY-MM-DD>".
+// Findings are appended by Assay under each extract as "- Link audit <YYYY-MM-DD>: <text>." lines (L7, L4 append-only).
 // Exit 0 when every link got a verdict (whatever it found), 3 incomplete (some link has no verdict), 2 on usage,
 // repository or store errors (or any internal error, lib/exit.ts). The CLI is lib/audit-main.ts.
 import { auditMain } from "./lib/audit-main.ts";

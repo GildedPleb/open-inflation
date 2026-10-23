@@ -81,6 +81,14 @@ function parseSlugs(md: string): string[] {
   });
 }
 
+/** Explicit HTML anchors `<a id="..."></a>` outside code: link targets alongside the heading slugs. */
+export const htmlAnchors: (md: string) => ReadonlySet<string> = memoText((md) => {
+  const out = new Set<string>();
+  for (const l of lines(md))
+    if (l.fence === "none") for (const m of l.text.matchAll(/<a id="([^"]+)"><\/a>/g)) out.add(m[1] as string);
+  return out;
+});
+
 /** Inline link and image targets outside code. */
 export function links(md: string): { target: string; line: number }[] {
   const out: { target: string; line: number }[] = [];

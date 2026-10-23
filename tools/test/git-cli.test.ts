@@ -12,7 +12,17 @@ import { DEFAULT_PACE, envName } from "../scripts/lib/pacer.ts";
 import { REPO_ROOT } from "../scripts/lib/root.ts";
 import type { Snapshot } from "../scripts/lib/types.ts";
 import { type VerifyIo, verifyMain } from "../scripts/lib/verify-main.ts";
-import { extract, files, fxExtract, GHOST_CAPTURE_PAGE, goodText, issuerFile, virtualClock } from "./fixture.ts";
+import {
+  extract,
+  files,
+  fxFile,
+  fxRow,
+  fxSection,
+  GHOST_CAPTURE_PAGE,
+  goodText,
+  issuerFile,
+  virtualClock,
+} from "./fixture.ts";
 
 const ROOT = REPO_ROOT;
 const dec = new TextDecoder();
@@ -699,7 +709,7 @@ describe("CLI", () => {
   });
 });
 
-// The fx_rate check (Rate line, derived fx_rate) and P6-n7 (As of not after Retrieved) through the real CLI, on a
+// The fx_rate check (the FX table row's derived fx_rate) and P6-n7 (As of not after Retrieved) through the real CLI, on a
 // committed temp copy of the lint fixture repo. Each case is committed and linted with --base HEAD, so only the
 // committed content is judged (no L4 edit, no new archive URL). Nothing here names the catalog version (P6-m3).
 describe("CLI: fx_rate and As of on a fixture repo", () => {
@@ -712,15 +722,10 @@ describe("CLI: fx_rate and As of on a fixture repo", () => {
     const r = await cli(dir, ["--base", "HEAD"]);
     return [r.code, r.stdout] as const;
   };
-  // One run keeps the suite fast: a repo carrying a block fx_rate mismatch (L9), an FX extract with no Rate (L7) in
-  // another currency and an As of after Retrieved (L7), and no other finding (so the rest of the fixture is clean).
+  // One run keeps the suite fast: a repo carrying a block fx_rate mismatch (L9), an FX table row with no Source link
+  // (L9) and an As of after Retrieved (L7), and no other finding (so the rest of the fixture is clean).
   const defects = {
-    [FXF]: issuerFile(
-      "FX",
-      "2026Q3",
-      fxExtract("EUR", { quote: "1.2", fx: "1.2" }),
-      fxExtract("JPY", { title: "FX JPY confirming", rate: null, adopted: "no, confirming" }),
-    ),
+    [FXF]: fxFile(fxSection("2026Q3", fxRow("EUR", { rate: "1.2", source: "a synthetic close" }))),
     "base_money/issuers/FED/2026.md": issuerFile(
       "FED",
       "2026Q3",
@@ -743,15 +748,15 @@ describe("CLI: fx_rate and As of on a fixture repo", () => {
       /^L9 base_money\/quarters\/2026Q3\.md: .*components\[1\] \(ECB\) fx_rate 1\.1 does not equal 1\.2 derived/m,
     ],
     [
-      "an FX extract with no Rate fails L7",
-      /^L7 base_money\/FX\/2026\.md: .*extract "FX JPY confirming" \(line \d+\) has no - Rate: line/m,
+      "an FX table row with no Source link fails L9",
+      /^L9 base_money\/FX\/2026\.md: .*## 2026Q3 table line \d+: the Source cell must hold exactly one http\(s\) link/m,
     ],
     [
       "an As of after Retrieved fails L7",
       /^L7 base_money\/issuers\/FED\/2026\.md: .*As of 2026-09 \(taken as its last day, 2026-09-30\) is after Retrieved 2026-09-29/m,
     ],
   ] as const;
-  test("CLI: the fixture with Rate lines reports only the three planted defects", async () => {
+  test("CLI: the fixture with an FX table reports only the three planted defects", async () => {
     const [, out = ""] = await bad();
     const found = out.split("\n").filter((l) => /^L\d+ /.test(l));
     expect(found.length).toBe(wanted.length);

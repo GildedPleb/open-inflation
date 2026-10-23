@@ -56,8 +56,8 @@ export function formatDecimal({ digits, scale }: Decimal): string {
 }
 
 /**
- * fx_rate (USD per one local unit) from an FX extract's Rate (> 0) and its Quote direction: the Rate itself for a
- * "USD per <CCY>" quote; for a "<CCY> per USD" quote, 1 / Rate rounded half-to-even to exactly 20 decimal places,
+ * fx_rate (USD per one local unit) from an FX table row's Rate (> 0) and its Pair: the Rate itself for a
+ * "USD per <CCY>" pair; for a "<CCY> per USD" pair, 1 / Rate rounded half-to-even to exactly 20 decimal places,
  * in exact integer arithmetic (1 / (d / 10^s) = 10^s / d).
  */
 export function usdPerUnit(rate: Decimal, direction: "per USD" | "USD per"): string {

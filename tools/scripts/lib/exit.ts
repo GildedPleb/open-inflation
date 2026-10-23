@@ -1,7 +1,7 @@
 /**
  * The exit codes every CLI here keeps to (README "Exit codes"): 0 clean, 1 findings, 2 usage or error, 3 incomplete
- * (verify only: no findings, but some URL has no verdict). lint exits 0, 1 or 2; audit 0 (it ran, whatever it found)
- * or 2.
+ * (verify and audit: some URL has no verdict). lint exits 0, 1 or 2; verify 0, 1, 2 or 3; audit 0 (every link got
+ * a verdict, whatever it found), 2 or 3.
  */
 export const EXIT = { clean: 0, findings: 1, error: 2, incomplete: 3 } as const;
 
