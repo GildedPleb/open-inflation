@@ -4,13 +4,13 @@ A short guide for any contributor, AI or human. The rules live in [methodology/b
 
 ## What this repository is
 
-A quarterly time series, in U.S. dollars, of base money summed over a fixed basket of the largest central banks ([base_money/base_money.csv](base_money/base_money.csv); the basket is listed in [catalog.json](catalog.json) and defined in the [methodology](docs/methodology/base_money.md#basket)). It is not all global base money: each quarterly roll-up states the share of the basket it covers. Every value is backed by an append-only Markdown evidence chain that a person can follow from the CSV row to the central bank's own published page. The repository holds only text.
+A quarterly time series, in U.S. dollars, of base money summed over a fixed basket of the largest central banks ([base_money/base_money.csv](base_money/base_money.csv); the basket is listed in [catalog.json](catalog.json) and defined in the [methodology](docs/methodology/base_money.md#basket)). It is not all global base money: each quarterly roll-up states the share of the basket it covers. Every value is backed by a Markdown evidence chain that a person can follow from the CSV row to the central bank's own published page. The repository holds only text.
 
 ## Charter rules, in brief
 
 - **Primary sources only.** Every figure comes from the issuing central bank's own publication, and every FX rate from the source the [FX rule](docs/methodology/base_money.md#fx-rule) names. A secondary source stands in only as the [Gaps policy](docs/methodology/base_money.md#gaps-policy) allows, labelled SECONDARY.
 - **Every number has a verbatim extract and archives.** Each extract quotes the source verbatim and records `- Retrieved:`, `- Original URL:`, a Wayback `- Archive URL:`, one `- Archive URL 2:` (an archive.today capture) and one `- Archive URL 3:` (a Ghostarchive capture, made by hand in a browser), each a capture or `attempted <YYYY-MM-DD>: <reason>`. Both attempts are mandatory; a recorded failure does not fail the extract. Never self-host a copy. See [Extract template](docs/methodology/base_money.md#extract-template) and [Third and fourth links](docs/methodology/base_money.md#third-and-fourth-links).
-- **Append-only.** Committed issuer extract lines, machine-block numbers (outside the FX exception), catalog baskets and CSV rows are never changed or deleted; corrections are appended as revisions. Quarter-file prose and the FX tables may be edited. A byte-identical move (`git mv`, no edits in the same PR) is followed and checked against the old path, which keeps the rule as strict as before; see [docs/lint.md](docs/lint.md#l4).
+- **Beta: fix it in place.** Until the v1 release (data back to at least 2018), every file, numbers included, is edited in place when it is wrong; git history keeps the old text. Append-only evidence, `## Revision` blocks and version tags start at v1. See [Revisions](docs/methodology/base_money.md#revisions).
 - **No interpolation, no carry-forward.** A quarter's figure is read for that quarter, never estimated from neighbours or copied from an earlier quarter.
 - **A documented gap beats an unsourced number.** If a figure cannot be sourced, exclude the issuer with a reason; never fill it in.
 - **Whole dollars.** Every USD value is `local_value` × `fx_rate` rounded half-to-even to a whole dollar; no USD figure carries a fractional part. See [Rounding](docs/methodology/base_money.md#rounding).
@@ -41,7 +41,7 @@ A quarterly time series, in U.S. dollars, of base money summed over a fixed bask
 6. Write `base_money/quarters/YYYYQn.md` from the [roll-up template](docs/methodology/base_money.md#roll-up-template), apply the $1 rule, and append the CSV row.
 7. Fill the quarter file's Audit trail with overall notes only: one sentence naming the basket version and linking [Global 80% basis](docs/methodology/base_money.md#global-80-basis) (where the reference global releases are linked, for the 80%-of-global review gate), any rejected source that belongs to no issuer, and a short archiving note. The quarter file carries no source or archive URLs outside its machine block: per-source notes (capture checks, caveats, rejected sources, link-audit findings) go under the extract in the year file.
 8. Run `bun run readme`: it regenerates the generated parts of `README.md` and `base_money/README.md`, including the quarter list (lint L13 fails if you skip it).
-9. Leave the `catalog.json` `version` alone: the project is in beta, and versions are not maintained until the first outside release (see [Versioning](docs/methodology/base_money.md#versioning)).
+9. Leave the `catalog.json` `version` alone: it is only a label until the v1 release (see [Versioning](docs/methodology/base_money.md#versioning)).
 10. Go through the [Checklist before a commit](docs/methodology/base_money.md#checklist-before-a-commit).
 11. Run the checks below (`bun run lint --base origin/main` makes no network calls), then open a pull request. While archiving new sources, `bun run verify --base origin/main` checks each new archive URL once; it is a local research script, not a merge gate.
 
@@ -83,6 +83,6 @@ bun run audit                      # re-check every link; store: $OBM_ARCHIVE_DI
 - **verify and audit** are local research scripts, never merge gates. See [Verify](docs/running.md#verify) and [Audit](docs/running.md#audit).
   - verify prints `archive.today (distinct URLs): N verified, M unverified (R rate-limited, B blocked)` and the unverified URLs; open each in a browser.
   - No verdict means rate-limited (a 429 or 503 still there when pacing gives up; a 429 is never a verdict), blocked, unconfirmed, offline, or, in audit, any other HTTP status.
-  - audit exits 3 when any link has no verdict. Append each finding as a `- Link audit <YYYY-MM-DD>:` line under its extract.
+  - audit exits 3 when any link has no verdict. Record each finding as a `- Link audit <YYYY-MM-DD>:` line under its extract.
 - **Pacing** is per host; override with `OBM_RATE_<KEY>_MS`: `OBM_RATE_ARCHIVE_TODAY_MS`, `OBM_RATE_GHOSTARCHIVE_ORG_MS`, `OBM_RATE_WEB_ARCHIVE_ORG_MS`, `OBM_RATE_ARCHIVE_ORG_MS` and `OBM_RATE_DEFAULT_MS`. See [Tuning and limits](docs/running.md#tuning-and-limits).
 - **Exit codes.** `0` clean, `1` findings, `2` usage or error, `3` incomplete. See [Exit codes](docs/running.md#exit-codes).
