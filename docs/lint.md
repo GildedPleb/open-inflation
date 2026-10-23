@@ -1,6 +1,6 @@
 # What lint enforces
 
-`bun run lint` runs every check below on the working tree against a base commit (see [running the checks](running.md#lint)). It makes no network calls, ever.
+`bun run lint` runs every check below on the working tree alone; it reads no base commit, and `--base <ref>` or `$LINT_BASE` is accepted and ignored (see [running the checks](running.md#lint)). It makes no network calls, ever.
 
 ## Checks
 
@@ -14,13 +14,11 @@ Every `evidence_id` is `base_money/quarters/YYYYQn.md`, exists, and matches the 
 
 ### L3
 
-No committed heading in an issuer extract file (`base_money/issuers/`) is renamed or removed. The FX rate tables (`base_money/FX/`) are regenerable supporting data and are exempt. A moved extract keeps every heading it had at its old path (see renames under L4). A quarter file's headings and prose are presentation and may change.
+Retired until v1: nothing is locked before the first v1 release. Committed headings, extract lines, machine blocks, CSV rows and catalog baskets may change like any other text; only the checks below apply to the result. History locks will be rebuilt for v1.
 
 ### L4
 
-Committed basket entries in `catalog.json` are never changed or removed (append a new version instead). Files are classified by folder. Issuer extract files (`base_money/issuers/<ISS>/<YYYY>.md`) are strictly append-only: committed lines are never changed or deleted, the per-extract `- Archive attempt`, `- Link audit` and `- Rejected source` lines (L7) included. The FX rate tables (`base_money/FX/<YYYY>.md`) are regenerable supporting data and may be edited in place. A quarter file (`base_money/quarters/YYYYQn.md`) locks only its machine blocks: every committed fenced `yaml` block stays, byte for byte and in order, as the file's first blocks, and a correction is an appended `## Revision` section with a new full block; the quarter's prose, headings and reader table are presentation and may be rewritten (L9 checks the table against the current block). In a diff that also changes `base_money/FX/`, a committed block may change in place in its `fx_rate`, `total_usd` and `coverage_pct` values only (line for line, no other edit). Committed CSV rows are never deleted; a value changes only if the same diff appends a revision block to that quarter file whose `total_usd` is the new value, or, in a diff that changes `base_money/FX/`, if the quarter's current `total_usd` was edited in place to the new value.
-
-Renames: L3 and L4 follow a moved file and check it against its old path's committed content. An extract moves only at 100% similarity, as with `git diff -M100%`: the new file is byte-identical to the old one and lies at an extract path. An extract edited in any way during the move, even by appending, counts as a delete plus an add, so L4 reports the delete; make the move and the later edits in separate PRs. A move anywhere else is a delete too, and a move to a misplaced path still fails L12. A quarter file moved from an earlier layout (`evidence/base_money/YYYYQn.md`) pairs with `base_money/quarters/YYYYQn.md` for the same quarter; its committed machine blocks stay locked, and the only change allowed in them is an extract path rewritten to that extract's rename target in the same diff. The CSV moved from its earlier root path (`base_money.csv`) to `base_money/base_money.csv`; when the base still has it at the root, L4 checks the rows against that file. A committed CSV row's `evidence_id` may change only to its quarter file's new path in the same diff, with the row's date and value unchanged.
+Retired until v1, like L3: there is no append-only or value lock.
 
 ### L5
 
@@ -58,7 +56,7 @@ verify checks each archive URL the diff adds once. A dead snapshot (HTTP 404 or 
 
 ### L9
 
-Each quarter file has one or more fenced `yaml` machine blocks (no front-matter), one per vintage. A revision appends a `## Revision <date>` section with a new full block and never edits an earlier one. Every block is validated on its own:
+Each quarter file has one or more fenced `yaml` machine blocks (no front-matter), one per vintage; the last is current. Every block is validated on its own:
 
 - Each component's and each reference value's USD is `local_value` × `fx_rate`, computed exactly and rounded half-to-even to a whole dollar, and `total_usd` is the sum of those whole dollars.
 - A USD `local_value` with a decimal point (more precise than $1, `1000.0` included) fails, and a `local_value` in any currency is exact with no leading zero (`0123` and `00.5` fail; a plain `0` and `0.5` are allowed).
@@ -66,11 +64,10 @@ Each quarter file has one or more fenced `yaml` machine blocks (no front-matter)
 - Each component anchor is `base_money/issuers/<its issuer>/<year>.md#<quarter slug>`.
 - `exclusions` entries are `{issuer, reason}`, both required, and components + exclusions list every issuer of the block's basket exactly once (never in both, never an issuer outside the basket).
 - Every `fx_rate` in `components` and `reference_values` is `"1"` for USD and otherwise equals, as a string, the rate derived from that currency's row of the FX table under the quarter's heading in `base_money/FX/<YYYY>.md` (Rate itself for `USD per <CCY>`; 1 / Rate rounded half-to-even to exactly 20 decimal places for `<CCY> per USD`; exact string match; no row, more than one, or an invalid row fails; the current block is checked against the table).
-- `basket_version` (a positive integer naming a catalog basket, written plainly: `1`, not `"1"`, `1.0`, `1e0`, `0x1`, `01`, `+1` or `!!int 1`) is optional while the catalog lists one basket (absent means 1) and required on every newly appended block once it lists more; the block is checked against its own basket.
+- `basket_version` (a positive integer naming a catalog basket, written plainly: `1`, not `"1"`, `1.0`, `1e0`, `0x1`, `01`, `+1` or `!!int 1`) is optional while the catalog lists one basket (absent means 1) and required on every block once it lists more; the block is checked against its own basket.
 - `reference_values` (`{issuer, anchor, local_currency, local_value, fx_rate}`, exactly one per excluded issuer, also needing FX table rows, never counted in `total_usd`) and `coverage_pct` (a string with exactly 2 decimals) are required in every block: coverage = Σ components ÷ (Σ components + Σ references) × 100 over those whole-dollar figures, rounded once half-to-even to 2 decimals, must match.
 - The exact coverage of the whole-dollar figures (the ratio itself unrounded) must be at least the basket's `floor_pct` (a true floor: 93.995 fails a 94 floor though it rounds to 94.00).
 - Optional `cross_checks` name another published aggregate (name and url only, never a figure).
-- A quarter file holds no failed-attempts log: a fenced `yaml` block whose first top-level key is `failed_attempts` fails (failed attempts and rejected sources are lines under each extract, L7).
 
 The quarter's reader table (the first table with `Issuer`, `Local amount`, `FX rate` and `USD` columns) equals the current block: one row per component, the Issuer cell linking that issuer's README (`../issuers/<ISS>/README.md`), with the issuer taken from the link, `<CCY> <amount>` equal to `local_currency` and `local_value`, the FX cell `X USD per <CCY>` (equal to `fx_rate`), `X <CCY> per USD` (giving `fx_rate` by the FX rule) or `none ...` for USD, the USD cell the component's whole dollars (`$1,234`), and the `**Total**` row `total_usd`. L9 strips each cell's link and compares the text, then checks the links, resolved from the quarter file. The USD cell must link the issuer's adopted extract (the `###` extract with `- Adopted: yes`) inside the section the component's anchor names, in the anchor's file, e.g. `[$5,488,400,000,000](../issuers/FED/2026.md#fed-h6-monetary-base-2026-06-release-2026-07-28)` for the anchor `base_money/issuers/FED/2026.md#2026q2`. The quarter heading itself, another extract, another issuer's or another quarter's extract, or no link fails. For a non-USD row, the FX cell must link that currency's FX table row (`../FX/<YYYY>.md#fx-<yyyyqn>-<ccy>`). A USD row's FX cell has no link.
 
@@ -89,11 +86,11 @@ Every file is UTF-8 text with no byte-order mark and at most 1 MB.
 
 ### L11
 
-`catalog.json` matches its schema (it lists a `base_money` series; each series has a semver `version`, a known data `license` `baskets` `[{version, issuers, floor_pct}]` with versions 1..n in order, non-empty unique upper-case issuers and a floor from 0 to 100 with at most 2 decimals, and an optional `issuers` list of `{id, as_of_convention?}` with unique ids from the baskets and `as_of_convention` only `"start_of_day"`; appending a basket bumps the major `version`; against the base, `version` never goes down, compared by semver precedence (1.0.0 to 0.1.0 fails, an equal or higher version passes, build metadata is ignored)) and points at files that exist.
+`catalog.json` matches its schema (it lists a `base_money` series; each series has a semver `version`, a known data `license` `baskets` `[{version, issuers, floor_pct}]` with versions 1..n in order, non-empty unique upper-case issuers and a floor from 0 to 100 with at most 2 decimals, and an optional `issuers` list of `{id, as_of_convention?}` with unique ids from the baskets and `as_of_convention` only `"start_of_day"`) and points at files that exist.
 
 ### L12
 
-Files under `base_money/` live only at `base_money/base_money.csv` (the series), `base_money/README.md` (the quarter list), `base_money/quarters/YYYYQn.md`, `base_money/issuers/<ISS>/<YYYY>.md` with `<ISS>` an upper-case id in any catalog basket version, `base_money/issuers/<ISS>/README.md` (the bank's static facts and its year list), `base_money/FX/<YYYY>.md` (FX-rate sources; `FX` is a folder, not an issuer) and `base_money/FX/README.md` (optional; L13 requires the issuer READMEs); all patterns are exact and case-sensitive; any other file under `base_money/` (any extension, or none) fails, except `.gitkeep`. The earlier `issuers/`, `evidence/` and `research/` folders are retired: any file in them other than `.gitkeep` fails. A `base_money.csv` at the repository root (the CSV's earlier path) fails.
+Files under `base_money/` live only at `base_money/base_money.csv` (the series), `base_money/README.md` (the quarter list), `base_money/quarters/YYYYQn.md`, `base_money/issuers/<ISS>/<YYYY>.md` with `<ISS>` an upper-case id in any catalog basket version, `base_money/issuers/<ISS>/README.md` (the bank's static facts and its year list), `base_money/FX/<YYYY>.md` (FX-rate sources; `FX` is a folder, not an issuer) and `base_money/FX/README.md` (optional; L13 requires the issuer READMEs); all patterns are exact and case-sensitive; any other file under `base_money/` (any extension, or none) fails, except `.gitkeep`. Top-level `issuers/`, `evidence/` and `research/` folders are not used: any file in them other than `.gitkeep` fails. A `base_money.csv` at the repository root fails.
 
 ### L13
 
