@@ -198,13 +198,13 @@ A new issuer gets its row here, in the same change that adds its row to [Per-iss
 
 ## Quarter inclusion
 
-- A quarter enters `base_money/base_money.csv` when its evidenced issuers reach the [coverage floor](#coverage). Each evidenced issuer needs a compliant extract under that quarter's heading in `base_money/issuers/<ISS>/<YYYY>.md`, and the FX extracts must exist under `base_money/FX/<YYYY>.md`. The roll-up `evidence/base_money/<YYYY>Qn.md` lists the evidenced issuers as components.
+- A quarter enters `base_money/base_money.csv` when its evidenced issuers reach the [coverage floor](#coverage). Each evidenced issuer needs a compliant extract under that quarter's heading in `base_money/issuers/<ISS>/<YYYY>.md`, and the FX extracts must exist under `base_money/FX/<YYYY>.md`. The roll-up `base_money/quarters/<YYYY>Qn.md` lists the evidenced issuers as components.
 - **Exclusions.** Every basket issuer not evidenced for the quarter is listed under `exclusions` as `{issuer: <ISS>, reason: <text>}`. Both fields are required, and the issuer must be in the block's basket (its `basket_version`). Typical reasons are missing, blocked, convention unconfirmed, or RBI not yet final. Each basket issuer appears exactly once across `components` and `exclusions`, never in both. A missing issuer's figure is never estimated, interpolated or carried forward from another quarter.
 - **Coverage and warning.** A roll-up with any exclusion states its coverage share and carries this warning in plain words: "This total leaves out <issuers>. The CSV value is lower by the amount of the missing issuers, so growth rates into and out of this quarter are distorted and should not be read as changes in base money." `base_money/README.md` gets a Coverage note for that quarter (see [Roll-up template](#roll-up-template)).
 - A quarter below the floor has no roll-up and no CSV row (see [Gaps policy](#gaps-policy)).
 - If an excluded issuer's figure later becomes available, it is added as a revision: a new extract, a `## Revision` block in the roll-up with the new total, and the CSV value changed in the same commit. The new machine block drops that exclusion entry; the earlier block stays in place as the prior vintage.
 - The CSV `date` is the quarter-end date (`YYYY-03-31`, `-06-30`, `-09-30`, `-12-31`), whatever the as-of date of the individual components (ECB Friday statements, monthly averages, the CBR start-of-day As of, 2026-07-01 for the "Jun, 2026" row, which the broad xlsx does not print because it labels rows by month only; the date is printed by the CBR narrow-definition page, tied to the xlsx row by matching currency issued; see the CBR note in [Per-issuer definitions](#per-issuer-definitions)).
-- A row is written only after its roll-up exists and links to compliant extracts (research standard 8), and only after `bun test` and `bun run lint` are clean. The CSV line is `<YYYY-MM-DD>,<total_usd>,evidence/base_money/<YYYY>Q<n>.md`, for example `2026-06-30,<total_usd>,evidence/base_money/2026Q2.md`, under the header `date,value,evidence_id`.
+- A row is written only after its roll-up exists and links to compliant extracts (research standard 8), and only after `bun test` and `bun run lint` are clean. The CSV line is `<YYYY-MM-DD>,<total_usd>,base_money/quarters/<YYYY>Q<n>.md`, for example `2026-06-30,<total_usd>,base_money/quarters/2026Q2.md`, under the header `date,value,evidence_id`.
 
 ## Revisions
 
@@ -506,7 +506,7 @@ adopted_conflicts:
 A full CSV row for the quarter above, under the header `date,value,evidence_id`:
 
 ```text
-2026-06-30,<total_usd>,evidence/base_money/2026Q2.md
+2026-06-30,<total_usd>,base_money/quarters/2026Q2.md
 ```
 
 **Basket note.** Every quarter file names the basket version of its last machine block, for example "basket v1"; across a basket change it carries the warning: "Rows on different basket versions are not strictly comparable; growth rates across a basket change are distorted."
