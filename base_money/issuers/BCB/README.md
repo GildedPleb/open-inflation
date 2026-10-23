@@ -14,3 +14,4 @@ SGS 20306 "Reserve Money - Monetary Authority" / "Passivo Monetário - Autoridad
 ## Years
 
 - [2026](2026.md)
+- [2025](2025.md)

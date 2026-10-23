@@ -14,3 +14,4 @@ No official monetary base is published; we construct it from Bank of England Dat
 ## Years
 
 - [2026](2026.md)
+- [2025](2025.md)

@@ -14,3 +14,4 @@ Consolidated weekly financial statement of the Eurosystem, liabilities items 1 +
 ## Years
 
 - [2026](2026.md)
+- [2025](2025.md)
