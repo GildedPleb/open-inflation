@@ -15,6 +15,11 @@ export const FX_DIR = "base_money/FX";
 /** The id the FX extracts go by in messages and in extractOf. */
 export const FX_ID = "FX";
 
+/** The series CSV (date,value,evidence_id); its evidence_id values are repo-root paths. */
+export const CSV_PATH = "base_money/base_money.csv";
+/** The CSV's earlier path (repo root): the base side of the move for L4; a file there now is misplaced (L12). */
+export const LEGACY_CSV = posix.basename(CSV_PATH);
+
 /** Top-level folders of earlier layouts: any file there now is misplaced (L12). */
 export const RETIRED_ROOTS = ["issuers/", "evidence/", "research/"];
 /** Quarter files at earlier paths (the base side of a move): path -> quarter. */
@@ -26,7 +31,8 @@ const EXTRACT_ROOTS = [EVIDENCE_ROOT, "issuers/", "evidence/"];
 
 /** Base files lint needs: every evidence tree (current and earlier, for moves), the CSV (L4) and the catalog. */
 export const BASE_PREFIXES = [...new Set([...EXTRACT_ROOTS, ...RETIRED_ROOTS])].concat([
-  "base_money.csv",
+  CSV_PATH,
+  LEGACY_CSV,
   "catalog.json",
 ]);
 

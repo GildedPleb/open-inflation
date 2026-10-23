@@ -73,7 +73,7 @@ async function fails(snap: Snapshot, only: CheckId[], reason: RegExp, opts: Opts
   return fs;
 }
 
-const csv = (...rows: string[]) => ({ "base_money.csv": CSV_HEADER + rows.map((r) => `${r}\n`).join("") });
+const csv = (...rows: string[]) => ({ "base_money/base_money.csv": CSV_HEADER + rows.map((r) => `${r}\n`).join("") });
 const fed = (...blocks: string[]) => ({ [FED]: issuerFile("FED", "2026Q3", ...blocks) });
 const fedText = goodText()[FED] as string;
 
@@ -85,7 +85,7 @@ describe("passing fixtures", () => {
 
 describe("L1 CSV contract", () => {
   test("wrong header", () =>
-    fails(good({ "base_money.csv": `date,value,evidence_id,src\n${ROW}\n` }), ["L1"], /header/));
+    fails(good({ "base_money/base_money.csv": `date,value,evidence_id,src\n${ROW}\n` }), ["L1"], /header/));
   test("extra column in a row", () => fails(good(csv(`${ROW},x`)), ["L1"], /3 fields/));
   test("missing column in a row", () => fails(good(csv("2026-09-30,1221")), ["L1"], /3 fields/));
   test("date not ISO 8601", () => fails(good(csv("2026-9-30,1221,base_money/quarters/2026Q3.md")), ["L1"], /ISO 8601/));
@@ -102,23 +102,26 @@ describe("L1 CSV contract", () => {
   test("duplicate date", () => fails(good(csv(ROW, ROW)), ["L1"], /strictly ascending/));
   test("descending dates", () =>
     fails(good(csv(ROW, "2026-06-30,5,base_money/quarters/2026Q2.md")), ["L1"], /strictly ascending/));
-  test("blank line inside", () => fails(good({ "base_money.csv": `${CSV_HEADER}\n${ROW}\n` }), ["L1"], /blank/));
-  test("trailing blank line", () => fails(good({ "base_money.csv": `${CSV_HEADER}${ROW}\n\n` }), ["L1"], /blank/));
-  test("CRLF line endings", () => fails(good({ "base_money.csv": `${CSV_HEADER}${ROW}\r\n` }), ["L1"], /CR/));
-  test("missing file", () => fails(good({ "base_money.csv": null }), ["L1", "L11"], /missing/));
+  test("blank line inside", () =>
+    fails(good({ "base_money/base_money.csv": `${CSV_HEADER}\n${ROW}\n` }), ["L1"], /blank/));
+  test("trailing blank line", () =>
+    fails(good({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}\n\n` }), ["L1"], /blank/));
+  test("CRLF line endings", () =>
+    fails(good({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}\r\n` }), ["L1"], /CR/));
+  test("missing file", () => fails(good({ "base_money/base_money.csv": null }), ["L1", "L11"], /missing/));
   test("header without final newline fails", () =>
     fails(
-      { files: files(skeletonText(), { "base_money.csv": "date,value,evidence_id" }), base: null },
+      { files: files(skeletonText(), { "base_money/base_money.csv": "date,value,evidence_id" }), base: null },
       ["L1"],
       /final newline/,
     ));
   test("last row without final newline fails", () =>
-    fails(good({ "base_money.csv": `${CSV_HEADER}${ROW}` }), ["L1"], /final newline/));
+    fails(good({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}` }), ["L1"], /final newline/));
   test("UTF-8 byte-order mark before the header fails", () =>
-    fails(good({ "base_money.csv": `\uFEFF${CSV_HEADER}${ROW}\n` }), ["L1"], /byte-order mark/));
+    fails(good({ "base_money/base_money.csv": `\uFEFF${CSV_HEADER}${ROW}\n` }), ["L1"], /byte-order mark/));
   test("BOM on the header-only skeleton fails", () =>
     fails(
-      { files: files(skeletonText(), { "base_money.csv": `\uFEFF${CSV_HEADER}` }), base: null },
+      { files: files(skeletonText(), { "base_money/base_money.csv": `\uFEFF${CSV_HEADER}` }), base: null },
       ["L1"],
       /byte-order mark/,
     ));
@@ -213,7 +216,7 @@ describe("L4 append-only (no committed line changes)", () => {
     passes(onGood({ "base_money/README.md": index().replace("# Index", "# Evidence index") })));
 });
 
-describe("L4 base_money.csv rows", () => {
+describe("L4 base_money/base_money.csv rows", () => {
   const fedOnly = (local: string, total: string) =>
     machineBlock({
       components: [
@@ -248,17 +251,17 @@ describe("L4 base_money.csv rows", () => {
     ));
   // m2: a CSV that L1 rejects reports only the L1 reason, never a spurious "row deleted".
   test("broken header on a committed CSV is L1 only", () =>
-    fails(onGood({ "base_money.csv": `Date,value,evidence_id\n${ROW}\n` }), ["L1"], /header/));
+    fails(onGood({ "base_money/base_money.csv": `Date,value,evidence_id\n${ROW}\n` }), ["L1"], /header/));
   test("BOM on a committed CSV is L1 only", () =>
-    fails(onGood({ "base_money.csv": `\uFEFF${CSV_HEADER}${ROW}\n` }), ["L1"], /byte-order mark/));
+    fails(onGood({ "base_money/base_money.csv": `\uFEFF${CSV_HEADER}${ROW}\n` }), ["L1"], /byte-order mark/));
   test("CRLF on a committed CSV is L1 only", () =>
-    fails(onGood({ "base_money.csv": `${CSV_HEADER}${ROW}\r\n` }), ["L1"], /CR/));
+    fails(onGood({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}\r\n` }), ["L1"], /CR/));
   test("missing final newline on a committed CSV is L1 only", () =>
-    fails(onGood({ "base_money.csv": `${CSV_HEADER}${ROW}` }), ["L1"], /final newline/));
+    fails(onGood({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}` }), ["L1"], /final newline/));
   test("a committed row that is now malformed is L1 only", () =>
     fails(onGood(csv(Q3("12x21"))), ["L1"], /non-negative integer/));
   test("deleting a committed row fails", () =>
-    fails(onGood({ "base_money.csv": CSV_HEADER }), ["L4"], /row for 2026-09-30 was deleted/));
+    fails(onGood({ "base_money/base_money.csv": CSV_HEADER }), ["L4"], /row for 2026-09-30 was deleted/));
   test("editing a value without a roll-up revision block fails", () =>
     fails(onGood(csv(Q3("1222"))), ["L4", "L9"], /1221 -> 1222 without appending a revision block/));
   test("editing a value with a revision block whose total differs fails", () =>
@@ -317,12 +320,16 @@ describe("layout move: extracts 100% identical, quarters paired by quarter with 
   const OLD_Q3 = "evidence/base_money/2026Q3.md";
   const toOld = (t: string) =>
     t
+      .replaceAll("base_money/base_money.csv", "base_money.csv")
       .replaceAll("base_money/quarters/", "evidence/base_money/")
       .replaceAll("base_money/FX/", "issuers/FX/")
       .replaceAll("base_money/issuers/", "issuers/");
   const legacy = (): Record<string, string> =>
     Object.fromEntries(
-      Object.entries(goodText()).map(([p, t]) => [toOld(p), p === "base_money.csv" || p === ROLLUP ? toOld(t) : t]),
+      Object.entries(goodText()).map(([p, t]) => [
+        toOld(p),
+        p === "base_money/base_money.csv" || p === ROLLUP ? toOld(t) : t,
+      ]),
     );
   const moved = (patch: Record<string, string | null> = {}): Snapshot => ({
     files: files(goodText(), patch),
@@ -1233,7 +1240,7 @@ describe("L9 aggregation", () => {
     passes(
       good({
         [FX]: issuerFile("FX", "2026Q3"),
-        "base_money.csv": `${CSV_HEADER}2026-09-30,1000,base_money/quarters/2026Q3.md\n`,
+        "base_money/base_money.csv": `${CSV_HEADER}2026-09-30,1000,base_money/quarters/2026Q3.md\n`,
         [ROLLUP]: rollup(machineBlock({ components: FED_ONLY, total: "1000" }).replace(/fx_source_anchor: .*\n/, "")),
       }),
     ));
@@ -1348,7 +1355,7 @@ describe("L10 no binaries", () => {
 describe("L11 catalog.json", () => {
   const entry = {
     id: "base_money",
-    path: "base_money.csv",
+    path: "base_money/base_money.csv",
     unit: "USD",
     frequency: "quarterly",
     methodology: "methodology/base_money.md",
@@ -1881,7 +1888,7 @@ describe("L9 reference_values and coverage_pct", () => {
         ...(coverage === undefined ? {} : { coverage }),
         total: fed,
       },
-      { "base_money.csv": `${CSV_HEADER}2026-09-30,${fed},${ROLLUP}\n` },
+      { "base_money/base_money.csv": `${CSV_HEADER}2026-09-30,${fed},${ROLLUP}\n` },
     );
   const boj10 = `reference_values:\n${ref("BOJ", "10")}`;
   // Hand-computed: 1220.775 / (1220.775 + 10) x 100 = 99.18750...  -> 99.19
@@ -1929,7 +1936,7 @@ describe("L9 reference_values and coverage_pct", () => {
           coverage: '"100.00"',
           total: "1231",
         },
-        { "base_money.csv": `${CSV_HEADER}2026-09-30,1231,${ROLLUP}\n` },
+        { "base_money/base_money.csv": `${CSV_HEADER}2026-09-30,1231,${ROLLUP}\n` },
       ),
     ));
   test("half-to-even: 94.125 rounds to 94.12", () =>
@@ -2164,7 +2171,7 @@ describe("L9 reference_values and coverage_pct", () => {
             total: "1000",
           }).replace("fx_source_anchor: base_money/FX/2026.md#2026q3\n", ""),
         ),
-        "base_money.csv": `${CSV_HEADER}2026-09-30,1000,base_money/quarters/2026Q3.md\n`,
+        "base_money/base_money.csv": `${CSV_HEADER}2026-09-30,1000,base_money/quarters/2026Q3.md\n`,
       }),
       ["L9"],
       /fx_source_anchor/,
@@ -2314,6 +2321,14 @@ describe("L12 placement", () => {
       const fs = await lint(good({ [p]: "# x\n" }), OFF);
       expect(fs.filter((f) => f.check === "L12").map((f) => f.file)).toEqual([p]);
     });
+  const ROOT_CSV = () => goodText()["base_money/base_money.csv"] as string;
+  test("a CSV at the repository root (its earlier path) fails L12", () =>
+    fails(good({ "base_money.csv": ROOT_CSV() }), ["L12"], /the CSV lives at base_money\/base_money\.csv/));
+  test("moving the root CSV to base_money/base_money.csv keeps L4 on its rows (a deleted row still fails)", async () => {
+    const base = files(goodText(), { "base_money/base_money.csv": null, "base_money.csv": ROOT_CSV() });
+    await passes({ files: files(goodText()), base });
+    await fails({ files: files(goodText(), csv()), base }, ["L4"], /row for 2026-09-30 was deleted/);
+  });
   test("an issuer not in the catalog basket is named", () =>
     fails(good({ "base_money/issuers/XYZ/2026.md": "# x\n" }), ["L12"], /XYZ is not in the catalog basket/));
   test("a basket issuer's year file passes", () =>
@@ -3365,6 +3380,7 @@ describe("failed attempts log (L9 form, L4 append-only; never a machine block)",
     const OLD_Q3 = "evidence/base_money/2026Q3.md";
     const toOld = (t: string) =>
       t
+        .replaceAll("base_money/base_money.csv", "base_money.csv")
         .replaceAll("base_money/quarters/", "evidence/base_money/")
         .replaceAll("base_money/FX/", "issuers/FX/")
         .replaceAll("base_money/issuers/", "issuers/");
@@ -3372,7 +3388,7 @@ describe("failed attempts log (L9 form, L4 append-only; never a machine block)",
       Object.fromEntries(
         Object.entries(goodText()).map(([p, t]) => [
           toOld(p),
-          p === ROLLUP ? toOld(withLog(log)) : p === "base_money.csv" ? toOld(t) : t,
+          p === ROLLUP ? toOld(withLog(log)) : p === "base_money/base_money.csv" ? toOld(t) : t,
         ]),
       );
     const moved = (was: string, now: string): Snapshot => ({

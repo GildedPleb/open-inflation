@@ -1,10 +1,10 @@
-// bun run readme: rewrite README.md's generated blocks, the quarter list and each issuer/FX folder README's "## Years" list from base_money.csv, the roll-ups
+// bun run readme: rewrite README.md's generated blocks, the quarter list and each issuer/FX folder README's "## Years" list from base_money/base_money.csv, the roll-ups
 // and catalog.json (lib/readme.ts). Lint (L13) fails when either file differs from what this writes.
 // Exit 0 written, 2 when an input cannot be read or a README marker is missing.
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { exitOnCrash } from "./lib/exit.ts";
-import { EVIDENCE_ROOT } from "./lib/paths.ts";
+import { CSV_PATH, EVIDENCE_ROOT } from "./lib/paths.ts";
 import {
   EVIDENCE_INDEX,
   fillIndex,
@@ -30,12 +30,12 @@ const walk = (dir: string) => {
 };
 walk(join(REPO_ROOT, EVIDENCE_ROOT));
 const text = new Map<string, string>();
-for (const p of [...paths, "base_money.csv", "catalog.json", README])
+for (const p of [...new Set([...paths, CSV_PATH]), "catalog.json", README])
   text.set(p, readFileSync(join(REPO_ROOT, p), "utf8"));
 
 const g = generate(text, paths.sort());
 if (!g) {
-  console.error("readme: cannot read base_money.csv, a roll-up's machine block or catalog.json; run bun run lint");
+  console.error(`readme: cannot read ${CSV_PATH}, a roll-up's machine block or catalog.json; run bun run lint`);
   process.exit(2);
 }
 const filled = fillReadme(text.get(README) ?? "", g.blocks);
