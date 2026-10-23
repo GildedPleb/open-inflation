@@ -1,5 +1,5 @@
-// Which commit lint compares the working tree against (L4 append-only, L8 "new" archive URLs). Pure: the caller
-// supplies the environment and a way to compute the merge-base.
+// Which commit verify compares the working tree against (the archive URLs a diff adds); lint reads no base.
+// Pure: the caller supplies the environment and a way to compute the merge-base.
 
 export interface BaseInput {
   /** `--base <ref>`: always wins. */
@@ -24,7 +24,7 @@ const zeros = (s: string) => /^0+$/.test(s);
 
 /**
  * The base: --base; else on a push to any ref but main, merge-base(HEAD, origin/main), because event.before is the
- * branch's previous tip and would flag the branch's own unmerged lines as committed history (L4); else $LINT_BASE
+ * branch's previous tip and would skip the branch's own earlier URLs as already committed; else $LINT_BASE
  * (the PR base sha, or event.before on main; all zeros means none); else HEAD; else none.
  */
 export function chooseBase(i: BaseInput): BaseChoice {

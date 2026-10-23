@@ -135,28 +135,10 @@ describe("git snapshot loader", () => {
       "methodology/x.md",
       "new.md",
     ]);
-    // P6-M1: the base catalog is loaded, so basket history (L4/L11) has something to compare against.
-    expect([...(s.base?.keys() ?? [])].sort()).toEqual([
-      "base_money/base_money.csv",
-      "base_money/issuers/A/2026.md",
-      "catalog.json",
-    ]);
+    // The base holds only the evidence tree (verify's committed archive URLs); lint reads no base.
+    expect([...(s.base?.keys() ?? [])].sort()).toEqual(["base_money/base_money.csv", "base_money/issuers/A/2026.md"]);
     expect(text(s.files, "base_money/issuers/A/2026.md")).toBe("one\ntwo\n");
     expect(text(s.base, "base_money/issuers/A/2026.md")).toBe("one\n");
-  });
-  test("git mv between base and HEAD: lint follows the rename; an edited move is a delete (L4)", async () => {
-    const dir = repo(goodText());
-    git(dir, "init", "-q", "--template=");
-    git(dir, "add", ".");
-    git(dir, "commit", "-qm", "base");
-    git(dir, "mv", "base_money/issuers/FED/2026.md", "base_money/issuers/FED/2025.md");
-    git(dir, "commit", "-qm", "move");
-    const moved = await lint(loadSnapshot(dir, "HEAD~1"), { now: Date.now() });
-    expect(moved.filter((f) => f.check === "L3" || f.check === "L4")).toEqual([]);
-    const path = join(dir, "base_money/issuers/FED/2025.md");
-    writeFileSync(path, readFileSync(path, "utf8").replace("synthetic): 1", "synthetic): 2"));
-    const edited = await lint(loadSnapshot(dir, "HEAD~1"), { now: Date.now() });
-    expect(edited.some((f) => f.check === "L4" && f.file === "base_money/issuers/FED/2026.md")).toBe(true);
   });
   test("null and all-zero base mean no base", () => {
     const dir = repo({ "a.txt": "a\n" });
@@ -391,8 +373,8 @@ describe("CLI", () => {
     );
     return Promise.all([p.exited, new Response(p.stdout).text(), new Response(p.stderr).text()]);
   };
-  // The lint process gets a base through argv: badRepo committed, its first heading edited in a second commit, and
-  // --base HEAD~1, so the edit draws L3 and L4 (with no argv lint would take HEAD and see no edit).
+  // The lint process gets `--base HEAD~1` through argv, which it accepts and ignores (lint reads no base): badRepo
+  // committed, its first heading edited in a second commit; the edit draws no finding of its own.
   const smokeRepo = () => {
     const dir = badRepo();
     git(dir, "add", ".");
@@ -417,42 +399,31 @@ describe("CLI", () => {
     // No base_money/README.md or catalog.json (L6, L11) and the bad header (L1); nothing else, and no L8 or network line.
     expect(bad.out).not.toMatch(/network|fetch|L8|archive\.today:/i);
     expect([...new Set(bad.out.match(/^L\d+ /gm))]).toEqual(["L1 ", "L6 ", "L11 "]);
-    expect(await cli(dir, ["--nope"])).toEqual({ code: 2, stdout: "", out: "usage: bun run lint [--base <ref>]\n" });
+    expect(await cli(dir, ["--nope"])).toEqual({ code: 2, stdout: "", out: "usage: bun run lint\n" });
     expect(await cli(dir, ["--base"])).toMatchObject({ code: 2 });
-    const unknown = await cli(dir, ["--base", "no-such-ref"]);
-    expect([unknown.code, unknown.out.trim()]).toEqual([2, 'lint: unknown base ref "no-such-ref"']);
+    // --base <ref> is accepted and ignored: lint reads no base, so even an unknown ref changes nothing.
+    expect(await cli(dir, ["--base", "no-such-ref"])).toEqual(bad);
     // The committed tree, not the live one: an uncommitted extract in the checkout cannot reach this run.
-    const clean = await cli(sharedTree(), ["--base", "HEAD"]);
-    expect([clean.code, clean.out]).toEqual([0, "lint: clean (base HEAD)\n"]);
-    // With no --base and no CI variables, a checkout with a HEAD lints against it.
-    expect(await cli(sharedTree())).toEqual({
+    expect(await cli(sharedTree(), ["--base", "HEAD"])).toEqual({
       code: 0,
-      stdout: "lint: clean (base HEAD)\n",
-      out: "lint: clean (base HEAD)\n",
+      stdout: "lint: clean\n",
+      out: "lint: clean\n",
     });
+    expect(await cli(sharedTree())).toEqual({ code: 0, stdout: "lint: clean\n", out: "lint: clean\n" });
   });
-  test("a push to a branch lints against merge-base(HEAD, origin/main), not event.before", async () => {
+  test("lint ignores CI's LINT_BASE, GITHUB_EVENT_NAME and GITHUB_REF (lint.yml still sets them)", async () => {
     const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });
     git(dir, "init", "-q", "--template=");
     git(dir, "add", ".");
     git(dir, "commit", "-qm", "main");
-    const main = git(dir, "rev-parse", "HEAD");
-    git(dir, "commit", "-q", "--allow-empty", "-m", "branch tip before the push");
-    const before = git(dir, "rev-parse", "HEAD");
-    git(dir, "commit", "-q", "--allow-empty", "-m", "pushed");
-    const env = { GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/feature", LINT_BASE: before };
-    const lost = await cli(dir, [], { env });
-    expect([lost.code, lost.out.trim()]).toEqual([
-      2,
-      "lint: push to refs/heads/feature: cannot find the merge-base of HEAD and origin/main (fetch origin/main; CI checks out with fetch-depth: 0)",
-    ]);
-    git(dir, "update-ref", "refs/remotes/origin/main", main);
-    // The bare repo has no base_money/README.md or catalog.json (L6, L11 findings); only the base it reports matters here.
-    const r = await cli(dir, [], { env });
-    expect(r.code).toBe(1);
-    expect(r.out).toContain(`lint: base ${main} (merge-base of HEAD and origin/main (push to refs/heads/feature))\n`);
-    const onMain = await cli(dir, [], { env: { ...env, GITHUB_REF: "refs/heads/main" } });
-    expect(onMain.out).toContain(`lint: base ${before} (LINT_BASE)\n`);
+    const plain = await cli(dir);
+    for (const env of [
+      { GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/feature", LINT_BASE: "0123456789abcdef" },
+      { GITHUB_EVENT_NAME: "pull_request", LINT_BASE: "no-such-ref" },
+      { LINT_BASE: "0000000000000000000000000000000000000000" },
+    ])
+      expect(await cli(dir, [], { env })).toEqual(plain);
+    expect(plain.code).toBe(1);
   });
   // Assay (#19): every exit code is pinned, in-process (verifyMain and auditMain; no bun start per case). verify and
   // audit exit 2 on usage before any request; an uncaught error exits 2, not Bun's 1 (exitOnCrash, units). The
@@ -550,147 +521,12 @@ describe("CLI", () => {
     const r = await cli(dir);
     expect([r.code, r.out.trim()]).toEqual([2, "lint: not a git checkout; clone the repo (git is required)"]);
   });
-  // P6-M1: basket immutability (L4) and the major bump (L11) through the CLI on the committed tree. P6-m3: every
-  // expectation is derived from that tree's own base catalog (its version, baskets and issuers), and each case is
-  // compared with a lint of the same tree unedited, so the tests hold at any catalog version and whatever else the
-  // tree carries (a data branch's own findings appear in both runs and cancel out). Each edit is linted from a
-  // snapshot (the tree's files with the edited catalog over its HEAD as base); one edit also goes through real git,
-  // uncommitted (base HEAD) and committed (base = the earlier commit), which is what the snapshot stands for.
-  type Basket = { version: number; issuers: string[]; floor_pct: string };
-  type Series = Record<string, unknown> & { id: string; version: string; baskets: Basket[] };
-  const findings = (out: string) => out.split("\n").filter((l) => /^L\d+ /.test(l));
-  let headSnap: Snapshot | undefined;
-  const treeSnap = () => {
-    headSnap ??= loadSnapshot(sharedTree(), "HEAD");
-    return headSnap;
-  };
-  const editCatalog = (raw: string, edit: (s: Series) => void) => {
-    const cat = JSON.parse(raw);
-    edit(cat.series[0]);
-    return `${JSON.stringify(cat, null, 2)}\n`;
-  };
-  const snapshotCase = async (edit: (s: Series) => void) => {
-    const snap = treeSnap();
-    const files = new Map(snap.files);
-    files.set("catalog.json", new TextEncoder().encode(editCatalog(text(snap.files, "catalog.json") ?? "", edit)));
-    const r = await cli(sharedTree(), ["--base", "HEAD"], { git: snapshotGit({ files, base: snap.base }) });
-    return [r.code, r.stdout] as const;
-  };
-  // On the shared tree, put back as it was before the test returns (tests in a file run one at a time, and the
-  // smoke processes never read it).
-  const gitCase = async (edit: (s: Series) => void) => {
-    const dir = sharedTree();
-    const base = git(dir, "rev-parse", "HEAD");
-    const path = join(dir, "catalog.json");
-    try {
-      writeFileSync(path, editCatalog(await Bun.file(path).text(), edit));
-      const uncommitted = await cli(dir, ["--base", "HEAD"]);
-      git(dir, "commit", "-qam", "case");
-      const committed = await cli(dir, ["--base", base]);
-      return [uncommitted, committed].map((r) => [r.code, r.stdout] as const);
-    } finally {
-      git(dir, "reset", "-q", "--hard", base);
-    }
-  };
-  let baseCatalog: string | undefined;
-  const baseSeries = (): Series => {
-    baseCatalog ??= git(ROOT, "show", "HEAD:catalog.json");
-    return JSON.parse(baseCatalog).series[0];
-  };
-  const semver = (v: string) => v.split(".").map(Number) as [number, number, number];
-  const append = (bump: "none" | "minor" | "major") => (s: Series) => {
-    const [maj, min] = semver(s.version);
-    const last = s.baskets.at(-1) as Basket;
-    const known = new Set(s.baskets.flatMap((b) => b.issuers));
-    let added = "QQFIXTURE";
-    while (known.has(added)) added += "Q";
-    s.baskets.push({ version: s.baskets.length + 1, issuers: [...last.issuers, added], floor_pct: last.floor_pct });
-    s.version = { none: s.version, minor: `${maj}.${min + 1}.0`, major: `${maj + 1}.0.0` }[bump];
-  };
-  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const noBump = (to: (v: string) => string) => (s: Series) =>
-    new RegExp(
-      `^L11 catalog\\.json: series ${s.id} appends basket version ${s.baskets.length + 1} but version ${esc(to(s.version))} does not bump the major of ${esc(s.version)}`,
-    );
-  const changed = (s: Series) => new RegExp(`^L4 catalog\\.json: basket version 1 of ${s.id} was changed`);
-  const floor = (s: Series) => {
-    const b = s.baskets[0] as Basket;
-    b.floor_pct = b.floor_pct === "90" ? "91" : "90";
-  };
-  const cases: [string, (s: Series) => void, (s: Series) => RegExp][] = [
-    ["editing basket 1's floor_pct fails (L4)", floor, changed],
-    [
-      "reordering basket 1's issuers fails (L4)",
-      (s) => {
-        const b = s.baskets[0] as Basket;
-        if (b.issuers.length < 2) throw new Error("basket 1 needs two issuers to reorder");
-        b.issuers.reverse();
-      },
-      changed,
-    ],
-    ["appending a basket with no version bump fails (L11)", append("none"), noBump((v) => v)],
-    [
-      "appending a basket with a minor bump fails (L11)",
-      append("minor"),
-      noBump((v) => {
-        const [maj, min] = semver(v);
-        return `${maj}.${min + 1}.0`;
-      }),
-    ],
-  ];
-  // P10-n1: the series version never goes down. The lower version is derived from the base catalog's own version.
-  const lowerOf = (v: string) => {
-    const [maj, min, pat] = semver(v);
-    if (maj > 0) return `${maj - 1}.${min}.${pat}`;
-    if (min > 0) return `0.${min - 1}.${pat}`;
-    return pat > 0 ? `0.0.${pat - 1}` : `${v}-0`;
-  };
-  cases.push([
-    "lowering the series version fails (L11, P10-n1)",
-    (s) => {
-      s.version = lowerOf(s.version);
-    },
-    (s) =>
-      new RegExp(
-        `^L11 catalog\\.json: series ${s.id} version ${esc(lowerOf(s.version))} is lower than ${esc(s.version)} in the base`,
-      ),
-  ]);
-  const major = append("major");
-  let uneditedRun: Promise<readonly [number, string]> | undefined;
-  const unedited = () => {
-    uneditedRun ??= cli(sharedTree(), ["--base", "HEAD"]).then((r) => [r.code, r.stdout] as const);
-    return uneditedRun;
-  };
-  // A catalog edit also changes the generated README and evidence index (version, baskets); that drift is L13's,
-  // tested in lint.test.ts, so these catalog cases look only at the other checks.
-  const catalogFindings = (out: string) => findings(out).filter((l) => !l.startsWith("L13 "));
-  const expectAdded = (want: RegExp, before: Set<string>, [code, out]: readonly [number, string]) => {
-    const added = catalogFindings(out).filter((l) => !before.has(l));
-    expect(added.length).toBeGreaterThan(0);
-    for (const l of added) expect(l).toMatch(want);
-    expect(code).toBe(1);
-  };
-  for (const [name, edit, want] of cases)
-    test(`CLI: ${name}`, async () => {
-      const before = new Set(findings((await unedited())[1]));
-      expectAdded(want(baseSeries()), before, await snapshotCase(edit));
-    });
-  test("CLI: editing basket 1's floor_pct through real git fails (L4), committed or not", async () => {
-    const before = new Set(findings((await unedited())[1]));
-    for (const r of await gitCase(floor)) expectAdded(changed(baseSeries()), before, r);
-  });
-  test("CLI: appending a basket with a major bump adds no finding (lints clean on a clean tree)", async () => {
-    const [code0, out0] = await unedited();
-    const [, out] = await snapshotCase(major);
-    expect(catalogFindings(out)).toEqual(catalogFindings(out0));
-    expect(code0).toBe(0);
-  });
 
   test("smoke: the lint process takes argv, exits 1 with the findings on stdout, and makes no network call", async () => {
     const [code, out, err] = await smokeLint;
     expect(code).toBe(1);
-    expect([...new Set(out.match(/^L\d+ /gm))]).toEqual(["L1 ", "L3 ", "L4 ", "L6 ", "L11 "]);
-    expect(out).toMatch(/^lint: 5 finding\(s\)$/m);
+    expect([...new Set(out.match(/^L\d+ /gm))]).toEqual(["L1 ", "L6 ", "L11 "]);
+    expect(out).toMatch(/^lint: 3 finding\(s\)$/m);
     expect(err).toBe("");
     expect(`${out}${err}`).not.toMatch(/network|fetch|L8|archive\.today:/i);
   });
@@ -710,8 +546,8 @@ describe("CLI", () => {
 });
 
 // The fx_rate check (the FX table row's derived fx_rate) and P6-n7 (As of not after Retrieved) through the real CLI, on a
-// committed temp copy of the lint fixture repo. Each case is committed and linted with --base HEAD, so only the
-// committed content is judged (no L4 edit, no new archive URL). Nothing here names the catalog version (P6-m3).
+// committed temp copy of the lint fixture repo. Each case is committed and linted (lint reads no base; the --base
+// HEAD it is handed is ignored). Nothing here names the catalog version (P6-m3).
 describe("CLI: fx_rate and As of on a fixture repo", () => {
   const FXF = "base_money/FX/2026.md";
   const lintCase = async (patch: Record<string, string>) => {
