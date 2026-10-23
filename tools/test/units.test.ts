@@ -1,3 +1,4 @@
+import "./no-network.ts";
 import { describe, expect, test } from "bun:test";
 import {
   AVAILABILITY_FORMS,

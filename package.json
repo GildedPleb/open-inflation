@@ -4,13 +4,14 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "lint": "bun scripts/lint.ts",
-    "verify": "bun scripts/verify.ts",
-    "audit": "bun scripts/audit.ts",
-    "update": "bun scripts/update.ts",
-    "backfill": "bun scripts/backfill.ts",
-    "typecheck": "tsc --noEmit",
-    "check": "biome check .",
+    "lint": "bun tools/scripts/lint.ts",
+    "readme": "bun tools/scripts/readme.ts",
+    "verify": "bun tools/scripts/verify.ts",
+    "audit": "bun tools/scripts/audit.ts",
+    "update": "bun tools/scripts/update.ts",
+    "backfill": "bun tools/scripts/backfill.ts",
+    "typecheck": "tsc -p tools",
+    "check": "biome check --vcs-enabled=true --vcs-client-kind=git --vcs-use-ignore-file=true --indent-style=space --line-width=120 --javascript-formatter-quote-style=double --md-formatter-enabled=false .",
     "test": "bun test"
   },
   "devDependencies": {
