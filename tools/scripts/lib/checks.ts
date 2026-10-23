@@ -2,14 +2,17 @@
 // (HEAD on each new archive URL) is not here; it is `bun run verify` (lib/verify.ts), run locally, never in CI.
 import { posix } from "node:path";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
-import { fencedBlocks, headings, lines, links, memoText, slugs } from "./markdown.ts";
+import { fencedBlocks, headingSlugs, headings, lines, links, memoText, slugs } from "./markdown.ts";
 import {
   anyQuarterOfPath,
   EVIDENCE_ROOT,
   extractOf,
   extractPath,
+  FOLDER_README_TEXT,
   FX_ID,
   FX_TEXT,
+  folderReadmeOf,
+  folderReadmePath,
   fxPath,
   ISSUER_TEXT,
   isExtractPath,
@@ -18,8 +21,9 @@ import {
   quarterOfPath,
   quarterPath,
   RETIRED_ROOTS,
+  relLink,
 } from "./paths.ts";
-import { fillIndex, fillReadme, generate, hasMarkers, README } from "./readme.ts";
+import { fillIndex, fillList, fillReadme, generate, hasMarkers, README, YEARS_HEADING, yearLists } from "./readme.ts";
 import type { CheckId, Files, Finding, LintOptions, Snapshot } from "./types.ts";
 
 /** The series with a CSV and a roll-up schema today. A series id names its CSV and its evidence folder. */
@@ -156,8 +160,11 @@ function checkTarget(ctx: Ctx, from: string, what: string, target: string, rootR
  */
 const isFailedAttempts = (body: string) =>
   /^failed_attempts\s*:/.test(body.split("\n").find((l) => l.trim() !== "" && !l.trim().startsWith("#")) ?? "");
-const machineFences = (body: string) => fencedBlocks(body, ["yaml", "yml"]).filter((b) => !isFailedAttempts(b.body));
-const failedFences = (body: string) => fencedBlocks(body, ["yaml", "yml"]).filter((b) => isFailedAttempts(b.body));
+const yamlFences = memoText((body: string) =>
+  fencedBlocks(body, ["yaml", "yml"]).map((b) => ({ ...b, failed: isFailedAttempts(b.body) })),
+);
+const machineFences = (body: string) => yamlFences(body).filter((b) => !b.failed);
+const failedFences = (body: string) => yamlFences(body).filter((b) => b.failed);
 
 export type Machine = { ok: true; data: unknown; line: number; source: string } | { ok: false; error: string };
 
@@ -183,14 +190,18 @@ const machine = (body: string): Machine => machines(body).at(-1) as Machine;
 // ---------- L10 ----------
 
 function noBinaries(files: Files, emit: Emit): Texts {
+  const text = new Map<string, string>();
   for (const [p, b] of files) {
     if (b.length > MAX_BYTES) emit("L10", p, `is ${b.length} bytes, over the 1 MB limit (${MAX_BYTES} bytes)`);
-    if (b.includes(0)) emit("L10", p, "contains a NUL byte (binary)");
-    else if (decode(b) === null) emit("L10", p, "is not valid UTF-8 text (binary)");
-    else if (p !== CSV && decode(b)?.startsWith(BOM))
-      emit("L10", p, "starts with a UTF-8 byte-order mark (U+FEFF); save without a BOM");
+    const t = decode(b); // one scan and one decode per file; the Texts every later check reads
+    if (t === null) emit("L10", p, b.includes(0) ? "contains a NUL byte (binary)" : "is not valid UTF-8 text (binary)");
+    else {
+      text.set(p, t);
+      if (p !== CSV && t.startsWith(BOM))
+        emit("L10", p, "starts with a UTF-8 byte-order mark (U+FEFF); save without a BOM");
+    }
   }
-  return decodeAll(files);
+  return text;
 }
 
 // ---------- L1 ----------
@@ -257,7 +268,7 @@ const isExtract = isExtractPath;
 /** Where a committed extract may be renamed to and still be followed (L3/L4): an extract path. Elsewhere a delete. */
 const RENAME_TARGET = EXTRACT_FILE;
 
-const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
+const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && Buffer.compare(a, b) === 0;
 
 /**
  * Renames lint follows. An extract absent from the tree pairs with a new file (absent from the base) under
@@ -438,10 +449,16 @@ function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
 
 function linkIntegrity(ctx: Ctx, emit: Emit) {
   for (const [p, body] of md(ctx, {
-    test: (x: string) => x === README || x === QUARTER_LIST || QUARTER_FILE.test(x),
+    test: (x: string) => x === README || x === QUARTER_LIST || QUARTER_FILE.test(x) || folderReadmeOf(x) !== undefined,
   })) {
     for (const l of links(body)) checkTarget(ctx, p, `link (line ${l.line})`, l.target, false, emit);
     if (!QUARTER_FILE.test(p)) continue;
+    for (const line of absoluteUrls(body))
+      emit(
+        "L5",
+        p,
+        `line ${line}: reader text has an absolute http(s) URL; quarter files link only repo-relative paths (source and archive URLs live in the extracts)`,
+      );
     const m = machine(body);
     if (!m.ok || !isObj(m.data)) continue;
     const anchors = [
@@ -460,6 +477,21 @@ function linkIntegrity(ctx: Ctx, emit: Emit) {
     for (const a of anchors) if (nonEmpty(a)) checkTarget(ctx, p, "machine block anchor", a, true, emit);
   }
 }
+
+/**
+ * Lines of a quarter file's reader text with an absolute http(s) URL. Reader text is everything outside the yaml
+ * fences (the machine block and the failed_attempts log keep their URLs).
+ */
+const absoluteUrls = memoText((body: string): number[] => {
+  const out: number[] = [];
+  let yaml = false;
+  for (const l of lines(body)) {
+    if (l.fence === "open") yaml = l.info === "yaml" || l.info === "yml";
+    if (l.fence === "close") yaml = false;
+    if (!yaml && l.fence !== "close" && /https?:\/\//i.test(l.text)) out.push(l.line);
+  }
+  return out;
+});
 
 /** One `## YYYYQn` section per issuer-year file: a second one would anchor as #yyyyqn-1. */
 function quarterHeadings(ctx: Ctx, emit: Emit) {
@@ -511,6 +543,33 @@ const firstDiff = (a: string, b: string) => {
 };
 
 function generated(ctx: Ctx, emit: Emit) {
+  // Every basket issuer's folder with a year file has a README (the bank's facts and its year list); FX's is
+  // optional, and a folder outside the basket is L12's (misplaced) alone.
+  const basket = catalogBasket(ctx);
+  const issuers = new Set(
+    [...ctx.files.keys()].map((p) => extractOf(p)?.issuer).filter((i) => i !== undefined && basket.has(i)),
+  );
+  for (const iss of [...issuers].sort()) {
+    const want = folderReadmePath(iss as string);
+    if (!ctx.files.has(want))
+      emit(
+        "L13",
+        want,
+        `is missing: every issuer folder has a README.md with the bank's facts and a ${YEARS_HEADING} list (\`bun run readme\` fills the list)`,
+      );
+  }
+  for (const [p, list] of yearLists([...ctx.files.keys()].sort())) {
+    const body = ctx.text.get(p);
+    if (body === undefined) continue;
+    const want = fillList(body, YEARS_HEADING, list, "year list");
+    if (typeof want !== "string") emit("L13", p, want.problem);
+    else if (want !== body)
+      emit(
+        "L13",
+        p,
+        `year list differs from the year files in its folder at line ${firstDiff(body, want) + 1}; run \`bun run readme\``,
+      );
+  }
   const readme = ctx.text.get(README);
   if (!hasMarkers(readme) && !hasMarkers(ctx.base?.get(README))) return;
   const g = generate(ctx.text, [...ctx.files.keys()].sort());
@@ -1145,7 +1204,7 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
         );
     }
     const last = all.at(-1);
-    if (last?.ok && isObj(last.data)) for (const m of tableProblems(p, body, last.data)) e(m);
+    if (last?.ok && isObj(last.data)) for (const m of tableProblems(p, body, last.data, ctx.text)) e(m);
   }
 }
 
@@ -1166,8 +1225,9 @@ const isAttempted = (s: string) => {
   const m = /^(\d{4}-\d{2}-\d{2})(T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?Z)?$/.exec(s);
   return m !== null && isIsoDate(m[1] as string);
 };
-/** The failed_attempts list of a quarter file: absent (no block), a list, or an error. */
-function parseFailed(body: string): { list: unknown[] | null; line: number } | { error: string } {
+/** The failed_attempts list of a quarter file: absent (no block), a list, or an error. Memoized per text. */
+const parseFailed = memoText(parseFailedLog);
+function parseFailedLog(body: string): { list: readonly unknown[] | null; line: number } | { error: string } {
   const fs = failedFences(body);
   if (fs.length === 0) return { list: null, line: 0 };
   const f = fs[0] as { body: string; line: number };
@@ -1291,7 +1351,36 @@ const tableCells = (l: string) =>
  * local_value x fx_rate in whole dollars, and the **Total** row = total_usd. The table is the first one whose header
  * has Issuer, Local amount, FX rate and USD columns.
  */
-function tableProblems(p: string, body: string, d: Record<string, unknown>): string[] {
+const ADOPTED_LINE = /^\s*[-*]\s+Adopted:\s*yes\b/i;
+const CURRENCY_LINE = /^\s*[-*]\s+Currency:\s*(\S+)\s*$/;
+/**
+ * The adopted extracts ("- Adopted: yes") among the headings nested in the section that `frag` names (up to the next
+ * heading at its level or above): each one's slug and its "- Currency:" value, if any.
+ */
+function adoptedIn(md: string, frag: string): { slug: string; currency?: string }[] {
+  const hs = headings(md);
+  const ss = headingSlugs(md);
+  const ls = lines(md);
+  const i = ss.indexOf(frag);
+  if (i < 0) return [];
+  const level = (hs[i] as { level: number }).level;
+  const out: { slug: string; currency?: string }[] = [];
+  for (let j = i + 1; j < hs.length && (hs[j] as { level: number }).level > level; j++) {
+    const end = hs[j + 1]?.line ?? ls.length + 1;
+    let adopted = false;
+    let currency: string | undefined;
+    for (let k = (hs[j] as { line: number }).line; k < end - 1; k++) {
+      const l = ls[k];
+      if (l?.fence !== "none") continue;
+      if (ADOPTED_LINE.test(l.text)) adopted = true;
+      currency ??= CURRENCY_LINE.exec(l.text)?.[1];
+    }
+    if (adopted) out.push(currency === undefined ? { slug: ss[j] as string } : { slug: ss[j] as string, currency });
+  }
+  return out;
+}
+
+function tableProblems(p: string, body: string, d: Record<string, unknown>, text: Texts): string[] {
   const ls = lines(body);
   let head = -1;
   let col = { iss: -1, local: -1, fx: -1, usd: -1 };
@@ -1327,10 +1416,10 @@ function tableProblems(p: string, body: string, d: Record<string, unknown>): str
     }
     const link = links(raw)[0];
     const target = link ? resolveLink(p, link.target, false) : null;
-    const iss = target ? extractOf(target.path)?.issuer : undefined;
+    const iss = target ? folderReadmeOf(target.path)?.issuer : undefined;
     const c = iss === undefined ? undefined : comps.find((x) => x.issuer === iss);
     if (iss === undefined) {
-      errs.push(`${at}: the Issuer cell must link the issuer's extract (${ISSUER_TEXT})`);
+      errs.push(`${at}: the Issuer cell must link the issuer's README (${FOLDER_README_TEXT})`);
       continue;
     }
     if (!c) {
@@ -1362,6 +1451,39 @@ function tableProblems(p: string, body: string, d: Record<string, unknown>): str
     if (!fxOk)
       errs.push(`${at}: FX rate ${show(fxText)} differs from the machine block's fx_rate ${String(c.fx_rate)}`);
     const usd = cellText(cells[col.usd] ?? "");
+    const usdLink = links(cells[col.usd] ?? "")[0];
+    const anchor = typeof c.anchor === "string" ? resolveLink(p, c.anchor, true) : null;
+    if (anchor?.frag) {
+      const ok = adoptedIn(text.get(anchor.path) ?? "", anchor.frag).map((a) => a.slug);
+      const got = usdLink ? resolveLink(p, usdLink.target, false) : null;
+      if (!got || got.path !== anchor.path || got.frag === null || !ok.includes(got.frag))
+        errs.push(
+          `${at}: the USD cell must link ${iss}'s adopted extract ("- Adopted: yes") under its anchor ${String(c.anchor)}${
+            ok.length === 1
+              ? ` (${relLink(p, anchor.path)}#${ok[0]})`
+              : ok.length === 0
+                ? "; that section has none"
+                : ""
+          }${usdLink ? `, not ${show(usdLink.target)}` : ""}`,
+        );
+    }
+    const fxLink = links(cells[col.fx] ?? "")[0];
+    const q = anyQuarterOfPath(p);
+    if (c.local_currency === "USD") {
+      if (fxLink) errs.push(`${at}: a USD row's FX cell has no link (it links ${show(fxLink.target)})`);
+    } else if (q !== undefined) {
+      const fxFile = fxPath(q.slice(0, 4));
+      const ok = adoptedIn(text.get(fxFile) ?? "", q.toLowerCase())
+        .filter((a) => a.currency === c.local_currency)
+        .map((a) => a.slug);
+      const got = fxLink ? resolveLink(p, fxLink.target, false) : null;
+      if (!got || got.path !== fxFile || got.frag === null || !ok.includes(got.frag))
+        errs.push(
+          `${at}: the FX cell must link the adopted ${String(c.local_currency)} extract under ## ${q} in ${fxFile}${
+            ok.length === 1 ? ` (${relLink(p, fxFile)}#${ok[0]})` : ""
+          }${fxLink ? `, not ${show(fxLink.target)}` : ""}`,
+        );
+    }
     const v = parseDecimal(String(c.local_value));
     const want = v && rate ? `$${group(wholeUsd(v, rate).toString())}` : null;
     if (usd !== want) errs.push(`${at}: USD ${show(usd)} differs from local_value x fx_rate (${want ?? "unreadable"})`);
@@ -2028,12 +2150,12 @@ function placement(ctx: Ctx, emit: Emit) {
       );
     else if (p.startsWith(EVIDENCE_ROOT)) {
       if (p === QUARTER_LIST || QUARTER_FILE.test(p)) continue;
-      const iss = extractOf(p)?.issuer; // upper-case issuer ids; FX in its own folder
+      const iss = (extractOf(p) ?? folderReadmeOf(p))?.issuer; // upper-case issuer ids; FX in its own folder
       if (iss === undefined)
         emit(
           "L12",
           p,
-          `${EVIDENCE_ROOT} holds only the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id) and FX extracts ${FX_TEXT}`,
+          `${EVIDENCE_ROOT} holds only the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX extracts ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
         );
       else if (iss !== FX_ID && basket.size > 0 && !basket.has(iss))
         emit(

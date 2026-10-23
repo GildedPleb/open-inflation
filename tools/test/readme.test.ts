@@ -9,10 +9,13 @@ import {
   EVIDENCE_INDEX,
   end,
   fillIndex,
+  fillList,
   fillReadme,
   freshIndex,
   generate,
   type Quarter,
+  YEARS_HEADING,
+  yearLists,
   yoy,
 } from "../scripts/lib/readme.ts";
 import { REPO_ROOT } from "../scripts/lib/root.ts";
@@ -128,5 +131,34 @@ describe("L13 generated README and evidence index; L6 links (G3)", () => {
     );
     expect(fillIndex("# Q\n\n## Quarters\n", list)).toBe(`# Q\n\n## Quarters\n\n${list}\n`);
     expect(fillIndex("# Q\n", list)).toEqual({ problem: expect.stringContaining("## Quarters") });
+  });
+});
+
+describe("bun run readme: each issuer and FX folder README's ## Years list", () => {
+  test("one line per year file in that folder, newest first, relative links; folders without a README get none", () => {
+    const lists = yearLists([
+      "base_money/issuers/FED/2026.md",
+      "base_money/issuers/FED/2024.md",
+      "base_money/issuers/FED/README.md",
+      "base_money/issuers/ECB/2026.md",
+      "base_money/issuers/BOJ/README.md",
+      "base_money/FX/2026.md",
+      "base_money/FX/README.md",
+      "base_money/quarters/2026Q3.md",
+    ]);
+    expect([...lists]).toEqual([
+      ["base_money/issuers/FED/README.md", "- [2026](2026.md)\n- [2024](2024.md)"],
+      ["base_money/issuers/BOJ/README.md", "No years yet."],
+      ["base_money/FX/README.md", "- [2026](2026.md)"],
+    ]);
+  });
+  test("the list is filled in place under ## Years; the facts around it are kept", () => {
+    const readme = "# FED\n\nFacts.\n\n## Years\n\n- [2025](2025.md)\n\n## Notes\n\nMore.\n";
+    expect(fillList(readme, YEARS_HEADING, "- [2026](2026.md)", "year list")).toBe(
+      "# FED\n\nFacts.\n\n## Years\n\n- [2026](2026.md)\n\n## Notes\n\nMore.\n",
+    );
+    expect(fillList("# FED\n", YEARS_HEADING, "x", "year list")).toEqual({
+      problem: expect.stringContaining("## Years"),
+    });
   });
 });

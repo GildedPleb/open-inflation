@@ -3,7 +3,7 @@
 // them (scripts/readme.ts); lint (L13) fails when the committed files differ from what this would produce.
 import { machines } from "./checks.ts";
 import { type Decimal, ratioHalfEven, roundHalfEven } from "./decimal.ts";
-import { QUARTER_LIST, relLink } from "./paths.ts";
+import { extractOf, folderReadmeOf, QUARTER_LIST, relLink } from "./paths.ts";
 
 export const README = "README.md";
 export { QUARTER_LIST as EVIDENCE_INDEX } from "./paths.ts";
@@ -217,16 +217,41 @@ function quarterList(qs: readonly Quarter[]): string {
 }
 
 /** The quarter-list file with its list replaced; a problem string when the "## Quarters" heading is missing. */
-export function fillIndex(index: string, list: string): string | { problem: string } {
-  const h = index.indexOf(`\n${QUARTERS_HEADING}\n`);
-  if (h < 0) return { problem: `has no "${QUARTERS_HEADING}" heading (the generated quarter list goes under it)` };
-  const start = h + QUARTERS_HEADING.length + 2;
+export const fillIndex = (index: string, list: string) => fillList(index, QUARTERS_HEADING, list, "quarter list");
+
+/** `text` with the list under `heading` (up to the next blank line) replaced; a problem when the heading is missing. */
+export function fillList(index: string, heading: string, list: string, what: string): string | { problem: string } {
+  const h = index.indexOf(`\n${heading}\n`);
+  if (h < 0) return { problem: `has no "${heading}" heading (the generated ${what} goes under it)` };
+  const start = h + heading.length + 2;
   let i = start;
   while (index[i] === "\n") i++;
   // The list runs to the next blank line (or the end of the file).
   const stop = index.indexOf("\n\n", i);
   const rest = stop < 0 ? "" : index.slice(stop + 1);
   return `${index.slice(0, start)}\n${list}\n${rest}`;
+}
+
+export const YEARS_HEADING = "## Years";
+
+/**
+ * The "## Years" list of every issuer and FX folder README present in `paths`: one line per year file in that
+ * folder, newest first, linked relative to the README. Keyed by README path.
+ */
+export function yearLists(paths: readonly string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const p of paths) {
+    const r = folderReadmeOf(p);
+    if (!r) continue;
+    const years = paths
+      .map((x) => extractOf(x))
+      .filter((x) => x?.issuer === r.issuer)
+      .map((x) => x?.year as string)
+      .sort()
+      .reverse();
+    out.set(p, years.length ? years.map((y) => `- [${y}](${y}.md)`).join("\n") : "No years yet.");
+  }
+  return out;
 }
 
 /** A fresh quarter-list file around the quarter list (bun run readme writes it when the file is missing). */

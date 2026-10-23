@@ -40,6 +40,21 @@ const QUARTER_RE = new RegExp(`^${esc(QUARTERS_DIR)}/(\\d{4}Q[1-4])\\.md$`);
 const FX_RE = new RegExp(`^${esc(FX_DIR)}/(\\d{4})\\.md$`);
 const ISSUER_RE = new RegExp(`^${esc(ISSUERS_DIR)}/([A-Z][A-Z0-9]*)/(\\d{4})\\.md$`);
 
+const FOLDER_README_RE = new RegExp(`^(?:${esc(ISSUERS_DIR)}/([A-Z][A-Z0-9]*)|${esc(FX_DIR)})/README\\.md$`);
+
+/**
+ * An issuer folder's README (base_money/issuers/<ISS>/README.md) or the FX folder's (base_money/FX/README.md): the
+ * folder's static facts, hand-written, plus its "## Years" list, generated (L13). Its issuer; else undefined.
+ */
+export function folderReadmeOf(p: string): { issuer: string } | undefined {
+  const m = FOLDER_README_RE.exec(p);
+  if (!m || m[1] === FX_ID) return undefined;
+  return { issuer: m[1] ?? FX_ID };
+}
+export const folderReadmePath = (issuer: string) =>
+  issuer === FX_ID ? `${FX_DIR}/README.md` : `${ISSUERS_DIR}/${issuer}/README.md`;
+export const FOLDER_README_TEXT = `${ISSUERS_DIR}/<ISS>/README.md`;
+
 export const quarterPath = (q: string) => `${QUARTERS_DIR}/${q}.md`;
 export const extractPath = (issuer: string, year: string) =>
   issuer === FX_ID ? `${FX_DIR}/${year}.md` : `${ISSUERS_DIR}/${issuer}/${year}.md`;
@@ -66,6 +81,7 @@ export const isExtractPath = (p: string) =>
   EXTRACT_ROOTS.some((r) => p.startsWith(r)) &&
   p !== QUARTER_LIST &&
   !LEGACY_LISTS.includes(p) &&
+  !p.endsWith("/README.md") && // folder READMEs (static facts plus a generated year list) are not extracts
   anyQuarterOfPath(p) === undefined;
 
 /** A markdown link from file `from` to repo path `to`. */

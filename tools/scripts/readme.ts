@@ -1,11 +1,21 @@
-// bun run readme: rewrite README.md's generated blocks and evidence/README.md's quarter list from base_money.csv, the roll-ups
+// bun run readme: rewrite README.md's generated blocks, the quarter list and each issuer/FX folder README's "## Years" list from base_money.csv, the roll-ups
 // and catalog.json (lib/readme.ts). Lint (L13) fails when either file differs from what this writes.
 // Exit 0 written, 2 when an input cannot be read or a README marker is missing.
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { exitOnCrash } from "./lib/exit.ts";
 import { EVIDENCE_ROOT } from "./lib/paths.ts";
-import { EVIDENCE_INDEX, fillIndex, fillReadme, freshIndex, generate, README } from "./lib/readme.ts";
+import {
+  EVIDENCE_INDEX,
+  fillIndex,
+  fillList,
+  fillReadme,
+  freshIndex,
+  generate,
+  README,
+  YEARS_HEADING,
+  yearLists,
+} from "./lib/readme.ts";
 import { REPO_ROOT } from "./lib/root.ts";
 
 exitOnCrash("readme");
@@ -39,6 +49,16 @@ if (typeof index !== "string") {
   console.error(`readme: ${EVIDENCE_INDEX} ${index.problem}`);
   process.exit(2);
 }
+const years = new Map<string, string>();
+for (const [p, list] of yearLists(paths)) {
+  const y = fillList(text.get(p) ?? "", YEARS_HEADING, list, "year list");
+  if (typeof y !== "string") {
+    console.error(`readme: ${p} ${y.problem}`);
+    process.exit(2);
+  }
+  years.set(p, y);
+}
 writeFileSync(join(REPO_ROOT, README), filled);
 writeFileSync(indexPath, index);
-console.log(`readme: wrote ${README} and ${EVIDENCE_INDEX}`);
+for (const [p, y] of years) writeFileSync(join(REPO_ROOT, p), y);
+console.log(`readme: wrote ${README}, ${EVIDENCE_INDEX} and ${years.size} folder year list(s)`);
