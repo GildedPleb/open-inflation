@@ -85,8 +85,8 @@ export interface VerifyOptions {
   readonly progress?: (line: string) => void;
   /**
    * The archive.today and Ghostarchive summaries, when any new URL of that archive got a verified or no-verdict
-   * answer: `archive.today: N verified, M unverified (R rate-limited, B blocked[, U unconfirmed])`, M = R + B + U (U
-   * shown only when not 0), then each unverified URL on its own line, sorted (the CLI writes them to stdout, unprefixed).
+   * answer: `archive.today: N verified, M unverified (R rate-limited, B blocked[, U unconfirmed][, O offline])`, M = R + B +
+   * U + O (U and O shown only when not 0), then each unverified URL on its own line, sorted (the CLI writes them to stdout, unprefixed).
    */
   readonly summary?: (line: string) => void;
   /**
@@ -99,10 +99,17 @@ export interface VerifyOptions {
   /**
    * Each URL left with no verdict, and why: still rate-limited at the cap, blocked by a challenge/CAPTCHA, or
    * unconfirmed: the capture itself was not seen (web.archive.org unreachable and archive.org availability did not
-   * list the exact capture under any query form, or a Ghostarchive 200 that is neither a capture nor its error page).
+   * list the exact capture under any query form, or a Ghostarchive 200 that is neither a capture nor its error page),
+   * or offline: archive.today or Ghostarchive gave no answer while no canary host answered (see `online`).
    */
   readonly noVerdict?: (url: string, why: NoVerdict) => void;
+  /**
+   * N-d: is the network up? Asked (at most once a minute) after archive.today or Ghostarchive gives no answer at all;
+   * false makes that URL no verdict ("offline") instead of a finding. The CLI passes canaryOnline (lib/archive.ts);
+   * without it a network error stays a finding.
+   */
+  readonly online?: () => Promise<boolean>;
 }
 
 /** Why verify left an archive URL with no verdict. */
-export type NoVerdict = "rate-limited" | "blocked" | "unconfirmed";
+export type NoVerdict = "rate-limited" | "blocked" | "unconfirmed" | "offline";

@@ -1,6 +1,6 @@
 // L8's link check, run locally by `bun run verify`: HEAD each archive URL added since the base, once.
 // Never part of lint or CI: those make no network call. The only I/O is the injected Net.
-import { AVAILABILITY_FORMS, MAX_HOPS, pacedNet } from "./archive.ts";
+import { AVAILABILITY_FORMS, MAX_HOPS, networkCheck, pacedNet } from "./archive.ts";
 import { type ArchiveRef, archiveRefs, blockKey, decodeAll } from "./checks.ts";
 import { duration, hostKey, realClock } from "./pacer.ts";
 import type { CheckId, Finding, HeadResult, Net, NoVerdict, Snapshot, VerifyOptions } from "./types.ts";
@@ -20,6 +20,8 @@ type Verdict = {
    * (web.archive.org unreachable and archive.org availability did not list the exact capture).
    */
   readonly why?: NoVerdict;
+  /** The archive did not answer at all (a network error): no verdict when no canary host answers either (N-d). */
+  readonly network?: string;
 };
 type HttpResult = Extract<HeadResult, { kind: "http" }>;
 const gaveUp = (r: HttpResult) =>
@@ -127,12 +129,14 @@ async function todayVerdict(net: Net, url: string): Promise<Verdict> {
       dead: false,
       message: `could not be checked: network error: archive.today: ${r.message} (no verdict on the capture; retry online)`,
     },
+    network: r.message,
   };
 }
 
 /**
- * Ghostarchive statuses that are a block, not a verdict: its Cloudflare challenge answers a script with 403 or 503,
- * and its rate limit with 429 (Assay: the same as archive.today). Logged as unverified (the researcher opens the
+ * Ghostarchive statuses that are no verdict: its Cloudflare challenge answers a script with 403, its rate limit with
+ * 429 (Assay: the same as archive.today); a 503 is retried by pacing as a rate limit and, still there at the cap,
+ * is rate-limited (F-2), blocked only when a challenge was detected or it was not retried (no pacer, one try). Logged as unverified (the researcher opens the
  * capture in a browser); not a failure.
  */
 const GHOST_BLOCKED = [403, RATE_LIMITED, 503];
@@ -165,13 +169,13 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
         dead: false,
         message:
           r.reason === "loop"
-            ? `HEAD redirected more than ${MAX_HOPS} times on Ghostarchive (last to ${r.location})`
-            : `HEAD redirected (HTTP ${r.status}) off Ghostarchive to ${r.location}`,
+            ? `GET redirected more than ${MAX_HOPS} times on Ghostarchive (last to ${r.location})`
+            : `GET redirected (HTTP ${r.status}) off Ghostarchive to ${r.location}`,
       },
     };
   if (r.kind === "http") {
     if (GHOST_BLOCKED.includes(r.status)) {
-      // A 503 is its Cloudflare challenge unless pacing retried it to the cap (then it was a rate limit).
+      // A 503 retried to the cap is a rate limit; a challenge, or a 503 that was not retried (no pacer), is blocked.
       const limit = r.status === RATE_LIMITED || r.gaveUp !== undefined;
       return {
         problem: null,
@@ -183,7 +187,8 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
       problem: {
         dead: DEAD.includes(r.status),
         status: r.status,
-        message: `failed HEAD: Ghostarchive answered HTTP ${r.status}`,
+        // N-b: a Ghostarchive capture is read with a bounded GET (httpHead), not a HEAD.
+        message: `failed GET: Ghostarchive answered HTTP ${r.status}`,
       },
     };
   }
@@ -192,6 +197,7 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
       dead: false,
       message: `could not be checked: network error: Ghostarchive: ${r.message} (no verdict on the capture; retry online)`,
     },
+    network: r.message,
   };
 }
 
@@ -207,7 +213,11 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
   const net = opts.pacer ? pacedNet(opts.net, opts.pacer, opts.clock ?? realClock) : opts.net;
   const now = archiveRefs(decodeAll(snap.files), opts.now);
   const was = archiveRefs(snap.base && decodeAll(snap.base));
-  const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
+  // N-c (Probe): a Re-archive note's URL is in `urls` like any archive URL, so a note naming a capture committed
+  // elsewhere (another extract's Archive URL) was skipped as "not new". Every note URL added in this diff is checked.
+  const notedNow = new Set<string>();
+  for (const [k, set] of now.notes) for (const u of set) if (!was.notes.get(k)?.has(u)) notedNow.add(u);
+  const todo = [...now.urls].filter(([url]) => !was.urls.has(url) || notedNow.has(url));
   const results: Problem[] = [];
   // m-B: a `- Re-archive: <new archive URL>` line added to the same extract in this diff names the new capture, so it
   // excuses a dead archive URL of that extract (methodology: "names the new archive URL"), never the note's own URL.
@@ -222,6 +232,17 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
     const hosts = e.hosts.map((h) => `${h.key} ${h.urls} x ${duration(h.intervalMs)}`).join(", ");
     progress?.(`L8 pacing: about ${duration(e.ms)} before any retry (hosts in parallel: ${hosts})`);
   }
+  // N-d: archive.today or Ghostarchive not answering at all is a finding only while the network is up (a canary host
+  // answers, as audit's m-G); with no canary answering it is no verdict, "offline", and the run is incomplete.
+  const up = opts.online && networkCheck(opts.online, () => (opts.clock ?? realClock).now());
+  const offline = async (url: string, v: Verdict): Promise<Verdict> =>
+    v.network !== undefined && up && !(await up())
+      ? {
+          problem: null,
+          limited: `${hostOf(url)} unreachable (${v.network}) and no canary host answered; no verdict`,
+          why: "offline",
+        }
+      : v;
   let next = 0;
   let done = 0;
   const verified: string[] = [];
@@ -231,7 +252,7 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
   const check = async (i: number) => {
     {
       const [url, ref] = todo[i] as [string, ArchiveRef];
-      const v = await snapshotVerdict(net, url, ref);
+      const v = await offline(url, await snapshotVerdict(net, url, ref));
       results[i] = v.problem;
       const why = v.why ?? "rate-limited";
       if (ref.host === "today" && !v.problem) v.limited ? unverified.push([url, why]) : verified.push(url);
@@ -241,8 +262,8 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
       const word = v.limited
         ? v.why === "blocked"
           ? `blocked (challenge/CAPTCHA; ${v.limited})`
-          : v.why === "unconfirmed"
-            ? `unconfirmed (${v.limited})`
+          : v.why === "unconfirmed" || v.why === "offline"
+            ? `${v.why} (${v.limited})`
             : `rate-limited (${v.limited})`
         : !p
           ? `ok (${v.ok})`
@@ -271,7 +292,9 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
   const tally = (name: string, ok: string[], open: [string, NoVerdict][]) => {
     if (ok.length + open.length === 0) return;
     const n = (w: NoVerdict) => open.filter(([, x]) => x === w).length;
-    const u = n("unconfirmed") > 0 ? `, ${n("unconfirmed")} unconfirmed` : "";
+    const u =
+      (n("unconfirmed") > 0 ? `, ${n("unconfirmed")} unconfirmed` : "") +
+      (n("offline") > 0 ? `, ${n("offline")} offline` : "");
     summary?.(
       `${name}: ${ok.length} verified, ${open.length} unverified (${n("rate-limited")} rate-limited, ${n("blocked")} blocked${u})`,
     );

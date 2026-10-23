@@ -7,17 +7,18 @@
 //   changed     resolves, but its sha256 differs from the last saved copy, or it redirects to a different final
 //               URL than last time
 //   lost        404, 410, or the host name does not exist (DNS ENOTFOUND) while a canary host still answers
-//   no verdict  403, 429 or blocked (on every host, Ghostarchive included), and 503 on Ghostarchive (its Cloudflare
-//               challenge); a Ghostarchive 200 that is its "Archiving error" page or any other page without the
-//               capture (loading, in progress), which is not saved; also any other status, a
-//               timeout, a reset, a redirect loop, any other DNS error, or no network at all (no canary answers):
-//               retried next audit
+//   no verdict  rate-limited (429, or a 429/503 still there when pacing gave up), blocked (a challenge/CAPTCHA
+//               page or header, or a 403; a Ghostarchive 503 without one is retried as a rate limit), a Ghostarchive
+//               200 that is its "Archiving error" page or any other page without the capture (loading, in
+//               progress), which is not saved; also any other HTTP status, a timeout, a reset, a redirect loop, any
+//               other DNS error, or no network at all (no canary answers). Each row names its HTTP status or error
+//               code (AuditNoVerdict says which kind); retried next audit, and the run is INCOMPLETE (exit 3)
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { bounded, ghostPage, PAGE_READ_BYTES } from "./archive.ts";
+import { bounded, canaryOnline, ghostPage, networkCheck, PAGE_READ_BYTES } from "./archive.ts";
 import { extractLinks } from "./checks.ts";
 import {
   CHALLENGE_BODY,
@@ -70,6 +71,8 @@ export interface AuditLink extends Link, Probe {
   readonly fetched: string;
   readonly status: LinkClass;
   readonly detail: string;
+  /** Why it has no verdict (null for ok, changed and lost): the INCOMPLETE line counts these. */
+  readonly noVerdict: AuditNoVerdict | null;
   readonly previous: { readonly date: string; readonly sha256: string; readonly finalUrl: string } | null;
   readonly saved: string | null;
 }
@@ -105,29 +108,10 @@ export function rawUrl(url: string): string {
  * lost; any DNS error but ENOTFOUND is now no verdict, and ENOTFOUND is lost only while a canary host answers.
  */
 const NXDOMAIN = /ENOTFOUND/;
-/** Known-good hosts: when none answers, the network (or our resolver) is down and no link is lost. Any HTTP answer counts. */
-export const CANARIES = ["https://www.gstatic.com/generate_204", "https://one.one.one.one/"] as const;
-/** How long one canary check is reused before a later ENOTFOUND checks again. */
-const CANARY_TTL_MS = 60_000;
 
-/** True when at least one canary gives any HTTP answer (one GET each, in order, until one answers). */
-export async function canaryOnline(
-  fetchImpl: typeof fetch,
-  timeoutMs: number,
-  urls: readonly string[] = CANARIES,
-): Promise<boolean> {
-  for (const u of urls) {
-    const r = await bounded(timeoutMs, async (signal) => {
-      const res = await fetchImpl(u, { method: "GET", redirect: "manual", signal });
-      await res.body?.cancel();
-      return res.status;
-    });
-    if (typeof r === "number") return true;
-  }
-  return false;
-}
+export { CANARIES, canaryOnline } from "./archive.ts";
+
 const LOST = [404, 410];
-const BLOCKED = [403, 429];
 /** Ghostarchive's Cloudflare challenge answers a script with 403 or 503: a block, not a verdict on the capture. */
 const GHOST = /^https:\/\/ghostarchive\.org\//;
 const GHOST_BLOCKED = [403, 503];
@@ -135,7 +119,30 @@ const GHOST_BLOCKED = [403, 503];
 const BLOCK_STATUSES = [403, 429, 503];
 const CHALLENGE_READ = 512 * 1024;
 
-/** The class of one probe of `url` against the last saved copy (null on a first run). */
+/**
+ * Why a link has no verdict, so the INCOMPLETE line counts from the row itself (F-1, Probe: it matched detail
+ * substrings, and two of the three "blocked" wordings were not counted). rate-limited: 429, or pacing gave up at the
+ * cap; blocked: a challenge/CAPTCHA page or header, a 403, or a Ghostarchive 503 that was not retried
+ * to the cap (no pacer; with one, a 503 is retried and ends rate-limited); unconfirmed: a Ghostarchive 200 with no capture on it (loading, in progress, unrecognised);
+ * error page: Ghostarchive's "Archiving error" page; offline: a network error while no canary host answers; other:
+ * any other HTTP status or network error (timeout, reset, redirect loop, a DNS error but ENOTFOUND, an oversized body).
+ */
+export type AuditNoVerdict = "rate-limited" | "blocked" | "unconfirmed" | "error page" | "offline" | "other";
+export const NO_VERDICTS: readonly AuditNoVerdict[] = [
+  "rate-limited",
+  "blocked",
+  "unconfirmed",
+  "error page",
+  "offline",
+  "other",
+];
+type Classed = { status: LinkClass; detail: string; noVerdict?: AuditNoVerdict };
+const none = (noVerdict: AuditNoVerdict, detail: string): Classed => ({ status: "no verdict", detail, noVerdict });
+
+/**
+ * The class of one probe of `url` against the last saved copy (null on a first run). Every no-verdict detail starts
+ * with its HTTP status ("HTTP 403 ...") or, with no answer, the error code (errorText: "ETIMEDOUT: ...").
+ */
 export function classify(
   p: Probe,
   prior: { readonly sha256: string; readonly finalUrl: string } | null,
@@ -148,43 +155,61 @@ export function classify(
     /** R5-n1: what a Ghostarchive 200 holds (ghostPage); only "capture" is a capture. */
     readonly page?: GhostPage;
   } = {},
-): { status: LinkClass; detail: string } {
-  if (p.httpStatus === null) {
+): Classed {
+  const s = p.httpStatus;
+  if (s === null) {
     const e = p.error ?? "no response";
-    if (paced.offline) return { status: "no verdict", detail: `${e} (network unreachable: no canary host answered)` };
-    return NXDOMAIN.test(e) ? { status: "lost", detail: `DNS failure (${e})` } : { status: "no verdict", detail: e };
+    if (paced.offline) return none("offline", `${e} (network unreachable: no canary host answered)`);
+    return NXDOMAIN.test(e) ? { status: "lost", detail: `DNS failure (${e})` } : none("other", e);
   }
-  if (LOST.includes(p.httpStatus)) return { status: "lost", detail: `HTTP ${p.httpStatus}` };
+  if (LOST.includes(s)) return { status: "lost", detail: `HTTP ${s}` };
   // Pacing's two ways to end with no verdict: a challenge/CAPTCHA page, or still rate-limited at the cap.
-  if (paced.challenge) return { status: "no verdict", detail: `HTTP ${p.httpStatus} (blocked: challenge/CAPTCHA)` };
+  if (paced.challenge) return none("blocked", `HTTP ${s} (blocked: challenge/CAPTCHA)`);
   if (paced.gaveUp)
-    return {
-      status: "no verdict",
-      detail: `HTTP ${p.httpStatus} (rate-limited: gave up after ${paced.gaveUp.tries} tries over ${duration(paced.gaveUp.elapsedMs)})`,
-    };
-  if (GHOST.test(url) && GHOST_BLOCKED.includes(p.httpStatus))
-    return { status: "no verdict", detail: `HTTP ${p.httpStatus} (blocked: Ghostarchive Cloudflare challenge)` };
-  if (BLOCKED.includes(p.httpStatus))
-    return { status: "no verdict", detail: `HTTP ${p.httpStatus} (blocked or rate-limited)` };
-  if (p.httpStatus < 200 || p.httpStatus > 299 || p.sha256 === null || p.finalUrl === null)
-    return { status: "no verdict", detail: p.error ?? `HTTP ${p.httpStatus}` };
+    return none(
+      "rate-limited",
+      `HTTP ${s} (rate-limited: gave up after ${paced.gaveUp.tries} tries over ${duration(paced.gaveUp.elapsedMs)})`,
+    );
+  if (GHOST.test(url) && GHOST_BLOCKED.includes(s))
+    return none("blocked", `HTTP ${s} (blocked: Ghostarchive Cloudflare challenge)`);
+  if (s === 403) return none("blocked", `HTTP 403 (blocked)`);
+  if (s === 429) return none("rate-limited", `HTTP 429 (rate-limited)`);
+  if (s < 200 || s > 299 || p.sha256 === null || p.finalUrl === null)
+    return none("other", `HTTP ${s}${p.error ? `, ${p.error}` : ""}`);
   // R5-n1: not lost (only ENOTFOUND, 404 or 410 are, Assay): a failed or unfinished Ghostarchive capture is no
   // verdict, for the researcher to open; its page is not saved as a copy.
   if (paced.page === "error")
-    return { status: "no verdict", detail: `HTTP ${p.httpStatus}, Ghostarchive "Archiving error" page, not a capture` };
+    return none("error page", `HTTP ${s}, Ghostarchive "Archiving error" page, not a capture`);
   if (paced.page === "other")
-    return {
-      status: "no verdict",
-      detail: `HTTP ${p.httpStatus}, no capture on the Ghostarchive page (loading, in progress or unrecognised)`,
-    };
-  if (!prior) return { status: "ok", detail: `HTTP ${p.httpStatus}, first saved copy` };
+    return none("unconfirmed", `HTTP ${s}, no capture on the Ghostarchive page (loading, in progress or unrecognised)`);
+  if (!prior) return { status: "ok", detail: `HTTP ${s}, first saved copy` };
   const why: string[] = [];
   if (p.finalUrl !== prior.finalUrl) why.push(`final URL ${p.finalUrl}, was ${prior.finalUrl}`);
   if (p.sha256 !== prior.sha256) why.push(`content hash differs from the last saved copy`);
   return why.length > 0
-    ? { status: "changed", detail: `HTTP ${p.httpStatus}, ${why.join("; ")}` }
-    : { status: "ok", detail: `HTTP ${p.httpStatus}, same content as the last saved copy` };
+    ? { status: "changed", detail: `HTTP ${s}, ${why.join("; ")}` }
+    : { status: "ok", detail: `HTTP ${s}, same content as the last saved copy` };
 }
+
+/**
+ * The run's INCOMPLETE line, or null when every link got a verdict. Its total is the no-verdict count and each
+ * part counts the rows of one AuditNoVerdict, so the line always matches the rows (F-1).
+ */
+export function incompleteLine(r: Report): string | null {
+  const open = r.links.filter((l) => l.status === "no verdict");
+  if (open.length === 0) return null;
+  const n = (w: AuditNoVerdict) => open.filter((l) => l.noVerdict === w).length;
+  return (
+    `audit: INCOMPLETE: ${open.length} of ${r.links.length} links have no verdict: ` +
+    `${n("rate-limited")} rate-limited (gave up or 429), ${n("blocked")} blocked (challenge/CAPTCHA or 403), ` +
+    `${n("unconfirmed")} unconfirmed (no capture on the Ghostarchive page), ${n("error page")} Ghostarchive "Archiving error" page, ` +
+    `${n("offline")} offline (no canary host answered), ${n("other")} other (any other HTTP status or network error); ` +
+    "open them in a browser or re-run later or from another network"
+  );
+}
+
+/** audit's exit: 3 when any link has no verdict (incomplete: every link must get one), else 0. */
+export const auditExit = (r: Report): number => (r.counts["no verdict"] > 0 ? 3 : 0);
 
 /** GET with redirects followed by hand (to record the final URL), a timeout and the User-Agent. */
 async function probe(
@@ -212,7 +237,12 @@ async function probe(
         await res.body?.cancel();
         if (hop >= MAX_REDIRECTS)
           return {
-            probe: { httpStatus: null, finalUrl: null, sha256: null, error: `more than ${MAX_REDIRECTS} redirects` },
+            probe: {
+              httpStatus: res.status,
+              finalUrl: at,
+              sha256: null,
+              error: `more than ${MAX_REDIRECTS} redirects`,
+            },
             body: null,
             contentType: null,
           };
@@ -362,11 +392,7 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
   const clock = o.clock ?? realClock;
   let done = 0;
   const online = o.online ?? (() => canaryOnline(o.fetch, o.timeoutMs));
-  let canary: { at: number; up: Promise<boolean> } | null = null;
-  const networkUp = () => {
-    if (!canary || clock.now() - canary.at >= CANARY_TTL_MS) canary = { at: clock.now(), up: online() };
-    return canary.up;
-  };
+  const networkUp = networkCheck(online, () => clock.now());
   const check = async (i: number) => {
     const link = links[i] as Link;
     const fetched = rawUrl(link.url);
@@ -393,7 +419,7 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
     const offline = p.httpStatus === null && NXDOMAIN.test(p.error ?? "") && !(await networkUp());
     const page =
       body && GHOST.test(link.url) ? ghostPage(new TextDecoder().decode(body.subarray(0, PAGE_READ_BYTES))) : null;
-    const { status, detail } = classify(p, prior, link.url, {
+    const { status, detail, noVerdict } = classify(p, prior, link.url, {
       ...(r.challenge ? { challenge: true } : {}),
       ...(gaveUp ? { gaveUp } : {}),
       ...(offline ? { offline } : {}),
@@ -415,7 +441,7 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
     }
     manifest[link.url] = history.sort((a, b) => a.date.localeCompare(b.date));
     if (manifest[link.url]?.length === 0) delete manifest[link.url];
-    out[i] = { ...link, fetched, ...p, status, detail, previous: prior, saved };
+    out[i] = { ...link, fetched, ...p, status, detail, noVerdict: noVerdict ?? null, previous: prior, saved };
     o.progress?.(`audit [${++done}/${links.length}] ${status} (${detail}) ${link.url}`);
   };
   if (o.pacer) {
@@ -466,8 +492,12 @@ export function renderMarkdown(r: Report): string {
     "",
     "Classes: ok (resolves, same content as the last saved copy; on a first run any resolving URL is ok), changed",
     "(resolves, but its sha256 differs from the last saved copy, or it redirects to a different final URL than last",
-    "time), lost (404, 410, or host not found while a canary host answers), no verdict (403, 429, blocked;",
-    'Ghostarchive also 503, and a 200 with no capture (its "Archiving error" page, or loading); any other DNS error; no network, when no canary answers; retried at the next audit). The script does not judge content: open each changed link and record whether it still shows the',
+    "time), lost (404, 410, or host not found while a canary host answers), no verdict (rate-limited: 429, or a 429",
+    "or 503 still there when pacing gave up; blocked: a challenge/CAPTCHA page or header, or a 403; a Ghostarchive 200",
+    'with no capture (its "Archiving error" page, or loading); any other HTTP status; a timeout, reset, redirect loop or',
+    "any other DNS error; no network, when no canary answers. Each carries its HTTP status or error code, is retried at",
+    "the next audit, and makes the run INCOMPLETE). The script does not judge content: open each changed link and",
+    "record whether it still shows the",
     "figure used.",
     "",
     "Wayback captures are fetched raw (the `id_` modifier) for hashing. Originals are hashed as served: a dynamic",

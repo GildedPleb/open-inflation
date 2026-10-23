@@ -2,11 +2,15 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { CANARIES } from "../scripts/lib/archive.ts";
+import { type AuditIo, auditMain } from "../scripts/lib/audit-main.ts";
 import { lint } from "../scripts/lib/checks.ts";
 import { loadSnapshot, NotGitCheckout } from "../scripts/lib/git.ts";
 import { type LintGit, lintMain } from "../scripts/lib/lint-main.ts";
+import { DEFAULT_PACE, envName } from "../scripts/lib/pacer.ts";
 import type { Snapshot } from "../scripts/lib/types.ts";
-import { extract, fxExtract, goodText, issuerFile } from "./fixture.ts";
+import { type VerifyIo, verifyMain } from "../scripts/lib/verify-main.ts";
+import { extract, files, fxExtract, GHOST_CAPTURE_PAGE, goodText, issuerFile, virtualClock } from "./fixture.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 const dec = new TextDecoder();
@@ -190,6 +194,26 @@ describe("repository identity", () => {
     expect(readme).toMatch(/^\| L8 +\|.*no network calls.*`bun run verify`/m);
     expect(readme).not.toContain("OBM_NO_NETWORK");
   });
+  test("docs: pace env names, audit exit 3, Ghostarchive 503, who opens unverified captures (N-a, 2a, F-2, m-F)", async () => {
+    const read = (p: string) => Bun.file(join(ROOT, p)).text();
+    const docs = await Promise.all(["README.md", "AGENTS.md", "methodology/base_money.md"].map(read));
+    for (const doc of docs) {
+      // N-a: every default pace key's real variable, and the mapping rule's name, not an invented one.
+      for (const key of Object.keys(DEFAULT_PACE.intervals)) expect(doc).toContain(`\`${envName(key)}\``);
+      expect(doc).toContain("`OBM_RATE_<KEY>_MS`");
+      expect(doc).not.toContain("OBM_RATE_<HOST>_MS");
+      // 2a: audit exits 3 when any link has no verdict; no doc still says it exits 0 regardless.
+      expect(doc).toMatch(/audit[^.]*\b3\b[^.]*no verdict|`3` \(incomplete\) when any link has no verdict/);
+      expect(doc).not.toMatch(/still exits 0|whenever it ran, whatever it found/);
+      // F-2: a Ghostarchive 503 is retried as a rate limit, not called its Cloudflare challenge.
+      expect(doc).not.toMatch(/503,? \(?its Cloudflare challenge|Ghostarchive also 503/);
+      expect(doc).toContain("any other HTTP status");
+    }
+    const [readme] = docs;
+    expect(readme).toMatch(/^\| L8 +\|.*for the researcher to open by hand while archiving \(not in PR review\)/m);
+    expect(readme).not.toContain("reviewer to open");
+    expect(readme).toMatch(/audit uses 0, 2 and 3/);
+  });
   test("LICENSE files are text that lint accepts (L10)", async () => {
     const fs = await skeletonFindings();
     expect(fs.filter((f) => f.file.startsWith("LICENSE"))).toEqual([]);
@@ -310,6 +334,8 @@ describe("CLI", () => {
   };
   const smokeLint = spawned("lint.ts", smokeRepo(), "--base", "HEAD~1");
   const smokeStubs = Promise.all([spawned("update.ts", ROOT), spawned("backfill.ts", ROOT)]);
+  // verify and audit end to end on bad usage only (exit 2 before any request): the in-process tests cover the rest.
+  const smokeWrappers = Promise.all([spawned("verify.ts", ROOT, "--nope"), spawned("audit.ts", ROOT, "extra")]);
 
   test("lint: 0 on clean, 1 with findings, 2 on bad usage", async () => {
     // #18: lint makes no network call, ever. With no base every archive URL is new, and a new Wayback, archive.today
@@ -358,27 +384,96 @@ describe("CLI", () => {
     const onMain = await cli(dir, [], { env: { ...env, GITHUB_REF: "refs/heads/main" } });
     expect(onMain.out).toContain(`lint: base ${before} (LINT_BASE)\n`);
   });
-  // Assay (#19): every exit code is pinned. verify and audit exit 2 on usage before any request (verify's 0/1/3 is
-  // verifyExit; audit's 0 is the audit tests); an uncaught error exits 2, not Bun's 1 (exitOnCrash, units).
-  test("verify and audit: 2 on bad usage", async () => {
-    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
-    const usage = (script: string, ...args: string[]) => {
-      const p = Bun.spawn(
-        ["bun", "--preload", join(ROOT, "test", "no-network.ts"), join(ROOT, "scripts", script), ...args],
-        {
-          cwd: dir,
-          env: childEnv(),
-          stdout: "pipe",
-          stderr: "pipe",
-        },
-      );
-      return Promise.all([p.exited, new Response(p.stderr).text()]);
+  // Assay (#19): every exit code is pinned, in-process (verifyMain and auditMain; no bun start per case). verify and
+  // audit exit 2 on usage before any request; an uncaught error exits 2, not Bun's 1 (exitOnCrash, units). The
+  // wrappers only install that handler and exit with the main's code.
+  test("verify and audit: 2 on bad usage; the wrappers exit with the main's code", async () => {
+    const usage = async (main: (io: VerifyIo & AuditIo) => Promise<number>, argv: string[]) => {
+      const err: string[] = [];
+      const fetch = (async () => {
+        throw new Error("no request before usage");
+      }) as unknown as typeof globalThis.fetch;
+      const code = await main({ argv, env: {}, cwd: ROOT, out: () => {}, err: (l) => err.push(l), fetch });
+      return [code, err];
     };
-    const [v, a] = await Promise.all([usage("verify.ts", "--nope"), usage("audit.ts", "extra")]);
-    expect(v).toEqual([2, "usage: bun run verify [--base <ref>]\n"]);
-    expect(a).toEqual([2, "usage: bun run audit   (store: $OBM_ARCHIVE_DIR, else ~/open-inflation-archive/)\n"]);
-    for (const name of ["lint", "verify", "audit"])
-      expect(readFileSync(join(ROOT, "scripts", `${name}.ts`), "utf8")).toContain(`\nexitOnCrash("${name}");\n`);
+    expect(await usage(verifyMain, ["--nope"])).toEqual([2, ["usage: bun run verify [--base <ref>]"]]);
+    expect(await usage(verifyMain, ["--base"])).toEqual([2, ["usage: bun run verify [--base <ref>]"]]);
+    expect(await usage(auditMain, ["extra"])).toEqual([
+      2,
+      ["usage: bun run audit   (store: $OBM_ARCHIVE_DIR, else ~/open-inflation-archive/)"],
+    ]);
+    for (const name of ["lint", "verify", "audit"]) {
+      const src = readFileSync(join(ROOT, "scripts", `${name}.ts`), "utf8");
+      expect(src).toContain(`\nexitOnCrash("${name}");\n`);
+      expect(src).toMatch(new RegExp(`process\\.exit\\(\\s*await ${name}Main\\(`));
+    }
+  });
+  // N-d, through the CLI: verifyMain with a fake fetch and the default canary check over it.
+  describe("verify in-process (fake network, virtual clock)", () => {
+    const FED = "issuers/FED/2026.md";
+    const TODAY = "https://archive.ph/AbC12";
+    const GHOST = "https://ghostarchive.org/archive/AbC12";
+    const snap = (): Snapshot => {
+      const text = goodText();
+      return {
+        files: files(text, { [FED]: `${text[FED]}${extract({ title: "FED new", archive2: TODAY, archive3: GHOST })}` }),
+        base: files(text),
+      };
+    };
+    /** Wayback answers 200; archive.today and Ghostarchive answer `other`; a canary answers only when `canary`. */
+    const run = async (other: () => Response, canary: boolean, env: Record<string, string> = {}) => {
+      const out: string[] = [];
+      const err: string[] = [];
+      const asked: string[] = [];
+      const fetch = (async (u: string) => {
+        asked.push(u);
+        if (u.startsWith("https://web.archive.org/")) return new Response(null, { status: 200 });
+        if (u.startsWith(TODAY) || u.startsWith(GHOST)) return other();
+        if (canary) return new Response(null, { status: 204 });
+        throw Object.assign(new TypeError(`getaddrinfo ETIMEOUT ${new URL(u).host}`), { code: "ETIMEOUT" });
+      }) as unknown as typeof globalThis.fetch;
+      const code = await verifyMain({
+        argv: ["--base", "HEAD"],
+        env,
+        cwd: ROOT,
+        out: (l) => out.push(l),
+        err: (l) => err.push(l),
+        git: snapshotGit(snap()),
+        fetch,
+        clock: virtualClock(),
+      });
+      return { code, out, err, asked };
+    };
+    const down = () => {
+      throw Object.assign(new TypeError("getaddrinfo ETIMEOUT host"), { code: "ETIMEOUT" });
+    };
+    test("clean: every new archive URL resolves, exit 0", async () => {
+      const r = await run(() => new Response(GHOST_CAPTURE_PAGE, { status: 200 }), true);
+      expect([r.code, r.out.at(-1)]).toEqual([0, "verify: clean (base HEAD)"]);
+    });
+    test("N-d: offline, archive.today and Ghostarchive are no verdict (offline), never findings; exit 3", async () => {
+      const r = await run(down, false);
+      expect(r.code).toBe(3);
+      expect(r.out.filter((l) => l.startsWith("L8 "))).toEqual([]);
+      expect(r.out).toContain(
+        "verify: INCOMPLETE: 2 archive URL(s) have no verdict: 0 rate-limited (gave up), 0 blocked (challenge/CAPTCHA), 0 unconfirmed (capture not seen), 2 offline (no canary host answered); open them in a browser or re-run from another network",
+      );
+      expect(r.out.at(-1)).toBe("verify: no findings, but incomplete (base HEAD)");
+      expect(r.err).toContainEqual(expect.stringMatching(/^verify: L8 \[\d\/3\] offline \(archive\.ph unreachable \(/));
+      // Both errors share one canary check (each canary asked once, not once per URL).
+      const hosts = /^https:\/\/(web\.archive\.org|archive\.ph|ghostarchive\.org)\//;
+      expect(r.asked.filter((u) => !hosts.test(u))).toEqual([...CANARIES]);
+    });
+    test("a canary answers: archive.today and Ghostarchive down are findings; exit 1", async () => {
+      const r = await run(down, true);
+      expect(r.code).toBe(1);
+      expect(r.out.filter((l) => l.startsWith("L8 ")).length).toBe(2);
+    });
+    test("a bad pacing setting exits 2 before any request", async () => {
+      const r = await run(down, true, { OBM_RATE_MAX_TRIES: "0" });
+      expect([r.code, r.asked]).toEqual([2, []]);
+      expect(r.err.join("\n")).toMatch(/^verify: .*OBM_RATE_MAX_TRIES/);
+    });
   });
   test("lint outside a git checkout prints one line and exits 2", async () => {
     const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
@@ -531,6 +626,13 @@ describe("CLI", () => {
     expect([uc, bc]).toEqual([1, 1]);
     expect(ue).toContain("not implemented (Waypoint 3)");
     expect(be).toContain("not implemented (Waypoint 4)");
+  });
+  test("smoke: the verify and audit processes exit 2 with their usage on bad argv", async () => {
+    const [[vc, vo, ve], [ac, ao, ae]] = await smokeWrappers;
+    expect([vc, ac]).toEqual([2, 2]);
+    expect([vo, ao]).toEqual(["", ""]);
+    expect(ve).toMatch(/^usage: bun run verify/m);
+    expect(ae).toMatch(/^usage: bun run audit/m);
   });
 });
 

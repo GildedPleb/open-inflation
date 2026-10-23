@@ -1,104 +1,34 @@
 // bun run verify [--base <ref>]   (local only: never a CI step, never a merge gate)
 // Checks the working tree against a base commit: --base; on a GitHub push to any ref but main, merge-base(HEAD,
 // origin/main); else $LINT_BASE (all zeros: none); else HEAD if it exists. See lib/lint-base.ts.
-// L8's link check, the network half moved out of lint: HEAD each archive URL the diff adds (that passes L7), once:
-// web.archive.org, else archive.org availability, asked under each equivalent query form (exact timestamp passes;
-// anything else "unconfirmed", no verdict); archive.today (Archive URL 2), where HTTP 403/429 is its CAPTCHA or rate
-// limit: no verdict, not a failure; Ghostarchive (Archive URL 3, read with a bounded GET), where HTTP 403/503 is its
-// Cloudflare challenge (no verdict), its 200 "Archiving error" page a finding, and a 200 with no capture on it
-// (loading, in progress) "unconfirmed". Each archive's no-verdict URLs are listed after
-// "archive.today: N verified, M unverified (R rate-limited, B blocked[, U unconfirmed])" (the same for ghostarchive).
+// L8's link check, the network half moved out of lint: HEAD each archive URL the diff adds (that passes L7), once,
+// and every Re-archive note URL the diff adds, even one already committed elsewhere: web.archive.org, else
+// archive.org availability, asked under each equivalent query form (exact timestamp passes; anything else
+// "unconfirmed", no verdict); archive.today (Archive URL 2), where HTTP 403/429 is its CAPTCHA or rate limit: no
+// verdict, not a failure; Ghostarchive (Archive URL 3, read with a bounded GET), where HTTP 403 is its Cloudflare
+// challenge (no verdict, blocked), a 503 is retried as a rate limit (blocked when it shows a challenge), its 200
+// "Archiving error" page a finding, and a 200 with no capture on it (loading, in progress) "unconfirmed". When
+// archive.today or Ghostarchive does not answer at all and no canary host answers either, the URL is "offline", no
+// verdict. Each archive's no-verdict URLs are listed after "archive.today: N verified, M unverified (R rate-limited,
+// B blocked[, U unconfirmed][, O offline])" (the same for ghostarchive).
 // A 404/410 is excused only by a "- Re-archive: <new archive URL>" line added to the same extract in the same diff;
 // the new capture is verified too. Committed links are never re-swept.
-// Paced (lib/pacer.ts): one host's requests serial and spaced (archive.today 30 s; OBM_RATE_<HOST>_MS overrides),
-// hosts in parallel, 429/503 retried with Retry-After or backoff; a challenge/CAPTCHA is "blocked", not retried.
-// The expected time is printed first. Every URL must get a verdict: a run that leaves any URL rate-limited, blocked or unconfirmed
-// is incomplete, not clean.
+// Paced (lib/pacer.ts): one host's requests serial and spaced (archive.today 30 s; OBM_RATE_<KEY>_MS overrides,
+// e.g. OBM_RATE_ARCHIVE_TODAY_MS), hosts in parallel, 429/503 retried after max(Retry-After, the host's interval),
+// else backoff; a challenge/CAPTCHA is "blocked", not retried. The expected time is printed first. Every URL must
+// get a verdict: a run that leaves any URL rate-limited, blocked, unconfirmed or offline is incomplete, not clean.
 // Exit 0 clean, 1 with findings, 2 on usage, base or pacing-setting errors (or any internal error, lib/exit.ts),
-// 3 incomplete (no findings, but some URLs still have no verdict). Same base selection as lint (lib/lint-base.ts).
-import { archiveNet } from "./lib/archive.ts";
+// 3 incomplete (no findings, but some URLs still have no verdict). The CLI is lib/verify-main.ts.
 import { exitOnCrash } from "./lib/exit.ts";
-import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, UnknownBase } from "./lib/git.ts";
-import { chooseBase } from "./lib/lint-base.ts";
-import { createPacer, duration, hostKey, type PaceConfig, paceFromEnv, realClock } from "./lib/pacer.ts";
-import { verify, verifyExit } from "./lib/verify.ts";
+import { verifyMain } from "./lib/verify-main.ts";
 
 exitOnCrash("verify");
-
-const USAGE = "usage: bun run verify [--base <ref>]";
-
-function parse(argv: string[]): { base?: string } | null {
-  const out: { base?: string } = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--base" && argv[i + 1]) out.base = argv[++i] as string;
-    else return null;
-  }
-  return out;
-}
-
-const args = parse(process.argv.slice(2));
-if (!args) {
-  console.error(USAGE);
-  process.exit(2);
-}
-const dir = process.cwd();
-const hasHead =
-  isGitCheckout(dir) && Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", "HEAD"]).exitCode === 0;
-const choice = chooseBase({
-  cliBase: args.base,
-  envBase: process.env.LINT_BASE,
-  eventName: process.env.GITHUB_EVENT_NAME,
-  ref: process.env.GITHUB_REF,
-  hasHead,
-  mergeBase: () => mergeBase(dir, "HEAD", "origin/main"),
-});
-if ("error" in choice) {
-  console.error(`verify: ${choice.error}`);
-  process.exit(2);
-}
-const { base } = choice;
-if (base !== null && choice.why !== "HEAD" && choice.why !== "--base")
-  console.error(`verify: base ${base} (${choice.why})`);
-let snapshot: ReturnType<typeof loadSnapshot>;
-try {
-  snapshot = loadSnapshot(dir, base);
-} catch (e) {
-  if (!(e instanceof UnknownBase || e instanceof NotGitCheckout)) throw e;
-  console.error(`verify: ${e.message}`);
-  process.exit(2);
-}
-let pace: PaceConfig;
-try {
-  pace = paceFromEnv(process.env);
-} catch (e) {
-  console.error(`verify: ${(e as Error).message}`);
-  process.exit(2);
-}
-const started = Date.now();
-const unresolved = { "rate-limited": [] as string[], blocked: [] as string[], unconfirmed: [] as string[] };
-const findings = await verify(snapshot, {
-  net: archiveNet(fetch, 15_000),
-  now: Date.now(),
-  pacer: createPacer(pace, realClock, (url, ms, why) =>
-    console.error(`verify: L8 waiting ${duration(ms)} (${hostKey(url)}: ${why}) before ${url}`),
-  ),
-  progress: (line) => console.error(`verify: ${line}`),
-  summary: (line) => console.log(line),
-  noVerdict: (url, why) => unresolved[why].push(url),
-});
-for (const f of findings) console.log(`${f.check} ${f.file}: ${f.message}`);
-const open = unresolved["rate-limited"].length + unresolved.blocked.length + unresolved.unconfirmed.length;
-if (open > 0)
-  console.log(
-    `verify: INCOMPLETE: ${open} archive URL(s) have no verdict: ${unresolved["rate-limited"].length} rate-limited (gave up), ${unresolved.blocked.length} blocked (challenge/CAPTCHA), ${unresolved.unconfirmed.length} unconfirmed (capture not seen); open them in a browser or re-run from another network`,
-  );
-console.log(`verify: took ${duration(Date.now() - started)}`);
-console.log(
-  findings.length > 0
-    ? `verify: ${findings.length} finding(s)`
-    : open > 0
-      ? `verify: no findings, but incomplete (base ${base ?? "none"})`
-      : `verify: clean (base ${base ?? "none"})`,
+process.exit(
+  await verifyMain({
+    argv: process.argv.slice(2),
+    env: process.env,
+    cwd: process.cwd(),
+    out: (l) => console.log(l),
+    err: (l) => console.error(l),
+  }),
 );
-process.exit(verifyExit(findings.length, open));

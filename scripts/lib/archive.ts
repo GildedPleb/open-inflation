@@ -3,17 +3,65 @@ import type { AvailResult, GhostPage, Head, HeadResult, Net } from "./types.ts";
 
 type Network = { readonly kind: "network"; readonly message: string };
 
-/** Run one request under a timeout; any throw (including the abort) is a network failure. */
+/** An error code already in a message: ENOTFOUND, ETIMEOUT, ECONNRESET, EAI_AGAIN and the like. */
+const CODE_IN_MESSAGE = /\b[A-Z][A-Z0-9_]{3,}\b/;
+/**
+ * A failed request's message, naming its error code (Probe item 4: every no-verdict line says what failed): the
+ * message as is when it already names one ("getaddrinfo ENOTFOUND host"), else prefixed with Bun's `code` (e.g.
+ * FailedToOpenSocket; ETIMEDOUT for our own timeout) or, with none, the error's name.
+ */
+export function errorText(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const raw = (e as { code?: unknown }).code;
+  const code = typeof raw === "string" && raw !== "" ? raw : e.name;
+  return e.message.includes(code) || CODE_IN_MESSAGE.test(e.message) ? e.message : `${code}: ${e.message}`;
+}
+
+/** Run one request under a timeout; any throw (including the abort) is a network failure, its code first (errorText). */
 export async function bounded<T>(timeoutMs: number, run: (signal: AbortSignal) => Promise<T>): Promise<T | Network> {
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(new Error(`timed out after ${timeoutMs} ms`)), timeoutMs);
+  const timer = setTimeout(
+    () => ctl.abort(Object.assign(new Error(`timed out after ${timeoutMs} ms`), { code: "ETIMEDOUT" })),
+    timeoutMs,
+  );
   try {
     return await run(ctl.signal);
   } catch (e) {
-    return { kind: "network", message: e instanceof Error ? e.message : String(e) };
+    return { kind: "network", message: errorText(e) };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Known-good hosts: when none answers, the network (or our resolver) is down. Any HTTP answer counts. */
+export const CANARIES = ["https://www.gstatic.com/generate_204", "https://one.one.one.one/"] as const;
+/** How long one canary check is reused before a later network error checks again. */
+export const CANARY_TTL_MS = 60_000;
+
+/** True when at least one canary gives any HTTP answer (one GET each, in order, until one answers). */
+export async function canaryOnline(
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  urls: readonly string[] = CANARIES,
+): Promise<boolean> {
+  for (const u of urls) {
+    const r = await bounded(timeoutMs, async (signal) => {
+      const res = await fetchImpl(u, { method: "GET", redirect: "manual", signal });
+      await res.body?.cancel();
+      return res.status;
+    });
+    if (typeof r === "number") return true;
+  }
+  return false;
+}
+
+/** `online`, asked at most once per CANARY_TTL_MS of `now` (verify and audit ask only after a network error). */
+export function networkCheck(online: () => Promise<boolean>, now: () => number): () => Promise<boolean> {
+  let last: { at: number; up: Promise<boolean> } | null = null;
+  return () => {
+    if (!last || now() - last.at >= CANARY_TTL_MS) last = { at: now(), up: online() };
+    return last.up;
+  };
 }
 
 /** A web.archive.org snapshot URL: its 14-digit capture timestamp (a modifier such as `id_` is the same capture). */

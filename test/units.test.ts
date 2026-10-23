@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   AVAILABILITY_FORMS,
   archiveNet,
+  bounded,
+  errorText,
   ghostPage,
   httpAvailable,
   httpHead,
@@ -21,6 +23,22 @@ const d = (s: string) => {
   if (!v) throw new Error(`bad decimal ${s}`);
   return v;
 };
+
+describe("item 4: a network failure names its code", () => {
+  test("errorText: the message as is when it names a code, else the code or name first", () => {
+    expect(errorText(new Error("getaddrinfo ENOTFOUND x.test"))).toBe("getaddrinfo ENOTFOUND x.test");
+    expect(errorText(Object.assign(new Error("socket closed"), { code: "ECONNRESET" }))).toBe(
+      "ECONNRESET: socket closed",
+    );
+    expect(errorText(new TypeError("fetch failed"))).toBe("TypeError: fetch failed");
+    expect(errorText("plain")).toBe("plain");
+  });
+  test("bounded: the timeout is a network failure carrying ETIMEDOUT", async () => {
+    const hang = (signal: AbortSignal) =>
+      new Promise<never>((_, reject) => signal.addEventListener("abort", () => reject(signal.reason)));
+    expect(await bounded(1, hang)).toEqual({ kind: "network", message: "ETIMEDOUT: timed out after 1 ms" });
+  });
+});
 
 describe("decimal", () => {
   test("rejects non-decimals", () => {
@@ -397,7 +415,7 @@ describe("SNB: availability asked under each query form (archiveNet over a fake 
     const r = await run(() => true);
     expect([r.fs, r.nv, r.asked.length]).toEqual([[], [`unconfirmed ${WB}`], 3]);
     expect(r.line).toBe(
-      `L8 [1/1] unconfirmed (web.archive.org unreachable (unknown certificate verification error); archive.org availability: no snapshot listed (asked 3 ways); no verdict) ${WB}`,
+      `L8 [1/1] unconfirmed (web.archive.org unreachable (TypeError: unknown certificate verification error); archive.org availability: no snapshot listed (asked 3 ways); no verdict) ${WB}`,
     );
   });
 });
