@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { lint as lintOnly } from "../scripts/lib/checks.ts";
-import type { AvailResult, CheckId, Finding, HeadResult, Net, Snapshot } from "../scripts/lib/types.ts";
+import type { AvailResult, CheckId, Finding, HeadResult, Net, NoVerdict, Snapshot } from "../scripts/lib/types.ts";
 import { verify } from "../scripts/lib/verify.ts";
 import {
   CSV_HEADER,
@@ -30,6 +30,7 @@ interface Opts {
   readonly net?: Net;
   readonly progress?: (line: string) => void;
   readonly summary?: (line: string) => void;
+  readonly noVerdict?: (url: string, why: NoVerdict) => void;
 }
 async function lint(snap: Snapshot, o: Opts): Promise<Finding[]> {
   const fs = await lintOnly(snap, { now: o.now });
@@ -39,6 +40,7 @@ async function lint(snap: Snapshot, o: Opts): Promise<Finding[]> {
     now: o.now,
     ...(o.progress ? { progress: o.progress } : {}),
     ...(o.summary ? { summary: o.summary } : {}),
+    ...(o.noVerdict ? { noVerdict: o.noVerdict } : {}),
   });
   const order = (c: CheckId) => Number(c.slice(1));
   return [...fs, ...v].sort((a, b) => order(a.check) - order(b.check));
@@ -436,7 +438,9 @@ describe("verify: L8 archive resolution (fake network)", () => {
   const TS = "20261002140500";
   const NEW = `https://web.archive.org/web/${TS}/${ORIG}`;
   const added = fedText + extract({ title: "FED new" });
-  const noted = `${added}- Re-archive: ${NEW} (snapshot missing; recaptured)\n`;
+  // m-B: the note names the NEW capture (methodology: "- Re-archive: <new archive URL>"), which verify also HEADs.
+  const REPL = "https://web.archive.org/web/20261020000000/https://example.test/FED-new"; // the new capture
+  const noted = `${added}- Re-archive: ${REPL} (snapshot missing; recaptured)\n`;
   const DOWN: HeadResult = { kind: "network", message: "ECONNREFUSED" };
   const fake = (r: HeadResult, a: AvailResult = { kind: "network", message: "ETIMEDOUT" }) => {
     const heads: string[] = [];
@@ -444,7 +448,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
     const net: Net = {
       head: async (u) => {
         heads.push(u);
-        return r;
+        return u === REPL ? { kind: "ok", status: 200 } : r;
       },
       available: async (o, t) => {
         avail.push(`${o} ${t}`);
@@ -468,7 +472,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
     test(`HTTP ${status} is not a dead snapshot: a Re-archive note does not excuse it`, () =>
       fails(onGood({ [FED]: noted }), ["L8"], new RegExp(`HTTP ${status}`), fake({ kind: "http", status }).opts));
   test("a re-archive note already in base does not excuse a new failure", () => {
-    const withNote = `${fedText}- Re-archive: ${NEW}\n`;
+    const withNote = `${fedText}- Re-archive: ${REPL}\n`;
     return fails(
       {
         files: files(goodText(), { [FED]: withNote + extract({ title: "FED new" }) }),
@@ -479,44 +483,90 @@ describe("verify: L8 archive resolution (fake network)", () => {
       fake({ kind: "http", status: 404 }).opts,
     );
   });
+  test("m-B: a note already in base in the same extract does not excuse a dead URL this diff adds to it", () => {
+    const GHOST = "https://ghostarchive.org/archive/ZzZ99";
+    const block = extract({ title: "FED new", archive3: null });
+    const base = `${fedText}${block}- Re-archive: ${REPL}\n`;
+    const grown = base.replace(block, block.replace("- Notes:", `- Archive URL 3: ${GHOST}\n- Notes:`));
+    return fails(
+      { files: files(goodText(), { [FED]: grown }), base: files(goodText(), { [FED]: base }) },
+      ["L8"],
+      /ZzZ99 failed HEAD: .*404/,
+      fake({ kind: "http", status: 404 }).opts,
+    );
+  });
+  test("m-B: a note naming the dead URL itself (the old form) does not excuse it", () =>
+    fails(
+      onGood({ [FED]: `${added}- Re-archive: ${NEW}\n` }),
+      ["L8"],
+      /HTTP 404; recapture it and add "- Re-archive: <new archive URL>" to this extract in the same commit/,
+      fake({ kind: "http", status: 404 }).opts,
+    ));
+  test("m-B: a note in another extract does not excuse this one", () =>
+    fails(
+      onGood({ [FED]: `${added}${extract({ title: "FED other" })}- Re-archive: ${REPL}\n` }),
+      ["L8"],
+      /archive URL .*FED-new failed HEAD: HTTP 404/,
+      fake({ kind: "http", status: 404 }).opts,
+    ));
+  test("m-B: the new capture is verified too; if it is dead, it is a finding of its own", async () => {
+    const f = fake({ kind: "http", status: 404 });
+    const dead: Net = { ...f.opts.net, head: async () => ({ kind: "http", status: 404 }) } as Net;
+    const fs = await lint(onGood({ [FED]: noted }), { ...f.opts, net: dead });
+    expect(fs.map((x) => x.message.split(" failed")[0])).toEqual([`archive URL ${REPL}`]);
+  });
   test("web.archive.org unreachable: archive.org availability at the exact timestamp passes", async () => {
     const f = fake(DOWN, { kind: "ok", timestamp: TS });
     await passes(onGood({ [FED]: added }), f.opts);
     expect([f.heads, f.avail]).toEqual([[NEW], [`${ORIG} ${TS}`]]);
   });
-  test("availability returns a different snapshot: fails, names both timestamps", () =>
-    fails(
-      onGood({ [FED]: added }),
-      ["L8"],
-      /closest snapshot 20261002140501, not the recorded 20261002140500/,
-      fake(DOWN, { kind: "ok", timestamp: "20261002140501" }).opts,
-    ));
-  test("availability has no snapshot: fails", () =>
-    fails(onGood({ [FED]: added }), ["L8"], /no snapshot/, fake(DOWN, { kind: "ok", timestamp: null }).opts));
-  test("both endpoints unreachable is a network error and fails", () =>
-    fails(onGood({ [FED]: added }), ["L8"], /network error: .*ECONNREFUSED.*ETIMEDOUT/, fake(DOWN).opts));
-  test("archive.org availability HTTP 429 says rate-limited, retry later (not 'retry online')", async () => {
-    const fs = await lint(onGood({ [FED]: added }), fake(DOWN, { kind: "http", status: 429 }).opts);
-    expect(fs.map((f) => f.check)).toEqual(["L8"]);
-    expect(fs[0]?.message).toMatch(/HTTP 429 \(rate-limited; no verdict on the snapshot; retry later\)/);
-    expect(fs[0]?.message).not.toMatch(/retry online/);
+  // m-C: web.archive.org unreachable means the capture was never seen; only availability's exact timestamp confirms
+  // it. Any other answer (none, another capture, an HTTP error, a network error) is no verdict (verify exit 3), never a
+  // finding (Probe: availability answered empty for UK 20261022172221 and BZ 20261022172522 while both existed).
+  const unconfirmed = async (a: AvailResult, files: Record<string, string> = { [FED]: added }) => {
+    const lines: string[] = [];
+    const nv: [string, string][] = [];
+    const fs = await lint(onGood(files), {
+      ...fake(DOWN, a).opts,
+      progress: (l) => lines.push(l),
+      noVerdict: (u, why) => nv.push([u, why]),
+    });
+    return { fs, line: lines.find((l) => l.endsWith(NEW)), nv };
+  };
+  for (const [name, a, said] of [
+    ["no snapshot listed", { kind: "ok", timestamp: null }, "no snapshot listed"],
+    [
+      "a different snapshot",
+      { kind: "ok", timestamp: "20261002140501" },
+      "closest snapshot 20261002140501, not the recorded 20261002140500",
+    ],
+    ["HTTP 429", { kind: "http", status: 429 }, "HTTP 429 (rate-limited)"],
+    ["HTTP 503", { kind: "http", status: 503 }, "HTTP 503"],
+    ["a network error", { kind: "network", message: "ETIMEDOUT" }, "ETIMEDOUT"],
+  ] as [string, AvailResult, string][])
+    test(`web.archive.org unreachable, availability ${name}: no verdict (unconfirmed), not a finding`, async () => {
+      const r = await unconfirmed(a);
+      expect(r.fs).toEqual([]);
+      expect(r.nv).toEqual([[NEW, "unconfirmed"]]);
+      expect(r.line).toBe(
+        `L8 [1/1] unconfirmed (web.archive.org unreachable (ECONNREFUSED); archive.org availability: ${said}; no verdict) ${NEW}`,
+      );
+    });
+  test("web.archive.org HEAD HTTP 429 at the cap is no verdict (rate-limited), not a finding", async () => {
+    const nv: [string, string][] = [];
+    const lines: string[] = [];
+    const r429: HeadResult = { kind: "http", status: 429, gaveUp: { tries: 5, elapsedMs: 90_000 } };
+    const fs = await lint(onGood({ [FED]: added }), {
+      ...fake(r429).opts,
+      progress: (l) => lines.push(l),
+      noVerdict: (u, why) => nv.push([u, why]),
+    });
+    expect(fs).toEqual([]);
+    expect(nv).toEqual([[NEW, "rate-limited"]]);
+    expect(lines.at(-1)).toBe(
+      `L8 [1/1] rate-limited (gave up after 5 tries over 1 min 30 s; HTTP 429, web.archive.org; no verdict) ${NEW}`,
+    );
   });
-  test("archive.org availability HTTP 503 is no verdict; retry later", () =>
-    fails(
-      onGood({ [FED]: added }),
-      ["L8"],
-      /availability: HTTP 503 \(no verdict on the snapshot; retry later\)/,
-      fake(DOWN, { kind: "http", status: 503 }).opts,
-    ));
-  test("web.archive.org HEAD HTTP 429 says rate-limited, retry later", () =>
-    fails(
-      onGood({ [FED]: added }),
-      ["L8"],
-      /HTTP 429 \(rate-limited; retry later\)/,
-      fake({ kind: "http", status: 429 }).opts,
-    ));
-  test("offline network errors still say retry online", () =>
-    fails(onGood({ [FED]: added }), ["L8"], /retry online/, fake(DOWN).opts));
   test("progress: one stderr line per checked URL, counted; none without new URLs", async () => {
     const lines: string[] = [];
     const f = fake({ kind: "http", status: 404 });
@@ -546,18 +596,23 @@ describe("verify: L8 archive resolution (fake network)", () => {
     expect(await progressOf({ [FED]: added }, fake(DOWN, { kind: "ok", timestamp: TS }))).toEqual([
       `L8 [1/1] ok (archive.org availability, ${TS}) ${NEW}`,
     ]));
-  test("progress: a dead snapshot excused by a Re-archive note says so", async () => {
+  test("progress: a dead snapshot excused by a Re-archive note says so; the new capture is checked too", async () => {
     for (const status of [404, 410])
       expect(await progressOf({ [FED]: noted }, fake({ kind: "http", status }))).toEqual([
-        `L8 [1/1] excused (HTTP ${status}, Re-archive note) ${NEW}`,
+        `L8 [1/2] excused (HTTP ${status}, Re-archive note) ${NEW}`,
+        `L8 [2/2] ok (HTTP 200, 20261020000000) ${REPL}`,
       ]);
   });
   test("progress: a note that cannot excuse the failure still logs fail", async () =>
-    expect(await progressOf({ [FED]: noted }, fake({ kind: "http", status: 500 }))).toEqual([`L8 [1/1] fail ${NEW}`]));
-  test("a Re-archive note never excuses an availability HTTP error (429)", () =>
-    fails(onGood({ [FED]: noted }), ["L8"], /rate-limited/, fake(DOWN, { kind: "http", status: 429 }).opts));
-  test("a Re-archive note never excuses a network error", () =>
-    fails(onGood({ [FED]: noted }), ["L8"], /network error/, fake(DOWN).opts));
+    expect(await progressOf({ [FED]: noted }, fake({ kind: "http", status: 500 }))).toEqual([
+      `L8 [1/2] fail ${NEW}`,
+      `L8 [2/2] ok (HTTP 200, 20261020000000) ${REPL}`,
+    ]));
+  test("a Re-archive note does not turn an unconfirmed snapshot into a pass or a fail: still no verdict", async () => {
+    const r = await unconfirmed({ kind: "http", status: 429 }, { [FED]: noted });
+    expect(r.fs).toEqual([]);
+    expect(r.nv).toEqual([[NEW, "unconfirmed"]]);
+  });
   const NEAR = `https://web.archive.org/web/20261002140501/${ORIG}`;
   test("HEAD redirected to another capture fails: the snapshot does not exist", () =>
     fails(
@@ -592,8 +647,6 @@ describe("verify: L8 archive resolution (fake network)", () => {
       /redirected more than 5 times/,
       fake({ kind: "redirect", status: 302, location: NEW, reason: "loop" }).opts,
     ));
-  test("a Re-archive note does not excuse a timestamp mismatch", () =>
-    fails(onGood({ [FED]: noted }), ["L8"], /closest snapshot/, fake(DOWN, { kind: "ok", timestamp: "1" }).opts));
   // m5: only URLs that pass L7 reach the network.
   for (const [name, archive] of [
     ["blank", ""],
@@ -712,6 +765,17 @@ describe("L8 Re-archive note form (offline)", () => {
       onGood({ [FED]: `${fedText}- Re-archive:\n- Re-archive: https://archive.ph/AbC12\n` }),
       ["L8"],
       /line \d+: Re-archive note names no URL/,
+    ));
+  // m-B: the note names the NEW capture, in the extract whose snapshot died (methodology).
+  test("a note naming its own extract's archive URL (the dead one) fails L8: it names the new capture", async () => {
+    const own = [...fedText.matchAll(/- Archive URL: (\S+)/g)].at(-1)?.[1] as string;
+    await fails(note(own), ["L8"], /Re-archive note .* names this extract's own archive URL; it names the new capture/);
+  });
+  test("a note outside any extract fails L8", () =>
+    fails(
+      onGood({ [FED]: fedText.replace(/\n/, "\n\n- Re-archive: https://archive.ph/AbC12\n") }),
+      ["L8"],
+      /line 3: Re-archive note is outside any extract \(### block\)/,
     ));
 });
 
@@ -2361,7 +2425,8 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
   const GHOST = "https://ghostarchive.org/archive/AbC12";
   const WAYBACK = "https://web.archive.org/web/20261002140500/https://example.test/FED-new";
   const added = fedText + extract({ title: "FED new", archive3: GHOST });
-  const noted = `${added}- Re-archive: ${GHOST} (Ghostarchive capture gone; recaptured)\n`;
+  const REPL = "https://web.archive.org/web/20261020000000/https://example.test/FED-new"; // the new capture
+  const noted = `${added}- Re-archive: ${REPL} (Ghostarchive capture gone; recaptured)\n`;
   const fake = (r: HeadResult) => {
     const heads: string[] = [];
     const net: Net = {
@@ -2421,6 +2486,9 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
       [{ kind: "network", message: "ECONNREFUSED" }, /network error: Ghostarchive: ECONNREFUSED/],
     ];
     for (const [r, re] of cases) await fails(onGood({ [FED]: added }), ["L8"], re, fake(r).opts);
+    // a network error is not a dead capture: a Re-archive note does not excuse it
+    const down = fake({ kind: "network", message: "ECONNREFUSED" }).opts;
+    await fails(onGood({ [FED]: noted }), ["L8"], /network error: Ghostarchive: ECONNREFUSED/, down);
   });
   test("an attempt record and a committed Ghostarchive URL are never fetched", async () => {
     const f = fake({ kind: "http", status: 404 });
@@ -2469,7 +2537,8 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
   const WAYBACK = `https://web.archive.org/web/20261002140500/${ORIG}`;
   const TODAY = "https://archive.ph/AbC12";
   const added = fedText + extract({ title: "FED new", archive2: TODAY });
-  const noted = `${added}- Re-archive: ${TODAY} (archive.today capture gone; recaptured)\n`;
+  const REPL = "https://web.archive.org/web/20261020000000/https://example.test/FED-new"; // the new capture
+  const noted = `${added}- Re-archive: ${REPL} (archive.today capture gone; recaptured)\n`;
   /** Wayback answers 200; archive.today answers `r`. */
   const fake = (r: HeadResult) => {
     const heads: string[] = [];
@@ -2521,6 +2590,8 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
   test("a network error fails, with no Wayback availability fallback", async () => {
     const f = fake({ kind: "network", message: "ECONNREFUSED" });
     await fails(onGood({ [FED]: added }), ["L8"], /network error: .*ECONNREFUSED/, f.opts);
+    // a network error is not a dead capture: a Re-archive note does not excuse it
+    await fails(onGood({ [FED]: noted }), ["L8"], /network error: archive\.today: ECONNREFUSED/, f.opts);
     expect(f.avail).toEqual([]);
   });
   test("a redirect off archive.today fails", () =>
@@ -2595,15 +2666,23 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
     const snap = { files: files(goodText(), { [FED]: committed }), base: files(goodText(), { [FED]: committed }) };
     expect((await summaryOf(snap, byUrl({ [TODAY]: { kind: "http", status: 429 } }))).lines).toEqual([]);
   });
-  test("a Wayback 429 still fails (only archive.today blocks are excused)", () =>
-    fails(onGood({ [FED]: added }), ["L8"], /HTTP 429 \(rate-limited; retry later\)/, {
+  test("a Wayback 429 is no verdict too, and not counted in the archive.today summary", async () => {
+    const summary: string[] = [];
+    const nv: string[] = [];
+    const fs = await lint(onGood({ [FED]: added }), {
       ...OFF,
       archive: "added",
       net: {
         head: async (u) => (u === TODAY ? { kind: "ok", status: 200 } : { kind: "http", status: 429 }),
         available: async () => ({ kind: "ok", timestamp: null }),
       },
-    }));
+      summary: (l) => summary.push(l),
+      noVerdict: (u, why) => nv.push(`${why} ${u}`),
+    });
+    expect(fs).toEqual([]);
+    expect(nv).toEqual([`rate-limited ${WAYBACK}`]);
+    expect(summary).toEqual(["archive.today: 1 verified, 0 unverified (rate-limited)"]);
+  });
 });
 
 // Assay (2): USD is never recorded more precisely than $1. Each entry's USD is local_value x fx_rate rounded

@@ -1,9 +1,9 @@
 // L8's link check, run locally by `bun run verify`: HEAD each archive URL added since the base, once.
 // Never part of lint or CI: those make no network call. The only I/O is the injected Net.
 import { MAX_HOPS, pacedNet } from "./archive.ts";
-import { type ArchiveRef, archiveRefs, decodeAll } from "./checks.ts";
+import { type ArchiveRef, archiveRefs, blockKey, decodeAll } from "./checks.ts";
 import { duration, hostKey, realClock } from "./pacer.ts";
-import type { CheckId, Finding, HeadResult, Net, Snapshot, VerifyOptions } from "./types.ts";
+import type { CheckId, Finding, HeadResult, Net, NoVerdict, Snapshot, VerifyOptions } from "./types.ts";
 
 /** HTTP statuses that confirm a dead snapshot. Only these can be excused by a Re-archive note. */
 const DEAD = [404, 410];
@@ -15,8 +15,11 @@ type Verdict = {
   readonly problem: Problem;
   readonly ok?: string;
   readonly limited?: string;
-  /** For a limited verdict: still rate-limited (one try, or the cap), or blocked by a challenge/CAPTCHA. */
-  readonly why?: "rate-limited" | "blocked";
+  /**
+   * For a limited verdict: still rate-limited (one try, or the cap), blocked by a challenge/CAPTCHA, or unconfirmed
+   * (web.archive.org unreachable and archive.org availability did not list the exact capture).
+   */
+  readonly why?: NoVerdict;
 };
 type HttpResult = Extract<HeadResult, { kind: "http" }>;
 const gaveUp = (r: HttpResult) =>
@@ -48,36 +51,32 @@ async function snapshotVerdict(net: Net, url: string, ref: ArchiveRef): Promise<
               : `HEAD redirected more than ${MAX_HOPS} times (last to ${r.location})`,
       },
     };
-  if (r.kind === "http")
+  if (r.kind === "http") {
+    // A 429 still there after pacing's retries is no verdict (rate-limited), as on archive.today; never a finding.
+    if (r.status === RATE_LIMITED)
+      return { problem: null, limited: `${gaveUp(r)}HTTP 429, web.archive.org; no verdict`, why: "rate-limited" };
     return {
-      problem: {
-        dead: DEAD.includes(r.status),
-        status: r.status,
-        message: `failed HEAD: HTTP ${r.status}${r.status === RATE_LIMITED ? ` (rate-limited; ${gaveUp(r)}retry later)` : ""}`,
-      },
-    };
-  const a = await net.available(ref.original, ref.ts);
-  if (a.kind === "http") {
-    const why = a.status === RATE_LIMITED ? "rate-limited; " : "";
-    return {
-      problem: {
-        dead: false,
-        message: `could not be checked: web.archive.org: ${r.message}; archive.org availability: HTTP ${a.status} (${why}no verdict on the snapshot; retry later)`,
-      },
+      problem: { dead: DEAD.includes(r.status), status: r.status, message: `failed HEAD: HTTP ${r.status}` },
     };
   }
-  if (a.kind === "network")
-    return {
-      problem: {
-        dead: false,
-        message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
-      },
-    };
-  if (a.timestamp === ref.ts) return { problem: null, ok: `archive.org availability, ${a.timestamp}` };
-  const why =
-    a.timestamp === null ? "has no snapshot" : `returns closest snapshot ${a.timestamp}, not the recorded ${ref.ts}`;
+  // m-C: web.archive.org did not answer, so the capture itself was never seen. archive.org's availability API is an
+  // index lookup that can answer empty (or with another capture) while the capture exists (Probe: UK 20261022172221,
+  // BZ 20261022172522). Only its exact timestamp confirms the snapshot; anything else is no verdict, never a finding.
+  const a = await net.available(ref.original, ref.ts);
+  if (a.kind === "ok" && a.timestamp === ref.ts)
+    return { problem: null, ok: `archive.org availability, ${a.timestamp}` };
+  const said =
+    a.kind === "http"
+      ? `HTTP ${a.status}${a.status === RATE_LIMITED ? " (rate-limited)" : ""}`
+      : a.kind === "network"
+        ? a.message
+        : a.timestamp === null
+          ? "no snapshot listed"
+          : `closest snapshot ${a.timestamp}, not the recorded ${ref.ts}`;
   return {
-    problem: { dead: false, message: `web.archive.org unreachable (${r.message}) and archive.org availability ${why}` },
+    problem: null,
+    limited: `web.archive.org unreachable (${r.message}); archive.org availability: ${said}; no verdict`,
+    why: "unconfirmed",
   };
 }
 
@@ -179,7 +178,13 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
   const was = archiveRefs(snap.base && decodeAll(snap.base));
   const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
   const results: Problem[] = [];
-  const noted = (url: string) => now.notes.has(url) && !was.notes.has(url);
+  // m-B: a `- Re-archive: <new archive URL>` line added to the same extract in this diff names the new capture, so it
+  // excuses a dead archive URL of that extract (methodology: "names the new archive URL"), never the note's own URL.
+  const noted = (url: string, ref: ArchiveRef) => {
+    const k = blockKey(ref.file, ref.block);
+    const before = was.notes.get(k);
+    return [...(now.notes.get(k) ?? [])].some((n) => n !== url && !before?.has(n));
+  };
   if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
   if (todo.length > 0 && opts.pacer) {
     const e = opts.pacer.estimate(todo.map(([url]) => url));
@@ -204,10 +209,12 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
       const word = v.limited
         ? v.why === "blocked"
           ? `blocked (challenge/CAPTCHA; ${v.limited})`
-          : `rate-limited (${v.limited})`
+          : v.why === "unconfirmed"
+            ? `unconfirmed (${v.limited})`
+            : `rate-limited (${v.limited})`
         : !p
           ? `ok (${v.ok})`
-          : p.dead && noted(url)
+          : p.dead && noted(url, ref)
             ? `excused (HTTP ${p.status}, Re-archive note)`
             : "fail";
       progress?.(`L8 [${++done}/${todo.length}] ${word} ${url}`);
@@ -240,10 +247,10 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
   for (const [i, [url, ref]] of todo.entries()) {
     const p = results[i];
     if (!p) continue;
-    if (p.dead && noted(url)) continue;
+    if (p.dead && noted(url, ref)) continue;
     const fix = p.dead
-      ? `; the commit must add a "Re-archive: ${url}" note`
-      : noted(url)
+      ? `; recapture it and add "- Re-archive: <new archive URL>" to this extract in the same commit`
+      : noted(url, ref)
         ? `; a Re-archive note excuses only a dead snapshot (HTTP ${DEAD.join("/")})`
         : "";
     emit("L8", ref.file, `archive URL ${url} ${p.message}${fix}`);

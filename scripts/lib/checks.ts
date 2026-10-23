@@ -361,6 +361,9 @@ const FIELD_LINE = /^\s*[-*]\s+(Retrieved|Original URL|Archive URL [23]|Archive 
 const NEAR_FIELD =
   /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(Retrieved|Original URL|Archive URL [23]|Archive URL)(?::(?:\*\*|__)|(?:\*\*|__)?\s*:)/;
 const RETRIEVED = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?Z$/;
+/** A `- Re-archive: <new archive URL>` line: the new capture of a dead snapshot of the extract it sits in. */
+const REARCHIVE_LINE = /^\s*-\s+Re-archive:[ \t]*(\S*)/;
+const WAYBACK_SNAPSHOT = /^https:\/\/web\.archive\.org\/web\/\d{14}\/https?:\/\/\S+$/;
 const ARCHIVE = /^https:\/\/web\.archive\.org\/web\/(\d+)\/(.+)$/;
 /**
  * Archive URL 2 on archive.today (Assay, "2 is 1 and 1 is none"): one of its three hosts, either a short id
@@ -389,6 +392,8 @@ interface Extract {
   readonly asOf: string[];
   /** FX extract fields (Currency, Quote as published, Quote direction, Rate, fx_rate, Adopted): every value. */
   readonly facts: Map<FxFact, string[]>;
+  /** Each `- Re-archive:` URL in this extract (the new capture of one of its dead archive URLs), with its line. */
+  readonly rearchive: { readonly url: string; readonly line: number }[];
 }
 const AS_OF_LINE = /^\s*[-*]\s+As of:\s*(.*?)\s*$/;
 const FX_FACTS = ["Currency", "Quote as published", "Quote direction", "Rate", "fx_rate (USD per unit)"] as const;
@@ -397,9 +402,10 @@ const FX_FACT_LINE =
   /^\s*[-*]\s+(Currency|Quote as published|Quote direction|Rate|fx_rate \(USD per unit\)|Adopted):\s*(.*?)\s*$/;
 
 /** Extract blocks (### sections) of one issuer file, plus field lines found outside any block. */
-function extracts(body: string): { blocks: Extract[]; stray: number[] } {
+function extracts(body: string): { blocks: Extract[]; stray: number[]; strayNotes: number[] } {
   const blocks: Extract[] = [];
   const stray: number[] = [];
+  const strayNotes: number[] = [];
   let cur: Extract | null = null;
   let quarter: string | null = null;
   for (const l of lines(body)) {
@@ -418,6 +424,7 @@ function extracts(body: string): { blocks: Extract[]; stray: number[] } {
                 quarter,
                 asOf: [],
                 facts: new Map(),
+                rearchive: [],
               }
             : h[1].length < 3
               ? null
@@ -427,7 +434,11 @@ function extracts(body: string): { blocks: Extract[]; stray: number[] } {
       }
       const f = FIELD_LINE.exec(l.text);
       const near = f ? null : NEAR_FIELD.exec(l.text);
-      if (f) {
+      const note = REARCHIVE_LINE.exec(l.text);
+      if (note) {
+        if (cur) cur.rearchive.push({ url: note[1] ?? "", line: l.line });
+        else strayNotes.push(l.line);
+      } else if (f) {
         if (!cur) stray.push(l.line);
         else cur.fields.set(f[1] as Field, [...(cur.fields.get(f[1] as Field) ?? []), f[2] ?? ""]);
       } else if (near && cur) cur.wrongForm.set(near[1] as Field, l.line);
@@ -438,7 +449,7 @@ function extracts(body: string): { blocks: Extract[]; stray: number[] } {
       } else if (cur && /^\s*>\s*\S/.test(l.text)) cur.quote = true;
     } else if (cur && l.fence === "body" && l.text.trim() !== "") cur.quote = true;
   }
-  return { blocks, stray };
+  return { blocks, stray, strayNotes };
 }
 
 const utcMs = (y: string, mo: string, d: string, h: string, mi: string, s: string) => {
@@ -799,32 +810,54 @@ export interface ArchiveRef {
   readonly file: string;
   readonly ts: string;
   readonly original: string;
+  /** The extract (### title) the URL sits in, in `file`: a Re-archive note excuses a dead URL of its own extract. */
+  readonly block: string;
 }
 
+/** The key of one extract, for Re-archive notes: its file and its ### title. */
+export const blockKey = (file: string, title: string) => `${file}\n${title}`;
+
 /**
- * Archive URLs, Wayback, archive.today and Ghostarchive (first file that cites each), and re-archive notes, over one tree. With
- * `now`, only URLs of extract blocks that pass L7: a malformed, blank or off-host URL never reaches the network.
+ * Archive URLs, Wayback, archive.today and Ghostarchive (first file and extract that cites each), and the Re-archive
+ * notes of each extract (by blockKey), over one tree. A Re-archive note names the new capture, so its URL is also an
+ * archive URL to verify. With `now`, only URLs of extract blocks that pass L7: a malformed, blank or off-host URL never
+ * reaches the network.
  */
-export function archiveRefs(texts: Texts | null, now?: number): { urls: Map<string, ArchiveRef>; notes: Set<string> } {
+export function archiveRefs(
+  texts: Texts | null,
+  now?: number,
+): { urls: Map<string, ArchiveRef>; notes: Map<string, Set<string>> } {
   const urls = new Map<string, ArchiveRef>();
-  const notes = new Set<string>();
+  const notes = new Map<string, Set<string>>();
   for (const [p, body] of issuerTexts(texts)) {
     for (const b of extracts(body).blocks) {
       if (now !== undefined && blockProblems(b, now).length > 0) continue;
+      const block = b.title;
+      const add = (u: string) => {
+        if (urls.has(u)) return;
+        const w = ARCHIVE.exec(u);
+        const t = ARCHIVE_TODAY.exec(u);
+        if (w) urls.set(u, { host: "wayback", file: p, ts: w[1] ?? "", original: w[2] ?? "", block });
+        else if (t) urls.set(u, { host: "today", file: p, ts: t[1] ?? "", original: t[2] ?? "", block });
+        else if (GHOSTARCHIVE.test(u)) urls.set(u, { host: "ghost", file: p, ts: "", original: "", block });
+      };
       for (const u of b.fields.get("Archive URL") ?? []) {
         const a = ARCHIVE.exec(u);
-        if (!urls.has(u)) urls.set(u, { host: "wayback", file: p, ts: a?.[1] ?? "", original: a?.[2] ?? "" });
+        if (!urls.has(u)) urls.set(u, { host: "wayback", file: p, ts: a?.[1] ?? "", original: a?.[2] ?? "", block });
       }
       // Archive URL 2: only archive.today URLs are fetched; a dated "attempted" record has nothing to HEAD.
-      for (const u of b.fields.get("Archive URL 2") ?? []) {
-        const a = ARCHIVE_TODAY.exec(u);
-        if (a && !urls.has(u)) urls.set(u, { host: "today", file: p, ts: a[1] ?? "", original: a[2] ?? "" });
-      }
+      for (const u of b.fields.get("Archive URL 2") ?? []) if (ARCHIVE_TODAY.test(u)) add(u);
       // Archive URL 3: only Ghostarchive URLs; an attempt record has nothing to HEAD.
-      for (const u of b.fields.get("Archive URL 3") ?? [])
-        if (GHOSTARCHIVE.test(u) && !urls.has(u)) urls.set(u, { host: "ghost", file: p, ts: "", original: "" });
+      for (const u of b.fields.get("Archive URL 3") ?? []) if (GHOSTARCHIVE.test(u)) add(u);
+      // A Re-archive note's URL (the new capture) is verified like any new archive URL (its form is L8 offline).
+      const set = notes.get(blockKey(p, block)) ?? new Set<string>();
+      for (const n of b.rearchive)
+        if (WAYBACK_SNAPSHOT.test(n.url) || ARCHIVE_TODAY.test(n.url) || GHOSTARCHIVE.test(n.url)) {
+          set.add(n.url);
+          add(n.url);
+        }
+      if (set.size > 0) notes.set(blockKey(p, block), set);
     }
-    for (const m of body.matchAll(/Re-archive:\s*(\S+)/g)) if (m[1]) notes.add(m[1]);
   }
   return { urls, notes };
 }
@@ -850,27 +883,39 @@ export function extractLinks(fs: Files): ExtractLink[] {
 
 // ---------- L8 (offline) ----------
 
-const REARCHIVE_LINE = /^\s*-\s+Re-archive:[ \t]*(\S*)/;
-const WAYBACK_SNAPSHOT = /^https:\/\/web\.archive\.org\/web\/\d{14}\/https?:\/\/\S+$/;
 /**
- * L8 in lint is offline: each `- Re-archive:` note names a Wayback snapshot, an archive.today or a Ghostarchive capture URL. Whether
- * a new archive URL resolves is `bun run verify` (lib/verify.ts), run locally; lint and CI never contact an archive.
+ * L8 in lint is offline: each `- Re-archive: <new archive URL>` note sits in an extract and names the new capture, a
+ * Wayback snapshot, an archive.today or a Ghostarchive capture URL, not one of that extract's own archive URLs (the
+ * dead one). Whether a new archive URL resolves is `bun run verify` (lib/verify.ts), run locally; lint and CI never
+ * contact an archive.
  */
 function rearchiveNotes(ctx: Ctx, emit: Emit) {
-  for (const [p, body] of issuerTexts(ctx.text))
-    for (const l of lines(body)) {
-      if (l.fence !== "none") continue;
-      const m = REARCHIVE_LINE.exec(l.text);
-      if (!m) continue;
-      const u = m[1] ?? "";
-      if (u === "") emit("L8", p, `line ${l.line}: Re-archive note names no URL`);
-      else if (!WAYBACK_SNAPSHOT.test(u) && !ARCHIVE_TODAY.test(u) && !GHOSTARCHIVE.test(u))
-        emit(
-          "L8",
-          p,
-          `line ${l.line}: Re-archive note ${show(u)} is not a Wayback snapshot, archive.today or Ghostarchive capture URL`,
-        );
-    }
+  for (const [p, body] of issuerTexts(ctx.text)) {
+    const { blocks, strayNotes } = extracts(body);
+    for (const line of strayNotes)
+      emit(
+        "L8",
+        p,
+        `line ${line}: Re-archive note is outside any extract (### block); put it in the extract whose snapshot died`,
+      );
+    for (const b of blocks)
+      for (const { url: u, line } of b.rearchive) {
+        const own = ["Archive URL", "Archive URL 2", "Archive URL 3"] as const;
+        if (u === "") emit("L8", p, `line ${line}: Re-archive note names no URL`);
+        else if (!WAYBACK_SNAPSHOT.test(u) && !ARCHIVE_TODAY.test(u) && !GHOSTARCHIVE.test(u))
+          emit(
+            "L8",
+            p,
+            `line ${line}: Re-archive note ${show(u)} is not a Wayback snapshot, archive.today or Ghostarchive capture URL`,
+          );
+        else if (own.some((f) => (b.fields.get(f) ?? []).includes(u)))
+          emit(
+            "L8",
+            p,
+            `line ${line}: Re-archive note ${show(u)} names this extract's own archive URL; it names the new capture (- Re-archive: <new archive URL>)`,
+          );
+      }
+  }
 }
 
 // ---------- L9 ----------

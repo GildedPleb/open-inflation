@@ -89,6 +89,12 @@ export interface VerifyOptions {
   readonly pacer?: Pacer;
   /** The clock pacedNet reads Retry-After dates against (default the real one). */
   readonly clock?: Clock;
-  /** Each URL left with no verdict, and why: still rate-limited at the cap, or blocked by a challenge/CAPTCHA. */
-  readonly noVerdict?: (url: string, why: "rate-limited" | "blocked") => void;
+  /**
+   * Each URL left with no verdict, and why: still rate-limited at the cap, blocked by a challenge/CAPTCHA, or
+   * unconfirmed (web.archive.org unreachable and archive.org availability did not list the exact capture).
+   */
+  readonly noVerdict?: (url: string, why: NoVerdict) => void;
 }
+
+/** Why verify left an archive URL with no verdict. */
+export type NoVerdict = "rate-limited" | "blocked" | "unconfirmed";

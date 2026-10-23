@@ -6,10 +6,11 @@
 //               resolving URL is ok)
 //   changed     resolves, but its sha256 differs from the last saved copy, or it redirects to a different final
 //               URL than last time
-//   lost        404, 410, DNS failure or gone
+//   lost        404, 410, or the host name does not exist (DNS ENOTFOUND) while a canary host still answers
 //   no verdict  403, 429 or blocked (on every host, Ghostarchive included), and 503 on Ghostarchive (its Cloudflare
 //               challenge); also any other status, a
-//               timeout, a reset or a redirect loop: retried next audit
+//               timeout, a reset, a redirect loop, any other DNS error, or no network at all (no canary answers):
+//               retried next audit
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
@@ -97,7 +98,33 @@ export function rawUrl(url: string): string {
   return url.replace(/^(https?:\/\/web\.archive\.org\/web\/\d{14})(?:[a-z]{2}_)?\//, "$1id_/");
 }
 
-const DNS = /ENOTFOUND|getaddrinfo|DNS/i;
+/**
+ * m-G: only "this name does not exist" (ENOTFOUND) can make a link lost. Offline, Bun reports every lookup as
+ * `getaddrinfo ETIMEOUT <host>` (a resolver timeout, not an answer), which the old /ENOTFOUND|getaddrinfo|DNS/ read as
+ * lost; any DNS error but ENOTFOUND is now no verdict, and ENOTFOUND is lost only while a canary host answers.
+ */
+const NXDOMAIN = /ENOTFOUND/;
+/** Known-good hosts: when none answers, the network (or our resolver) is down and no link is lost. Any HTTP answer counts. */
+export const CANARIES = ["https://www.gstatic.com/generate_204", "https://one.one.one.one/"] as const;
+/** How long one canary check is reused before a later ENOTFOUND checks again. */
+const CANARY_TTL_MS = 60_000;
+
+/** True when at least one canary gives any HTTP answer (one GET each, in order, until one answers). */
+export async function canaryOnline(
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  urls: readonly string[] = CANARIES,
+): Promise<boolean> {
+  for (const u of urls) {
+    const r = await bounded(timeoutMs, async (signal) => {
+      const res = await fetchImpl(u, { method: "GET", redirect: "manual", signal });
+      await res.body?.cancel();
+      return res.status;
+    });
+    if (typeof r === "number") return true;
+  }
+  return false;
+}
 const LOST = [404, 410];
 const BLOCKED = [403, 429];
 /** Ghostarchive's Cloudflare challenge answers a script with 403 or 503: a block, not a verdict on the capture. */
@@ -112,11 +139,17 @@ export function classify(
   p: Probe,
   prior: { readonly sha256: string; readonly finalUrl: string } | null,
   url = "",
-  paced: { readonly challenge?: boolean; readonly gaveUp?: { tries: number; elapsedMs: number } } = {},
+  paced: {
+    readonly challenge?: boolean;
+    readonly gaveUp?: { tries: number; elapsedMs: number };
+    /** No canary answered: the network or our resolver is down, so nothing is lost. */
+    readonly offline?: boolean;
+  } = {},
 ): { status: LinkClass; detail: string } {
   if (p.httpStatus === null) {
     const e = p.error ?? "no response";
-    return DNS.test(e) ? { status: "lost", detail: `DNS failure (${e})` } : { status: "no verdict", detail: e };
+    if (paced.offline) return { status: "no verdict", detail: `${e} (network unreachable: no canary host answered)` };
+    return NXDOMAIN.test(e) ? { status: "lost", detail: `DNS failure (${e})` } : { status: "no verdict", detail: e };
   }
   if (LOST.includes(p.httpStatus)) return { status: "lost", detail: `HTTP ${p.httpStatus}` };
   // Pacing's two ways to end with no verdict: a challenge/CAPTCHA page, or still rate-limited at the cap.
@@ -290,6 +323,11 @@ export interface AuditOptions {
    * with backoff. Replaces pauseMs. Without it requests are sequential with pauseMs between them, one try each.
    */
   readonly pacer?: Pacer;
+  /**
+   * m-G: is the network up? Asked (at most once a minute) before an ENOTFOUND makes a link lost; false makes it no
+   * verdict. Defaults to canaryOnline over `fetch` (CANARIES); tests inject it.
+   */
+  readonly online?: () => Promise<boolean>;
   readonly clock?: Clock;
   readonly progress?: (line: string) => void;
 }
@@ -311,6 +349,12 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
   const out: AuditLink[] = [];
   const clock = o.clock ?? realClock;
   let done = 0;
+  const online = o.online ?? (() => canaryOnline(o.fetch, o.timeoutMs));
+  let canary: { at: number; up: Promise<boolean> } | null = null;
+  const networkUp = () => {
+    if (!canary || clock.now() - canary.at >= CANARY_TTL_MS) canary = { at: clock.now(), up: online() };
+    return canary.up;
+  };
   const check = async (i: number) => {
     const link = links[i] as Link;
     const fetched = rawUrl(link.url);
@@ -334,9 +378,11 @@ export async function runAudit(o: AuditOptions): Promise<{ report: Report; mdPat
     const history = (manifest[link.url] ?? []).filter((e) => e.date !== o.date);
     const last = history.at(-1) ?? null;
     const prior = last && { date: last.date, sha256: last.sha256, finalUrl: last.finalUrl };
+    const offline = p.httpStatus === null && NXDOMAIN.test(p.error ?? "") && !(await networkUp());
     const { status, detail } = classify(p, prior, link.url, {
       ...(r.challenge ? { challenge: true } : {}),
       ...(gaveUp ? { gaveUp } : {}),
+      ...(offline ? { offline } : {}),
     });
     let saved: string | null = null;
     if (body && p.sha256 && p.finalUrl) {
@@ -405,8 +451,8 @@ export function renderMarkdown(r: Report): string {
     "",
     "Classes: ok (resolves, same content as the last saved copy; on a first run any resolving URL is ok), changed",
     "(resolves, but its sha256 differs from the last saved copy, or it redirects to a different final URL than last",
-    "time), lost (404, 410, DNS failure or gone), no verdict (403, 429, blocked; Ghostarchive also 503; retried at the",
-    "next audit). The script does not judge content: open each changed link and record whether it still shows the",
+    "time), lost (404, 410, or host not found while a canary host answers), no verdict (403, 429, blocked;",
+    "Ghostarchive also 503; any other DNS error; no network, when no canary answers; retried at the next audit). The script does not judge content: open each changed link and record whether it still shows the",
     "figure used.",
     "",
     "Wayback captures are fetched raw (the `id_` modifier) for hashing. Originals are hashed as served: a dynamic",

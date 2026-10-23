@@ -372,7 +372,9 @@ describe("verify over an injected fetch", () => {
     });
     return { fs, urls, progress, summary };
   };
-  const note = (u: string) => `- Re-archive: ${u} (capture gone; recaptured)\n`;
+  // m-B: the note names the new capture, which verify HEADs too (here it answers 200).
+  const NEWCAP = "https://ghostarchive.org/archive/NeW01";
+  const note = `- Re-archive: ${NEWCAP} (capture gone; recaptured)\n`;
   test("200 on both archives: clean, with the summary line", async () => {
     const r = await run(added, { [WB]: [200], [TODAY]: [200] });
     expect(r.fs).toEqual([]);
@@ -382,17 +384,21 @@ describe("verify over an injected fetch", () => {
     test(`Wayback ${status} without a Re-archive note fails and asks for one`, async () => {
       const r = await run(added, { [WB]: [status], [TODAY]: [200] });
       expect(r.fs.map((x) => [x.check, x.message])).toEqual([
-        ["L8", `archive URL ${WB} failed HEAD: HTTP ${status}; the commit must add a "Re-archive: ${WB}" note`],
+        [
+          "L8",
+          `archive URL ${WB} failed HEAD: HTTP ${status}; recapture it and add "- Re-archive: <new archive URL>" to this extract in the same commit`,
+        ],
       ]);
     });
     test(`Wayback ${status} with a Re-archive note in the same diff is excused`, async () => {
-      const r = await run(added + note(WB), { [WB]: [status], [TODAY]: [200] });
+      const r = await run(added + note, { [WB]: [status], [TODAY]: [200], [NEWCAP]: [200] });
       expect(r.fs).toEqual([]);
-      expect(r.progress).toContain(`L8 [1/2] excused (HTTP ${status}, Re-archive note) ${WB}`);
+      expect(r.progress).toContain(`L8 [1/3] excused (HTTP ${status}, Re-archive note) ${WB}`);
+      expect(r.urls).toContain(NEWCAP);
     });
     test(`archive.today ${status} with and without a Re-archive note`, async () => {
       expect((await run(added, { [WB]: [200], [TODAY]: [status] })).fs.length).toBe(1);
-      expect((await run(added + note(TODAY), { [WB]: [200], [TODAY]: [status] })).fs).toEqual([]);
+      expect((await run(added + note, { [WB]: [200], [TODAY]: [status], [NEWCAP]: [200] })).fs).toEqual([]);
     });
   }
   for (const status of [403, 429])
