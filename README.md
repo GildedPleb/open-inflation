@@ -4,7 +4,7 @@ Quarterly base money of the world's largest central banks, summed in US dollars,
 
 <!-- BEGIN GENERATED latest -->
 
-**Latest: $22.04 trillion at 30 Jun 2026 (2026 Q2).** Covers 98.79% of the basket; left out: BCB.
+**Latest: $22.04 trillion at 30 Jun 2026 (2026 Q2).** Covers 98.78% of the basket; left out: BCB.
 
 Updated 23 Oct 2026 · dataset version 1.1.0 · next quarter: 2026 Q3
 
@@ -41,7 +41,7 @@ US dollars, trillions (T), converted at each quarter-end exchange rate. The exac
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
 | 2026 Q2 | $22.04T | —¹ | [Sources](base_money/quarters/2026Q2.md) |
-| 2026 Q1 | $22.33T | —¹ | [Sources](base_money/quarters/2026Q1.md) |
+| 2026 Q1 | $22.37T | —¹ | [Sources](base_money/quarters/2026Q1.md) |
 
 <!-- END GENERATED table -->
 
@@ -81,7 +81,7 @@ More banks will be added over time. Each row keeps the basket it was first publi
 
 ### Caveats
 
-- **Exchange rates move the total.** Each figure is converted at the quarter-end rate (Federal Reserve H.10, or the Bank of Russia for the rouble). A stronger or weaker dollar changes the total even when no central bank issues or withdraws any money.
+- **Exchange rates move the total.** Each figure is converted at the market rate on the date its report counts on. A stronger or weaker dollar changes the total even when no central bank issues or withdraws any money.
 - **Narrower than other global estimates.** Global estimates such as [Porkopolis](https://www.porkopolis.io/methodology/) follow a similar method but cover a wider set of banks and use each bank's own exchange rate. Their totals won't match ours.
 - **A missing bank lowers the total.** Compare quarters only when they include the same banks. The YoY column does this for you and shows "—" when it can't.
 - **Banks measure differently.** Some report the month-end amount, some a monthly average and the ECB a weekly figure. We keep each bank's own convention.
