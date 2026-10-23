@@ -1,9 +1,9 @@
-// All integrity checks (L1-L12 in WP1_REQUIREMENTS). Pure over a Snapshot; the only I/O is the injected Net.
+// All integrity checks (L1-L12 in WP1_REQUIREMENTS). Pure over a Snapshot: no network, no I/O. L8's link check
+// (HEAD on each new archive URL) is not here; it is `bun run verify` (lib/verify.ts), run locally, never in CI.
 import { posix } from "node:path";
-import { MAX_HOPS } from "./archive.ts";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, slugs } from "./markdown.ts";
-import type { CheckId, Files, Finding, LintOptions, Net, Snapshot } from "./types.ts";
+import type { CheckId, Files, Finding, LintOptions, Snapshot } from "./types.ts";
 
 /** The series with a CSV and a roll-up schema today. A series id names its CSV and its evidence folder. */
 export const SERIES = "base_money";
@@ -47,7 +47,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   quarterHeadings(ctx, emit);
   indexCompleteness(ctx, emit);
   extractSchema(ctx, emit);
-  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net, emit, opts.progress);
+  rearchiveNotes(ctx, emit);
   aggregation(ctx, rows, emit);
   catalog(ctx, emit);
   placement(ctx, emit);
@@ -67,7 +67,7 @@ const decode = (b: Uint8Array): string | null => {
     return null;
   }
 };
-const decodeAll = (fs: Files): Texts => {
+export const decodeAll = (fs: Files): Texts => {
   const m = new Map<string, string>();
   for (const [p, b] of fs) {
     const t = decode(b);
@@ -354,12 +354,12 @@ function indexCompleteness(ctx: Ctx, emit: Emit) {
 
 // ---------- L7, L8 ----------
 
-const FIELDS = ["Retrieved", "Original URL", "Archive URL", "Archive URL 2"] as const;
+const FIELDS = ["Retrieved", "Original URL", "Archive URL", "Archive URL 2", "Archive URL 3"] as const;
 type Field = (typeof FIELDS)[number];
-const FIELD_LINE = /^\s*[-*]\s+(Retrieved|Original URL|Archive URL 2|Archive URL):\s*(.*?)\s*$/;
+const FIELD_LINE = /^\s*[-*]\s+(Retrieved|Original URL|Archive URL [23]|Archive URL):\s*(.*?)\s*$/;
 /** A field label in another form: no list marker, or bold. Reported as the wrong form, not as missing. */
 const NEAR_FIELD =
-  /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(Retrieved|Original URL|Archive URL 2|Archive URL)(?::(?:\*\*|__)|(?:\*\*|__)?\s*:)/;
+  /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(Retrieved|Original URL|Archive URL [23]|Archive URL)(?::(?:\*\*|__)|(?:\*\*|__)?\s*:)/;
 const RETRIEVED = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?Z$/;
 const ARCHIVE = /^https:\/\/web\.archive\.org\/web\/(\d+)\/(.+)$/;
 /**
@@ -367,6 +367,11 @@ const ARCHIVE = /^https:\/\/web\.archive\.org\/web\/(\d+)\/(.+)$/;
  * (/<id>) or the dated form (/<YYYYMMDDhhmmss>/<Original URL>). Any other host, self-hosted copies included, fails.
  */
 const ARCHIVE_TODAY = /^https:\/\/archive\.(?:ph|today|is)\/(?:(\d{14})\/(\S+)|([A-Za-z0-9]+))$/;
+/**
+ * Archive URL 3 on Ghostarchive (the user, 2026-10-22; captured by hand in a browser): https://ghostarchive.org/archive/<id>,
+ * the id letters and digits only, with no query, fragment or trailing path. Any other host, and http://, fails.
+ */
+const GHOSTARCHIVE = /^https:\/\/ghostarchive\.org\/archive\/[A-Za-z0-9]+$/;
 /** Or a dated record of the attempt: `attempted <YYYY-MM-DD>: <reason>`. */
 const ATTEMPTED = /^attempted (\S+): (.*)$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -476,26 +481,110 @@ const sameUrl = (a: string, b: string): boolean | null => {
 const ts14Ms = (ts: string) =>
   utcMs(ts.slice(0, 4), ts.slice(4, 6), ts.slice(6, 8), ts.slice(8, 10), ts.slice(10, 12), ts.slice(12, 14));
 
+/** A timestamp with `Z` or a `±HH:MM` offset, as ms since the epoch; null when it is neither or not a real time. */
+const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+function instantMs(t: string): number | null {
+  const m = INSTANT.exec(t);
+  if (!m) return null;
+  const local = utcMs(m[1] ?? "", m[2] ?? "", m[3] ?? "", m[4] ?? "", m[5] ?? "", m[6] ?? "0");
+  if (local === null || m[7] === undefined) return local;
+  const [oh, om] = [Number(m[8]), Number(m[9])];
+  if (oh > 23 || om > 59) return null;
+  return local - (m[7] === "-" ? -1 : 1) * (oh * 60 + om) * 60_000;
+}
+/** The UTC calendar date (YYYY-MM-DD) of an instant. */
+const utcDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * The window an archive.today date must fall in (Assay): on or after the UTC date of Retrieved (an offset is
+ * converted to UTC; an unreadable Retrieved is L7's own finding and skips this) and no later than the UTC date of
+ * `now` plus the Retrieved clock skew. null when `day` (YYYY-MM-DD) is inside it.
+ */
+function dateWindowProblem(what: string, day: string, retrieved?: string, now?: number): string | null {
+  const rMs = retrieved === undefined ? null : instantMs(retrieved);
+  if (rMs !== null && day < utcDate(rMs))
+    return `${what} ${day} is before Retrieved ${retrieved} (UTC date ${utcDate(rMs)}); archive.today is tried at or after retrieval`;
+  if (now !== undefined && day > utcDate(now + SKEW_MS))
+    return `${what} ${day} is in the future (now ${new Date(now).toISOString()}, UTC date ${utcDate(now + SKEW_MS)} with the 10 min skew)`;
+  return null;
+}
+/** A URL in an attempt reason: any scheme:// (a bare host, www. ones included, is caught by hostWord). */
+const URLISH = /[a-z][a-z0-9+.-]*:\/\//i;
+/**
+ * A bare host or host/path word (example.com, archive.ph/abc, raw.githubusercontent.com/x/y): two or more dot-joined
+ * labels ending in a top-level label of 2+ letters, then optionally a path. Abbreviations (e.g., U.S.), sentence
+ * ends (blocked.), numbers (3.5, H.4.1) and file names (data.xlsx) are not hosts.
+ */
+const HOSTISH = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,63})(?:[/:?#]\S*)?$/i;
+const FILE_TYPES = new Set(["csv", "doc", "docx", "htm", "html", "json", "pdf", "txt", "xls", "xlsx", "xml", "zip"]);
+/** archive.today's own names, as prose ("archive.today returned a CAPTCHA"), with no path. */
+const ARCHIVE_TODAY_NAMES = new Set(["archive.today", "archive.ph", "archive.is"]);
+const hostWord = (word: string): boolean => {
+  const w = word.replace(/^[("'«“‘[<]+/, "").replace(/[)"'»”’\]>.,;:!?]+$/, "");
+  const m = HOSTISH.exec(w);
+  if (!m) return false;
+  if (ARCHIVE_TODAY_NAMES.has(w.toLowerCase())) return false;
+  // A file name ("data.xlsx") is not a host; with a path ("example.zip/download", .zip is a TLD) it is.
+  return !(!/[/:?#]/.test(w) && FILE_TYPES.has((m[1] ?? "").toLowerCase()));
+};
+/** A word counts toward the minimum only if it has a letter or a digit ("-", "—", "..." do not). */
+const reasonWords = (reason: string) => reason.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
+const MIN_REASON_WORDS = 3;
+
+/**
+ * L7 on one `attempted <YYYY-MM-DD>: <reason>` record, shared by Archive URL 2 and Archive URL 3 (`label`): a real
+ * date inside dateWindowProblem's window, and a reason of at least 3 words (with a letter or digit) and no URL (no
+ * scheme://, no bare host or host/path). null when it passes.
+ */
+function attemptProblem(
+  label: "Archive URL 2" | "Archive URL 3",
+  v: string,
+  retrieved: string | undefined,
+  now: number | undefined,
+): string | null {
+  const m = ATTEMPTED.exec(v);
+  if (!m) return `${label} ${show(v)} must read "attempted YYYY-MM-DD: <reason>"`;
+  const day = m[1] ?? "";
+  if (!isIsoDate(day)) return `${label} attempt date ${show(day)} is not a real YYYY-MM-DD date`;
+  const reason = (m[2] ?? "").trim();
+  if (reason === "") return `${label} ${show(v)} needs a reason after the date`;
+  if (reasonWords(reason).length < MIN_REASON_WORDS)
+    return `${label} attempt reason ${show(reason)} is too short: say what failed in at least ${MIN_REASON_WORDS} words (a word has a letter or digit)`;
+  if (URLISH.test(reason) || reason.split(/\s+/).some(hostWord))
+    return `${label} attempt reason ${show(reason)} contains a URL (a scheme://, or a bare host or host/path); a reason is prose (record links in their own fields)`;
+  return dateWindowProblem(`${label} attempt date`, day, retrieved, now);
+}
+
 /**
  * L7 on one Archive URL 2 value: an archive.today URL (short id, or the dated form of the Original URL at a real
- * time), or `attempted <YYYY-MM-DD>: <reason>` with a real date and a non-empty reason. null when it passes.
+ * time, its date inside dateWindowProblem's window), or an attempt record (attemptProblem). null when it passes.
  */
-export function archive2Problem(v: string, original: string | undefined): string | null {
-  if (v.startsWith("attempted")) {
-    const m = ATTEMPTED.exec(v);
-    if (!m) return `Archive URL 2 ${show(v)} must read "attempted YYYY-MM-DD: <reason>"`;
-    if (!isIsoDate(m[1] ?? "")) return `Archive URL 2 attempt date ${show(m[1])} is not a real YYYY-MM-DD date`;
-    if ((m[2] ?? "").trim() === "") return `Archive URL 2 ${show(v)} needs a reason after the date`;
-    return null;
-  }
+export function archive2Problem(
+  v: string,
+  original: string | undefined,
+  retrieved?: string | undefined,
+  now?: number | undefined,
+): string | null {
+  if (v.startsWith("attempted")) return attemptProblem("Archive URL 2", v, retrieved, now);
   const a = ARCHIVE_TODAY.exec(v);
   if (!a)
     return `Archive URL 2 ${show(v)} is not an archive.today URL or "attempted YYYY-MM-DD: <reason>" (archive.today: https://archive.ph/, https://archive.today/ or https://archive.is/, then <id> or <YYYYMMDDhhmmss>/<Original URL>)`;
   if (a[1] === undefined) return null;
-  if (ts14Ms(a[1]) === null) return `Archive URL 2 timestamp ${a[1]} is not a real time`;
+  const tsMs = ts14Ms(a[1]);
+  if (tsMs === null) return `Archive URL 2 timestamp ${a[1]} is not a real time`;
   if (original !== undefined && sameUrl(a[2] ?? "", original) === false)
     return `Archive URL 2 captures ${show(a[2])}, not the Original URL ${show(original)}`;
-  return null;
+  return dateWindowProblem(`Archive URL 2 timestamp ${a[1]} date`, utcDate(tsMs), retrieved, now);
+}
+
+/**
+ * L7 on one Archive URL 3 value: https://ghostarchive.org/archive/<id> (letters and digits; no timestamp to check), or
+ * an attempt record with Archive URL 2's date and reason rules (attemptProblem). null when it passes.
+ */
+export function archive3Problem(v: string, retrieved?: string | undefined, now?: number | undefined): string | null {
+  if (v.startsWith("attempted")) return attemptProblem("Archive URL 3", v, retrieved, now);
+  if (GHOSTARCHIVE.test(v)) return null;
+  return `Archive URL 3 ${show(v)} is not a Ghostarchive URL or "attempted YYYY-MM-DD: <reason>" (Ghostarchive: https://ghostarchive.org/archive/<id>, the id letters and digits only, no query, fragment or path after it)`;
 }
 
 /** Everything L7 has to say about one extract block; empty means the block passes. */
@@ -513,9 +602,13 @@ function blockProblems(b: Extract, now: number): string[] {
     if (vs.length > 1) out.push(`has more than one ${f}`);
     return vs.length === 1 ? vs[0] : undefined;
   };
-  const [retrieved, original, archive, archive2] = FIELDS.map(one);
+  const [retrieved, original, archive, archive2, archive3] = FIELDS.map(one);
   if (archive2 !== undefined) {
-    const m = archive2Problem(archive2, original);
+    const m = archive2Problem(archive2, original, retrieved, now);
+    if (m) out.push(m);
+  }
+  if (archive3 !== undefined) {
+    const m = archive3Problem(archive3, retrieved, now);
     if (m) out.push(m);
   }
   if (!b.quote) out.push("has no verbatim quote (blockquote or fenced block)");
@@ -700,19 +793,19 @@ function asOfProblem(v: string, q: string, fx: boolean, startOfDay: boolean): st
   return `As of ${date} is outside its quarter heading ${q} (${start}..${end})`;
 }
 
-interface ArchiveRef {
-  /** web.archive.org (Archive URL) or archive.today (Archive URL 2). */
-  readonly host: "wayback" | "today";
+export interface ArchiveRef {
+  /** web.archive.org (Archive URL), archive.today (Archive URL 2) or Ghostarchive (Archive URL 3). */
+  readonly host: "wayback" | "today" | "ghost";
   readonly file: string;
   readonly ts: string;
   readonly original: string;
 }
 
 /**
- * Archive URLs, Wayback and archive.today (first file that cites each), and re-archive notes, over one tree. With
+ * Archive URLs, Wayback, archive.today and Ghostarchive (first file that cites each), and re-archive notes, over one tree. With
  * `now`, only URLs of extract blocks that pass L7: a malformed, blank or off-host URL never reaches the network.
  */
-function archiveRefs(texts: Texts | null, now?: number): { urls: Map<string, ArchiveRef>; notes: Set<string> } {
+export function archiveRefs(texts: Texts | null, now?: number): { urls: Map<string, ArchiveRef>; notes: Set<string> } {
   const urls = new Map<string, ArchiveRef>();
   const notes = new Set<string>();
   for (const [p, body] of issuerTexts(texts)) {
@@ -727,149 +820,57 @@ function archiveRefs(texts: Texts | null, now?: number): { urls: Map<string, Arc
         const a = ARCHIVE_TODAY.exec(u);
         if (a && !urls.has(u)) urls.set(u, { host: "today", file: p, ts: a[1] ?? "", original: a[2] ?? "" });
       }
+      // Archive URL 3: only Ghostarchive URLs; an attempt record has nothing to HEAD.
+      for (const u of b.fields.get("Archive URL 3") ?? [])
+        if (GHOSTARCHIVE.test(u) && !urls.has(u)) urls.set(u, { host: "ghost", file: p, ts: "", original: "" });
     }
     for (const m of body.matchAll(/Re-archive:\s*(\S+)/g)) if (m[1]) notes.add(m[1]);
   }
   return { urls, notes };
 }
 
-/** HTTP statuses that confirm a dead snapshot. Only these can be excused by a Re-archive note. */
-const DEAD = [404, 410];
-const CONCURRENCY = 4;
+/** One link as written in an extract, for `bun run audit` (which re-checks every one of them, locally). */
+export interface ExtractLink {
+  readonly file: string;
+  readonly quarter: string | null;
+  readonly extract: string;
+  readonly field: "Original URL" | "Archive URL" | "Archive URL 2" | "Archive URL 3";
+  readonly url: string;
+}
+/** Every Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the issuer files, in file and extract order; attempts skipped. */
+export function extractLinks(fs: Files): ExtractLink[] {
+  const out: ExtractLink[] = [];
+  for (const [file, body] of issuerTexts(decodeAll(fs)))
+    for (const b of extracts(body).blocks)
+      for (const field of ["Original URL", "Archive URL", "Archive URL 2", "Archive URL 3"] as const)
+        for (const url of b.fields.get(field) ?? [])
+          if (/^https?:\/\/\S+$/.test(url)) out.push({ file, quarter: b.quarter, extract: b.title, field, url });
+  return out;
+}
 
-type Problem = { readonly dead: boolean; readonly message: string; readonly status?: number } | null;
-/** Why a URL passed, for the progress line: "HTTP 200, <timestamp>" or "archive.org availability, <timestamp>". */
-type Verdict = { readonly problem: Problem; readonly ok?: string; readonly limited?: string };
+// ---------- L8 (offline) ----------
 
-/** HEAD the snapshot; when web.archive.org is unreachable, ask archive.org for the exact timestamp instead. */
-const RATE_LIMITED = 429;
-
+const REARCHIVE_LINE = /^\s*-\s+Re-archive:[ \t]*(\S*)/;
+const WAYBACK_SNAPSHOT = /^https:\/\/web\.archive\.org\/web\/\d{14}\/https?:\/\/\S+$/;
 /**
- * archive.today statuses that are a block, not a verdict: its CAPTCHA challenge (403) and rate limit (429). CI often
- * gets them; they leave the capture unchecked, so they are logged as rate-limited and do not fail.
+ * L8 in lint is offline: each `- Re-archive:` note names a Wayback snapshot, an archive.today or a Ghostarchive capture URL. Whether
+ * a new archive URL resolves is `bun run verify` (lib/verify.ts), run locally; lint and CI never contact an archive.
  */
-const TODAY_BLOCKED = [403, RATE_LIMITED];
-
-async function snapshotVerdict(net: Net, url: string, ref: ArchiveRef): Promise<Verdict> {
-  if (ref.host === "today") return todayVerdict(net, url);
-  const r = await net.head(url);
-  if (r.kind === "ok") return { problem: null, ok: `HTTP ${r.status}, ${ref.ts}` };
-  if (r.kind === "redirect")
-    return {
-      problem: {
-        dead: false,
-        message:
-          r.reason === "other-capture"
-            ? `snapshot ${ref.ts} does not exist; Wayback redirected (HTTP ${r.status}) to nearest capture ${r.timestamp}`
-            : r.reason === "off-snapshot"
-              ? `HEAD redirected (HTTP ${r.status}) off the snapshot to ${r.location}`
-              : `HEAD redirected more than ${MAX_HOPS} times (last to ${r.location})`,
-      },
-    };
-  if (r.kind === "http")
-    return {
-      problem: {
-        dead: DEAD.includes(r.status),
-        status: r.status,
-        message: `failed HEAD: HTTP ${r.status}${r.status === RATE_LIMITED ? " (rate-limited; retry later)" : ""}`,
-      },
-    };
-  const a = await net.available(ref.original, ref.ts);
-  if (a.kind === "http") {
-    const why = a.status === RATE_LIMITED ? "rate-limited; " : "";
-    return {
-      problem: {
-        dead: false,
-        message: `could not be checked: web.archive.org: ${r.message}; archive.org availability: HTTP ${a.status} (${why}no verdict on the snapshot; retry later)`,
-      },
-    };
-  }
-  if (a.kind === "network")
-    return {
-      problem: {
-        dead: false,
-        message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
-      },
-    };
-  if (a.timestamp === ref.ts) return { problem: null, ok: `archive.org availability, ${a.timestamp}` };
-  const why =
-    a.timestamp === null ? "has no snapshot" : `returns closest snapshot ${a.timestamp}, not the recorded ${ref.ts}`;
-  return {
-    problem: { dead: false, message: `web.archive.org unreachable (${r.message}) and archive.org availability ${why}` },
-  };
-}
-
-/** HEAD an archive.today capture. No availability fallback: archive.org knows nothing about it. */
-async function todayVerdict(net: Net, url: string): Promise<Verdict> {
-  const r = await net.head(url);
-  if (r.kind === "ok") return { problem: null, ok: `HTTP ${r.status}, archive.today` };
-  if (r.kind === "redirect")
-    return {
-      problem: {
-        dead: false,
-        message:
-          r.reason === "loop"
-            ? `HEAD redirected more than ${MAX_HOPS} times on archive.today (last to ${r.location})`
-            : `HEAD redirected (HTTP ${r.status}) off archive.today to ${r.location}`,
-      },
-    };
-  if (r.kind === "http") {
-    if (TODAY_BLOCKED.includes(r.status))
-      return { problem: null, limited: `HTTP ${r.status}, archive.today; no verdict` };
-    return {
-      problem: {
-        dead: DEAD.includes(r.status),
-        status: r.status,
-        message: `failed HEAD: archive.today answered HTTP ${r.status}`,
-      },
-    };
-  }
-  return {
-    problem: {
-      dead: false,
-      message: `could not be checked: network error: archive.today: ${r.message} (no verdict on the capture; retry online)`,
-    },
-  };
-}
-
-/** Check each archive URL once: when the diff first adds it. Committed URLs are never re-checked. */
-async function archiveResolution(ctx: Ctx, net: Net, emit: Emit, progress?: (line: string) => void) {
-  const now = archiveRefs(ctx.text, ctx.now);
-  const was = archiveRefs(ctx.base);
-  const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
-  const results: Problem[] = [];
-  const noted = (url: string) => now.notes.has(url) && !was.notes.has(url);
-  if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
-  let next = 0;
-  let done = 0;
-  const worker = async () => {
-    for (let i = next++; i < todo.length; i = next++) {
-      const [url, ref] = todo[i] as [string, ArchiveRef];
-      const v = await snapshotVerdict(net, url, ref);
-      results[i] = v.problem;
-      const p = v.problem;
-      const word = v.limited
-        ? `rate-limited (${v.limited})`
-        : !p
-          ? `ok (${v.ok})`
-          : p.dead && noted(url)
-            ? `excused (HTTP ${p.status}, Re-archive note)`
-            : "fail";
-      progress?.(`L8 [${++done}/${todo.length}] ${word} ${url}`);
+function rearchiveNotes(ctx: Ctx, emit: Emit) {
+  for (const [p, body] of issuerTexts(ctx.text))
+    for (const l of lines(body)) {
+      if (l.fence !== "none") continue;
+      const m = REARCHIVE_LINE.exec(l.text);
+      if (!m) continue;
+      const u = m[1] ?? "";
+      if (u === "") emit("L8", p, `line ${l.line}: Re-archive note names no URL`);
+      else if (!WAYBACK_SNAPSHOT.test(u) && !ARCHIVE_TODAY.test(u) && !GHOSTARCHIVE.test(u))
+        emit(
+          "L8",
+          p,
+          `line ${l.line}: Re-archive note ${show(u)} is not a Wayback snapshot, archive.today or Ghostarchive capture URL`,
+        );
     }
-  };
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  for (const [i, [url, ref]] of todo.entries()) {
-    const p = results[i];
-    if (!p) continue;
-    if (p.dead && noted(url)) continue;
-    const fix = p.dead
-      ? `; the commit must add a "Re-archive: ${url}" note`
-      : noted(url)
-        ? `; a Re-archive note excuses only a dead snapshot (HTTP ${DEAD.join("/")})`
-        : "";
-    emit("L8", ref.file, `archive URL ${url} ${p.message}${fix}`);
-  }
 }
 
 // ---------- L9 ----------
@@ -1048,6 +1049,11 @@ function valueEntry(key: string, i: number, c: unknown, q: string, fxHave: Set<s
   else if (c.local_currency === "USD" && v.scale > 0)
     errs.push(
       `${key}[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_value ${c.local_value} is USD more precise than $1 (USD is recorded to the whole dollar, no decimal point)`,
+    );
+  // A figure in any currency is written canonically: "0", "0.<digits>", or no leading zero ("0123", "00.5" fail).
+  else if (/^[+-]?0\d/.test(c.local_value as string))
+    errs.push(
+      `${key}[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_value ${c.local_value} has a leading zero (write a plain "0" or no leading zero)`,
     );
   if (!fx || fx.digits === 0n)
     errs.push(`${key}[${i}].fx_rate must be a positive decimal string (quoted), got ${show(c.fx_rate)}`);

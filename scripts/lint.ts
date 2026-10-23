@@ -1,9 +1,8 @@
 // bun run lint [--base <ref>]
 // Checks the working tree against a base commit: --base; on a GitHub push to any ref but main, merge-base(HEAD,
 // origin/main); else $LINT_BASE (all zeros: none); else HEAD if it exists. See lib/lint-base.ts.
-// Network: only archive URLs the diff adds that pass L7, once each: HEAD on web.archive.org, else archive.org availability;
-// HEAD on archive.today (Archive URL 2; HTTP 403/429 is rate-limited, no verdict). Committed links are never re-swept.
-import { archiveNet } from "./lib/archive.ts";
+// No network, ever: lint and CI never contact an archive or a source. L8 here checks form only; whether a new
+// archive URL resolves is `bun run verify`, a local research script (scripts/verify.ts), never a CI step or gate.
 import { lint } from "./lib/checks.ts";
 import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, UnknownBase } from "./lib/git.ts";
 import { chooseBase } from "./lib/lint-base.ts";
@@ -51,16 +50,7 @@ try {
   console.error(`lint: ${e.message}`);
   process.exit(2);
 }
-// OBM_NO_NETWORK (set by the test suite for spawned lints) can only take the network away: every fetch is refused,
-// so each new archive URL fails L8 as a network error. It never makes a URL pass.
-const offline = Boolean(process.env.OBM_NO_NETWORK);
-const refuse = (() => Promise.reject(new Error("network disabled (OBM_NO_NETWORK)"))) as unknown as typeof fetch;
-const findings = await lint(snapshot, {
-  archive: "added",
-  net: archiveNet(offline ? refuse : fetch, 15_000),
-  now: Date.now(),
-  progress: (line) => console.error(`lint: ${line}`),
-});
+const findings = await lint(snapshot, { now: Date.now() });
 for (const f of findings) console.log(`${f.check} ${f.file}: ${f.message}`);
 console.log(findings.length === 0 ? `lint: clean (base ${base ?? "none"})` : `lint: ${findings.length} finding(s)`);
 process.exit(findings.length === 0 ? 0 : 1);

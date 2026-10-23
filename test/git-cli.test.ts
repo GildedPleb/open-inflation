@@ -28,7 +28,7 @@ function repo(files: Record<string, string>): string {
  */
 const childEnv = () => {
   const { LINT_BASE: _b, GITHUB_EVENT_NAME: _e, GITHUB_REF: _r, ...rest } = process.env;
-  return { ...rest, OBM_NO_NETWORK: "1" };
+  return rest;
 };
 const git = (dir: string, ...args: string[]) => {
   const r = Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", dir, ...args]);
@@ -117,7 +117,7 @@ describe("git snapshot loader", () => {
     expect(text(s.files, "a.txt")).toBe("a\n");
   });
   test("this repository's committed skeleton lints clean", async () => {
-    expect(await lint(loadSnapshot(committedTree(ROOT), null), { archive: "off", now: Date.now() })).toEqual([]);
+    expect(await lint(loadSnapshot(committedTree(ROOT), null), { now: Date.now() })).toEqual([]);
   });
 });
 
@@ -147,37 +147,77 @@ describe("repository identity", () => {
     for (let i = 1; i <= 12; i++) expect(readme).toMatch(new RegExp(`^\\| L${i} +\\|`, "m"));
     expect(readme).toContain("https://web.archive.org/web/");
     expect(readme).toContain("https://archive.org/wayback/available");
+    // #18: L8 in lint makes no network calls; the link check is `bun run verify`.
+    expect(readme).toMatch(/^\| L8 +\|.*no network calls.*`bun run verify`/m);
+    expect(readme).not.toContain("OBM_NO_NETWORK");
   });
   test("LICENSE files are text that lint accepts (L10)", async () => {
-    const fs = await lint(loadSnapshot(committedTree(ROOT), null), { archive: "off", now: Date.now() });
+    const fs = await lint(loadSnapshot(committedTree(ROOT), null), { now: Date.now() });
     expect(fs.filter((f) => f.file.startsWith("LICENSE"))).toEqual([]);
+  });
+});
+
+// #18: lint and CI make no network call, ever. verify and audit are local scripts, never CI steps or merge gates.
+describe("no network in lint or CI", () => {
+  test("CI (lint.yml) runs no verify or audit step and sets no network env", async () => {
+    const yml = await Bun.file(join(ROOT, ".github", "workflows", "lint.yml")).text();
+    const runs = [...yml.matchAll(/^\s*run:\s*(.+)$/gm)].map((m) => (m[1] ?? "").trim());
+    expect(runs).toEqual([
+      "bun install --frozen-lockfile",
+      "bun test",
+      "bun run typecheck",
+      "bun run check",
+      "bun run lint",
+    ]);
+    expect(yml).not.toMatch(/\b(verify|audit)\b|scripts\/(verify|audit)/);
+    expect(yml).not.toMatch(/OBM_NO_NETWORK|OBM_ARCHIVE_DIR|curl|wget|https?_proxy/i);
+  });
+  test("verify, audit and test are package scripts; nothing names OBM_NO_NETWORK", async () => {
+    const pkg = (await Bun.file(join(ROOT, "package.json")).json()) as { scripts: Record<string, string> };
+    expect([pkg.scripts.verify, pkg.scripts.audit, pkg.scripts.lint, pkg.scripts.test]).toEqual([
+      "bun scripts/verify.ts",
+      "bun scripts/audit.ts",
+      "bun scripts/lint.ts",
+      "bun test", // `bun run test` runs the suite, not /usr/bin/test
+    ]);
+    for (const f of ["scripts/lint.ts", "scripts/lib/checks.ts", "scripts/lib/types.ts", "README.md", "AGENTS.md"])
+      expect(await Bun.file(join(ROOT, f)).text()).not.toContain("OBM_NO_NETWORK");
+  });
+  test("lint's import graph never reaches the network code (archive.ts, verify.ts, audit.ts) or fetch", async () => {
+    const seen = new Set<string>();
+    const walk = async (p: string) => {
+      if (seen.has(p)) return;
+      seen.add(p);
+      const src = await Bun.file(p).text();
+      expect(src).not.toMatch(/\bfetch\s*\(|globalThis\.fetch|node:(http|https|net|dns)/);
+      for (const m of src.matchAll(/^import [^;]*? from "(\.[^"]+)";/gm)) await walk(resolve(p, "..", m[1] ?? ""));
+    };
+    await walk(join(ROOT, "scripts", "lint.ts"));
+    const names = [...seen].map((p) => p.slice(ROOT.length + 1)).sort();
+    expect(names).toContain("scripts/lib/checks.ts");
+    for (const n of ["scripts/lib/archive.ts", "scripts/lib/verify.ts", "scripts/lib/audit.ts"])
+      expect(names).not.toContain(n);
   });
 });
 
 describe("CLI", () => {
   let extra: Record<string, string> = {};
   const run = (script: string, cwd: string, ...args: string[]) => {
-    // The no-network preload does not reach a child process: OBM_NO_NETWORK makes the CLI refuse every fetch.
-    const r = Bun.spawnSync(["bun", join(ROOT, "scripts", script), ...args], { cwd, env: { ...childEnv(), ...extra } });
+    // bunfig's preload does not reach a child process run from another cwd, so preload the no-network fetch here.
+    const r = Bun.spawnSync(
+      ["bun", "--preload", join(ROOT, "test", "no-network.ts"), join(ROOT, "scripts", script), ...args],
+      {
+        cwd,
+        env: { ...childEnv(), ...extra },
+      },
+    );
     return { code: r.exitCode, out: dec.decode(r.stdout) + dec.decode(r.stderr) };
   };
   test("lint: 0 on clean, 1 with findings, 2 on bad usage", () => {
     const dir = repo({ "base_money.csv": "date,value\n" });
     git(dir, "init", "-q");
-    const bad = run("lint.ts", dir);
-    expect(bad.code).toBe(1);
-    expect(bad.out).toMatch(/L1 base_money\.csv: header/);
-    expect(run("lint.ts", dir, "--nope").code).toBe(2);
-    const unknown = run("lint.ts", dir, "--base", "no-such-ref");
-    expect([unknown.code, unknown.out.trim()]).toEqual([2, 'lint: unknown base ref "no-such-ref"']);
-    // The committed tree, not the live one: an uncommitted extract in the checkout cannot reach this run.
-    expect(run("lint.ts", committedTree(ROOT), "--base", "HEAD").code).toBe(0);
-  });
-  test("a spawned lint refuses the network: a new archive URL fails closed, fast", () => {
-    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
-    git(dir, "init", "-q");
-    git(dir, "add", ".");
-    git(dir, "commit", "-qm", "base");
+    // #18: lint makes no network call, ever (fetch throws in the child). With no base every archive URL is new, and
+    // a new Wayback, archive.today and Ghostarchive URL draw no L8 or network line: L8's link check is `bun run verify`.
     const original = "https://www.federalreserve.gov/releases/h6/20260723/";
     mkdirSync(join(dir, "issuers/FED"), { recursive: true });
     writeFileSync(
@@ -192,18 +232,23 @@ describe("CLI", () => {
         `- Original URL: ${original}`,
         `- Archive URL: https://web.archive.org/web/20261022170100/${original}`,
         "- Archive URL 2: https://archive.ph/AbC12",
+        "- Archive URL 3: https://ghostarchive.org/archive/AbC12",
         "",
         "> Monetary base 1",
         "",
       ].join("\n"),
     );
-    const t0 = performance.now();
-    const r = run("lint.ts", dir, "--base", "HEAD");
-    expect(performance.now() - t0).toBeLessThan(3000);
-    expect(r.code).toBe(1);
-    expect(r.out).toContain("network disabled (OBM_NO_NETWORK)");
-    expect(r.out).toMatch(/L8 issuers\/FED\/2026\.md: .*web\.archive\.org.*could not be checked/);
-    expect(r.out).toMatch(/L8 issuers\/FED\/2026\.md: archive URL https:\/\/archive\.ph\/AbC12 could not be checked/);
+    const bad = run("lint.ts", dir);
+    expect(bad.code).toBe(1);
+    expect(bad.out).toMatch(/L1 base_money\.csv: header/);
+    // No INDEX.md or catalog.json (L6, L11) and the bad header (L1); nothing else, and no L8 or network line.
+    expect(bad.out).not.toMatch(/network|fetch|L8|archive\.today:/i);
+    expect([...new Set(bad.out.match(/^L\d+ /gm))]).toEqual(["L1 ", "L6 ", "L11 "]);
+    expect(run("lint.ts", dir, "--nope").code).toBe(2);
+    const unknown = run("lint.ts", dir, "--base", "no-such-ref");
+    expect([unknown.code, unknown.out.trim()]).toEqual([2, 'lint: unknown base ref "no-such-ref"']);
+    // The committed tree, not the live one: an uncommitted extract in the checkout cannot reach this run.
+    expect(run("lint.ts", committedTree(ROOT), "--base", "HEAD").code).toBe(0);
   });
   test("a push to a branch lints against merge-base(HEAD, origin/main), not event.before", () => {
     const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });

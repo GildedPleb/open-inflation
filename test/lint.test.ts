@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { lint } from "../scripts/lib/checks.ts";
-import type { AvailResult, CheckId, Finding, HeadResult, LintOptions, Net, Snapshot } from "../scripts/lib/types.ts";
+import { lint as lintOnly } from "../scripts/lib/checks.ts";
+import type { AvailResult, CheckId, Finding, HeadResult, Net, Snapshot } from "../scripts/lib/types.ts";
+import { verify } from "../scripts/lib/verify.ts";
 import {
   CSV_HEADER,
   catalog,
@@ -19,19 +20,42 @@ import {
 
 /** The injected clock: every test sees the same "now". */
 const NOW = Date.parse("2026-10-22T16:00:00Z");
-const OFF: LintOptions = { archive: "off", now: NOW };
+/**
+ * Lint, then (with archive "added" and a fake Net) L8's link check, `bun run verify`: the L8 tests drive both.
+ * Lint itself takes only the clock; it never touches the network.
+ */
+interface Opts {
+  readonly now: number;
+  readonly archive?: "added" | "off";
+  readonly net?: Net;
+  readonly progress?: (line: string) => void;
+  readonly summary?: (line: string) => void;
+}
+async function lint(snap: Snapshot, o: Opts): Promise<Finding[]> {
+  const fs = await lintOnly(snap, { now: o.now });
+  if (o.archive !== "added" || !o.net) return fs;
+  const v = await verify(snap, {
+    net: o.net,
+    now: o.now,
+    ...(o.progress ? { progress: o.progress } : {}),
+    ...(o.summary ? { summary: o.summary } : {}),
+  });
+  const order = (c: CheckId) => Number(c.slice(1));
+  return [...fs, ...v].sort((a, b) => order(a.check) - order(b.check));
+}
+const OFF: Opts = { archive: "off", now: NOW };
 const ROW = "2026-09-30,1221,evidence/base_money/2026Q3.md";
 const FED = "issuers/FED/2026.md";
 const ROLLUP = "evidence/base_money/2026Q3.md";
 
 const ids = (fs: Finding[]): CheckId[] => [...new Set(fs.map((f) => f.check))].sort();
 
-async function passes(snap: Snapshot, opts: LintOptions = OFF) {
+async function passes(snap: Snapshot, opts: Opts = OFF) {
   expect(await lint(snap, opts)).toEqual([]);
 }
 
 /** Fails, only with the given checks, and at least one message says why. */
-async function fails(snap: Snapshot, only: CheckId[], reason: RegExp, opts: LintOptions = OFF) {
+async function fails(snap: Snapshot, only: CheckId[], reason: RegExp, opts: Opts = OFF) {
   const fs = await lint(snap, opts);
   expect(ids(fs)).toEqual([...only].sort());
   expect(fs.some((f) => f.check === only[0] && reason.test(f.message))).toBe(true);
@@ -134,7 +158,7 @@ describe("L4 append-only (no committed line changes)", () => {
   test("new block inserted under an existing dated heading passes", () =>
     passes(onGood({ [FED]: fedText.replace("## 2026Q3\n", `## 2026Q3\n\n${extract({ title: "FED revision" })}`) })));
   test("edited verbatim quote", () =>
-    fails(onGood({ [FED]: fedText.replace("synthetic): 1", "synthetic): 2") }), ["L4"], /line 12/));
+    fails(onGood({ [FED]: fedText.replace("synthetic): 1", "synthetic): 2") }), ["L4"], /line 13/));
   test("deleted line", () =>
     fails(onGood({ [FED]: fedText.replace("- Notes: synthetic fixture\n", "") }), ["L4"], /removed or changed/));
   test("edited roll-up table", () =>
@@ -407,7 +431,7 @@ describe("L7 extract schema", () => {
     ));
 });
 
-describe("L8 archive resolution (fake network)", () => {
+describe("verify: L8 archive resolution (fake network)", () => {
   const ORIG = "https://example.test/FED-new";
   const TS = "20261002140500";
   const NEW = `https://web.archive.org/web/${TS}/${ORIG}`;
@@ -427,7 +451,7 @@ describe("L8 archive resolution (fake network)", () => {
         return a;
       },
     };
-    const opts: LintOptions = { ...OFF, archive: "added", net };
+    const opts: Opts = { ...OFF, archive: "added", net };
     return { heads, avail, opts };
   };
   test("only archive URLs added since base are HEADed; ok passes without the fallback", async () => {
@@ -638,6 +662,57 @@ describe("L8 archive resolution (fake network)", () => {
     await passes(onGood({ [FED]: added }), { ...f.opts, archive: "off" });
     expect([f.heads, f.avail]).toEqual([[], []]);
   });
+  // #18: lint and CI make no network call, ever. fetch throws and counts; lint passes on new archive URLs.
+  test("lint makes no network call: new Wayback and archive.today URLs pass with fetch refusing", async () => {
+    const real = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      throw new Error("network refused in lint");
+    }) as unknown as typeof fetch;
+    try {
+      const both = fedText + extract({ title: "FED new", archive2: "https://archive.ph/AbC12" });
+      expect(await lintOnly(good(), { now: NOW })).toEqual([]);
+      expect(await lintOnly(onGood({ [FED]: both }), { now: NOW })).toEqual([]);
+      expect(calls).toBe(0);
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+});
+
+// #18: L8 in lint is offline: the form of what an archive line names. The link check itself is `bun run verify`.
+describe("L8 Re-archive note form (offline)", () => {
+  const note = (v: string) => onGood({ [FED]: `${fedText}- Re-archive: ${v}\n` });
+  test("a note naming a Wayback snapshot, an archive.today or a Ghostarchive capture passes", async () => {
+    await passes(note("https://ghostarchive.org/archive/AbC12 (Ghostarchive capture gone; recaptured)"));
+    await passes(note("https://web.archive.org/web/20261002140500/https://example.test/FED-new (snapshot gone)"));
+    await passes(note("https://archive.ph/AbC12 (archive.today capture gone; recaptured)"));
+    await passes(note("https://archive.today/20261002140500/https://example.test/FED-new"));
+  });
+  test("a note naming anything else fails L8", async () => {
+    for (const v of [
+      "https://example.test/FED-new",
+      "https://web.archive.org/web/2026/https://example.test/x",
+      "http://archive.ph/AbC12",
+      "http://ghostarchive.org/archive/AbC12",
+      "https://ghostarchive.org/archive/AbC12?x=1",
+      "see below",
+    ])
+      await fails(
+        note(v),
+        ["L8"],
+        /Re-archive note .* is not a Wayback snapshot, archive\.today or Ghostarchive capture URL/,
+      );
+  });
+  test("a Re-archive line inside a code fence is not a note", () =>
+    passes(onGood({ [FED]: `${fedText}\n\`\`\`text\n- Re-archive: see below\n\`\`\`\n` })));
+  test("an empty note fails L8 and does not swallow the next line", () =>
+    fails(
+      onGood({ [FED]: `${fedText}- Re-archive:\n- Re-archive: https://archive.ph/AbC12\n` }),
+      ["L8"],
+      /line \d+: Re-archive note names no URL/,
+    ));
 });
 
 describe("L9 aggregation", () => {
@@ -2150,10 +2225,52 @@ describe("L7 Archive URL 2", () => {
   ])
     test(`another host fails: ${v}`, () => fails(with2(v), ["L7"], /Archive URL 2 .*archive\.today/));
   test("an attempt with an impossible date fails", () =>
-    fails(with2("attempted 2026-02-30: blocked"), ["L7"], /YYYY-MM-DD/));
+    fails(with2("attempted 2026-02-30: blocked by CAPTCHA"), ["L7"], /YYYY-MM-DD/));
   test("an attempt with no reason fails", () => fails(with2("attempted 2026-10-02:"), ["L7"], /reason/));
   test("the dated form for another original fails", () =>
     fails(with2("https://archive.ph/20261002140500/https://example.test/other"), ["L7"], /not the Original URL/));
+  // Assay: an attempt is made at or after retrieval, and never in the future. The fixture's Retrieved is
+  // 2026-10-02T14:03:00Z and lint's clock (OFF.now) is 2026-10-22T16:00:00Z.
+  test("an attempt dated before Retrieved's UTC date fails", () =>
+    fails(
+      with2("attempted 2026-10-01: blocked by CAPTCHA"),
+      ["L7"],
+      /attempt date 2026-10-01 is before Retrieved .*2026-10-02/,
+    ));
+  test("an attempt on a later day, up to today, passes", () =>
+    passes(with2("attempted 2026-10-22: blocked by CAPTCHA")));
+  test("an attempt dated 2099-01-01 fails as in the future", () =>
+    fails(with2("attempted 2099-01-01: blocked by CAPTCHA"), ["L7"], /attempt date 2099-01-01 is in the future/));
+  // Probe M-1's cases.
+  for (const day of ["2027-01-01", "2099-12-31"])
+    test(`an attempt dated ${day} fails as in the future`, () =>
+      fails(with2(`attempted ${day}: blocked by CAPTCHA`), ["L7"], new RegExp(`attempt date ${day} is in the future`)));
+  test("an attempt dated 1999-01-01 fails as before Retrieved", () =>
+    fails(with2("attempted 1999-01-01: blocked by CAPTCHA"), ["L7"], /attempt date 1999-01-01 is before Retrieved/));
+  test("tomorrow's attempt passes only inside the 10 min skew past UTC midnight", async () => {
+    const tomorrow = with2("attempted 2026-10-23: blocked by CAPTCHA");
+    await passes(tomorrow, { ...OFF, now: Date.parse("2026-10-22T23:50:00Z") });
+    await fails(tomorrow, ["L7"], /in the future/, { ...OFF, now: Date.parse("2026-10-22T23:49:59Z") });
+  });
+  // Assay M-3: the dated form's timestamp date has the attempt date's window.
+  const dated = (ts: string) => with2(`https://archive.is/${ts}/https://example.test/FED-H.4.1`);
+  test("a dated capture before Retrieved's UTC date fails", () =>
+    fails(dated("20261001235959"), ["L7"], /timestamp 20261001235959 date 2026-10-01 is before Retrieved/));
+  test("a dated capture later the same day as now passes", () => passes(dated("20261022235959")));
+  test("a dated capture in the future fails", () =>
+    fails(dated("20991231000000"), ["L7"], /timestamp 20991231000000 date 2099-12-31 is in the future/));
+  test("a dated capture with month 13 fails", () =>
+    fails(dated("20261302140500"), ["L7"], /timestamp 20261302140500 is not a real time/));
+  // Assay: a reason is at least 3 words and contains no URL.
+  for (const r of ["-", "blocked", "CAPTCHA blocked"])
+    test(`an attempt reason ${JSON.stringify(r)} is too short`, () =>
+      fails(with2(`attempted 2026-10-02: ${r}`), ["L7"], /too short: say what failed in at least 3 words/));
+  test("an attempt reason with a link fails", () =>
+    fails(
+      with2("attempted 2026-10-02: copy at https://raw.githubusercontent.com/x/y/main/h41.html instead"),
+      ["L7"],
+      /contains a URL/,
+    ));
   test("Archive URL 2 is not read as the Archive URL", () =>
     fails(
       good(fed(extract({ title: "FED H.4.1" }).replace(/- Archive URL: .*\n/, ""))),
@@ -2162,7 +2279,191 @@ describe("L7 Archive URL 2", () => {
     ));
 });
 
-describe("L8 Archive URL 2 on archive.today (fake network)", () => {
+// Archive URL 3 (methodology R7, #17): exactly one line, a Ghostarchive capture or a dated attempt record with
+// Archive URL 2's date and reason rules.
+describe("L7 Archive URL 3", () => {
+  const GHOST = "https://ghostarchive.org/archive/AbC12";
+  const with3 = (archive3: string | null) => good(fed(extract({ title: "FED H.4.1", archive3 })));
+  test("a Ghostarchive id passes", () => passes(with3(GHOST)));
+  test("a dated attempt with a reason passes", () =>
+    passes(with3("attempted 2026-10-02: Ghostarchive showed a challenge")));
+  test("missing fails", () => fails(with3(null), ["L7"], /has no Archive URL 3/));
+  test("repeated fails", () =>
+    fails(
+      good(fed(extract({ title: "FED H.4.1", fields: [`- Archive URL 3: ${GHOST}`] }))),
+      ["L7"],
+      /more than one Archive URL 3/,
+    ));
+  test("bold is the wrong form, not missing", () =>
+    fails(
+      good(fed(extract({ title: "FED H.4.1" }).replace("- Archive URL 3:", "- **Archive URL 3:**"))),
+      ["L7"],
+      /Archive URL 3 is in the wrong form/,
+    ));
+  test("Archive URL 3 is not read as Archive URL 2 or the Archive URL", async () => {
+    await fails(
+      good(fed(extract({ title: "FED H.4.1", archive2: null, archive3: GHOST }))),
+      ["L7"],
+      /has no Archive URL 2$/,
+    );
+    await fails(
+      good(fed(extract({ title: "FED H.4.1", archive3: GHOST }).replace(/- Archive URL: .*\n/, ""))),
+      ["L7"],
+      /has no Archive URL$/,
+    );
+  });
+  // One test, 15 values: a query, fragment, trailing slash or path; an empty or non-alphanumeric id; another page or
+  // path on the host, scheme, subdomain, host or archive; and a prefix.
+  test("not a Ghostarchive capture (15 values) fails", async () => {
+    for (const v of [
+      `${GHOST}?x=1`,
+      `${GHOST}#top`,
+      `${GHOST}/`,
+      `${GHOST}/page`,
+      "https://ghostarchive.org/archive/",
+      "https://ghostarchive.org/archive/AbC-12",
+      "https://ghostarchive.org/search?term=AbC12",
+      "https://ghostarchive.org/AbC12",
+      "https://ghostarchive.org/search/AbC12",
+      "http://ghostarchive.org/archive/AbC12",
+      "https://www.ghostarchive.org/archive/AbC12",
+      "https://ghostarchive.org.example.test/archive/AbC12",
+      "https://archive.ph/AbC12",
+      "https://web.archive.org/web/20261002140500/https://example.test/FED-H.4.1",
+      `x${GHOST}`,
+    ])
+      await fails(with3(v), ["L7"], /Archive URL 3 .* is not a Ghostarchive URL or "attempted YYYY-MM-DD: <reason>"/);
+  });
+  // The attempt rules are Archive URL 2's (one shared function), with Archive URL 3 in the message.
+  test("an attempt fails on Archive URL 2's date, form, reason and window rules", async () => {
+    const cases: [string, RegExp][] = [
+      ["attempted 2026-02-30: Ghostarchive showed a challenge", /Archive URL 3 attempt date .*YYYY-MM-DD/],
+      ["attempted on 2026-10-02", /Archive URL 3 .* must read "attempted YYYY-MM-DD: <reason>"/],
+      ["attempted 2026-10-02:", /Archive URL 3 .*reason/],
+      ["attempted 2026-10-02: challenge page", /Archive URL 3 attempt reason .* too short/],
+      ["attempted 2026-10-02: see ghostarchive.org/search instead", /Archive URL 3 attempt reason .* contains a URL/],
+      [
+        "attempted 2026-10-01: Ghostarchive showed a challenge",
+        /Archive URL 3 attempt date 2026-10-01 is before Retrieved/,
+      ],
+      [
+        "attempted 2099-01-01: Ghostarchive showed a challenge",
+        /Archive URL 3 attempt date 2099-01-01 is in the future/,
+      ],
+    ];
+    for (const [v, re] of cases) await fails(with3(v), ["L7"], re);
+  });
+  test("an attempt on a later day, up to today, passes", () =>
+    passes(with3("attempted 2026-10-22: Ghostarchive showed a challenge")));
+});
+
+describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
+  const GHOST = "https://ghostarchive.org/archive/AbC12";
+  const WAYBACK = "https://web.archive.org/web/20261002140500/https://example.test/FED-new";
+  const added = fedText + extract({ title: "FED new", archive3: GHOST });
+  const noted = `${added}- Re-archive: ${GHOST} (Ghostarchive capture gone; recaptured)\n`;
+  const fake = (r: HeadResult) => {
+    const heads: string[] = [];
+    const net: Net = {
+      head: async (u) => {
+        heads.push(u);
+        return u.startsWith("https://web.archive.org/") ? { kind: "ok", status: 200 } : r;
+      },
+      available: async (_o, t) => ({ kind: "ok", timestamp: t }),
+    };
+    return { heads, opts: { ...OFF, archive: "added", net } as Opts };
+  };
+  const run = async (snap: Snapshot, opts: Opts) => {
+    const progress: string[] = [];
+    const summary: string[] = [];
+    const fs = await lint(snap, { ...opts, progress: (l) => progress.push(l), summary: (l) => summary.push(l) });
+    return { fs, progress, summary };
+  };
+  test("a new Ghostarchive URL is HEADed; 200 passes and is counted verified", async () => {
+    const f = fake({ kind: "ok", status: 200 });
+    const { fs, progress, summary } = await run(onGood({ [FED]: added }), f.opts);
+    expect(fs).toEqual([]);
+    expect(f.heads).toEqual([WAYBACK, GHOST]);
+    expect(progress.at(-1)).toBe(`L8 [2/2] ok (HTTP 200, Ghostarchive) ${GHOST}`);
+    expect(summary).toEqual(["ghostarchive: 1 verified, 0 unverified"]);
+  });
+  test("HTTP 403 and 503 (its Cloudflare challenge) and 429 (its rate limit) are no verdict, not a fail", async () => {
+    for (const status of [403, 429, 503]) {
+      const { fs, progress, summary } = await run(onGood({ [FED]: added }), fake({ kind: "http", status }).opts);
+      expect(fs).toEqual([]);
+      const why = status === 429 ? "rate limit" : "challenge";
+      expect(progress.at(-1)).toBe(`L8 [2/2] unverified (HTTP ${status}, Ghostarchive ${why}; no verdict) ${GHOST}`);
+      expect(summary).toEqual(["ghostarchive: 0 verified, 1 unverified", GHOST]);
+    }
+  });
+  test("HTTP 404, 410 and 500 fail (only 403/429/503 are no verdict); a Re-archive note excuses 404 and 410", async () => {
+    for (const status of [404, 410, 500]) {
+      const { opts } = fake({ kind: "http", status });
+      await fails(onGood({ [FED]: added }), ["L8"], new RegExp(`Ghostarchive answered HTTP ${status}`), opts);
+      if (status === 404 || status === 410) await passes(onGood({ [FED]: noted }), opts);
+    }
+    // the failure is a finding, not counted in the summary
+    const { fs, summary } = await run(onGood({ [FED]: added }), fake({ kind: "http", status: 404 }).opts);
+    expect(fs.map((f) => f.check)).toEqual(["L8"]);
+    expect(summary).toEqual([]);
+  });
+  test("a redirect off Ghostarchive, a redirect loop and a network error fail", async () => {
+    const cases: [HeadResult, RegExp][] = [
+      [
+        { kind: "redirect", status: 302, location: "https://example.test/x", reason: "off-snapshot" },
+        /redirected \(HTTP 302\) off Ghostarchive to https:\/\/example\.test\/x/,
+      ],
+      [
+        { kind: "redirect", status: 302, location: GHOST, reason: "loop" },
+        /redirected more than 5 times on Ghostarchive/,
+      ],
+      [{ kind: "network", message: "ECONNREFUSED" }, /network error: Ghostarchive: ECONNREFUSED/],
+    ];
+    for (const [r, re] of cases) await fails(onGood({ [FED]: added }), ["L8"], re, fake(r).opts);
+  });
+  test("an attempt record and a committed Ghostarchive URL are never fetched", async () => {
+    const f = fake({ kind: "http", status: 404 });
+    await passes(onGood({ [FED]: fedText + extract({ title: "FED new" }) }), f.opts);
+    await passes({ files: files(goodText(), { [FED]: added }), base: files(goodText(), { [FED]: added }) }, f.opts);
+    expect(f.heads).toEqual([WAYBACK]);
+  });
+  test("summary: counts, then the unverified URLs sorted, after the archive.today line", async () => {
+    const [A, M, Z] = [
+      "https://ghostarchive.org/archive/Aaaa1",
+      "https://ghostarchive.org/archive/Mmmm1",
+      "https://ghostarchive.org/archive/Zzzz1",
+    ];
+    const TODAY = "https://archive.ph/Today1";
+    const table: Record<string, HeadResult> = {
+      [Z]: { kind: "http", status: 503 },
+      [A]: { kind: "ok", status: 200 },
+      [M]: { kind: "http", status: 403 },
+      [TODAY]: { kind: "ok", status: 200 },
+    };
+    const net: Net = {
+      head: async (u) =>
+        u.startsWith("https://web.archive.org/")
+          ? { kind: "ok", status: 200 }
+          : (table[u] ?? { kind: "http", status: 599 }),
+      available: async (_o, t) => ({ kind: "ok", timestamp: t }),
+    };
+    const text =
+      fedText +
+      [Z, A, M]
+        .map((u, i) => extract({ title: `FED new ${i}`, archive3: u, ...(i === 0 ? { archive2: TODAY } : {}) }))
+        .join("");
+    const { fs, summary } = await run(onGood({ [FED]: text }), { ...OFF, archive: "added", net } as Opts);
+    expect(fs).toEqual([]);
+    expect(summary).toEqual([
+      "archive.today: 1 verified, 0 unverified (rate-limited)",
+      "ghostarchive: 1 verified, 2 unverified",
+      M,
+      Z,
+    ]);
+  });
+});
+
+describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
   const ORIG = "https://example.test/FED-new";
   const WAYBACK = `https://web.archive.org/web/20261002140500/${ORIG}`;
   const TODAY = "https://archive.ph/AbC12";
@@ -2182,7 +2483,7 @@ describe("L8 Archive URL 2 on archive.today (fake network)", () => {
         return { kind: "ok", timestamp: t };
       },
     };
-    return { heads, avail, opts: { ...OFF, archive: "added", net } as LintOptions };
+    return { heads, avail, opts: { ...OFF, archive: "added", net } as Opts };
   };
   const progressOf = async (snap: Snapshot, f: ReturnType<typeof fake>) => {
     const lines: string[] = [];
@@ -2242,6 +2543,55 @@ describe("L8 Archive URL 2 on archive.today (fake network)", () => {
       f.opts,
     );
     expect(f.heads).toEqual([]);
+  });
+  // Assay M-2: a summary of archive.today verdicts, with the unverified (403/429) URLs sorted, one per line.
+  const byUrl = (table: Record<string, HeadResult>) => {
+    const net: Net = {
+      head: async (u) =>
+        u.startsWith("https://web.archive.org/")
+          ? { kind: "ok", status: 200 }
+          : (table[u] ?? { kind: "http", status: 599 }),
+      available: async (_o, t) => ({ kind: "ok", timestamp: t }),
+    };
+    return { ...OFF, archive: "added", net } as Opts;
+  };
+  const summaryOf = async (snap: Snapshot, opts: Opts) => {
+    const lines: string[] = [];
+    const fs = await lint(snap, { ...opts, summary: (l) => lines.push(l) });
+    return { fs, lines };
+  };
+  const several = (urls: string[]) =>
+    onGood({ [FED]: fedText + urls.map((u, i) => extract({ title: `FED new ${i}`, archive2: u })).join("") });
+  const [A, M, Z, D] = [
+    "https://archive.ph/Aaaa1",
+    "https://archive.ph/Mmmm1",
+    "https://archive.ph/Zzzz1",
+    "https://archive.ph/Dead1",
+  ];
+  test("summary: verified and rate-limited counts, then the unverified URLs sorted; failures are findings, not counted", async () => {
+    const opts = byUrl({
+      [Z]: { kind: "http", status: 429 },
+      [A]: { kind: "ok", status: 200 },
+      [D]: { kind: "http", status: 404 },
+      [M]: { kind: "http", status: 403 },
+    });
+    const { fs, lines } = await summaryOf(several([Z, A, D, M]), opts);
+    expect(fs.map((f) => f.check)).toEqual(["L8"]);
+    expect(lines).toEqual(["archive.today: 1 verified, 2 unverified (rate-limited)", M, Z]);
+  });
+  test("summary: all verified prints the count line alone", async () => {
+    const { lines } = await summaryOf(
+      several([A, M]),
+      byUrl({ [A]: { kind: "ok", status: 200 }, [M]: { kind: "ok", status: 200 } }),
+    );
+    expect(lines).toEqual(["archive.today: 2 verified, 0 unverified (rate-limited)"]);
+  });
+  test("summary: none when no new archive.today URL got a verified or rate-limited answer", async () => {
+    expect((await summaryOf(several([D]), byUrl({ [D]: { kind: "http", status: 404 } }))).lines).toEqual([]);
+    expect((await summaryOf(onGood({}), byUrl({}))).lines).toEqual([]);
+    const committed = fedText + extract({ title: "FED new", archive2: TODAY });
+    const snap = { files: files(goodText(), { [FED]: committed }), base: files(goodText(), { [FED]: committed }) };
+    expect((await summaryOf(snap, byUrl({ [TODAY]: { kind: "http", status: 429 } }))).lines).toEqual([]);
   });
   test("a Wayback 429 still fails (only archive.today blocks are excused)", () =>
     fails(onGood({ [FED]: added }), ["L8"], /HTTP 429 \(rate-limited; retry later\)/, {
@@ -2322,6 +2672,40 @@ describe("L9 whole-dollar USD", () => {
       /reference_values\[0\] \(BOJ\) local_value 0\.01 is USD more precise than \$1/,
     ));
   test("a non-USD local_value may carry its published decimals", () => passes(fedUsd("1001")));
+  // Assay: a USD figure is canonical: "0" or no leading zero.
+  test("a USD component with a leading zero fails", () =>
+    fails(fedUsd("01001"), ["L9"], /components\[0\] \(FED\) local_value 01001 has a leading zero/));
+  test("a USD reference value with a leading zero fails", () =>
+    fails(
+      good({
+        [ROLLUP]: rollup(machineBlock({ referenceValues: `reference_values:\n${entry("BOJ", "USD", "0123", "1")}` })),
+      }),
+      ["L9"],
+      /reference_values\[0\] \(BOJ\) local_value 0123 has a leading zero/,
+    ));
+  test("a plain USD 0 passes", () => passes(fedUsd("0", "220")));
+  // #16 n-3: a leading zero fails in any currency's local_value; a plain "0" and "0.<digits>" pass.
+  const jpy = (v: string, total = "1001") =>
+    withFx({ components: [entry("FED", "USD", "1001", "1"), entry("BOJ", "JPY", v, JPY_FX)].join("\n") }, total);
+  test("a non-USD local_value with a leading zero fails", async () => {
+    await fails(jpy("0500"), ["L9"], /components\[1\] \(BOJ\) local_value 0500 has a leading zero/);
+    await fails(jpy("00.5"), ["L9"], /local_value 00\.5 has a leading zero/);
+    await fails(jpy("007"), ["L9"], /local_value 007 has a leading zero/);
+  });
+  test("a non-USD reference value with a leading zero fails", () =>
+    fails(
+      good({
+        [ROLLUP]: rollup(machineBlock({ referenceValues: `reference_values:\n${entry("ECB", "EUR", "0400", "1.1")}` })),
+      }),
+      ["L9"],
+      /reference_values\[0\] \(ECB\) local_value 0400 has a leading zero/,
+    ));
+  test("a non-USD plain 0, 0.<digits> and a number with no leading zero pass", async () => {
+    await passes(jpy("0"));
+    await passes(jpy("0.5"));
+    await passes(jpy("500"));
+    await passes(jpy("1500.25", "1003"));
+  });
   /** Components FED `fed` USD + BOJ `jpy` JPY; ECB excluded with reference `eur` EUR at 1.1. */
   const cov = (fed: string, jpy: string, eur: string, total: string, coverage: string) =>
     withFx(

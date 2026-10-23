@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "lint": "bun scripts/lint.ts",
+    "verify": "bun scripts/verify.ts",
+    "audit": "bun scripts/audit.ts",
     "update": "bun scripts/update.ts",
     "backfill": "bun scripts/backfill.ts",
     "typecheck": "tsc --noEmit",
-    "check": "biome check ."
+    "check": "biome check .",
+    "test": "bun test"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.2",

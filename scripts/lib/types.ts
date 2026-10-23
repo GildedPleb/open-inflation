@@ -43,18 +43,27 @@ export type AvailResult =
 
 /** The network seam that keeps tests offline: everything L8 may ask of archive.org. */
 export interface Net {
-  /** HEAD a https://web.archive.org/web/<ts>/<original> snapshot URL. */
+  /** HEAD a capture URL: a Wayback snapshot, an archive.today or a Ghostarchive capture. */
   readonly head: Head;
   /** https://archive.org/wayback/available?url=<original>&timestamp=<ts>, used when web.archive.org is unreachable. */
   readonly available: (original: string, timestamp: string) => Promise<AvailResult>;
 }
 
 export interface LintOptions {
-  /** "added": check archive URLs new since base (once, when added; never re-swept). "off": no network. */
-  readonly archive: "added" | "off";
-  readonly net?: Net;
   /** The clock, in ms since the epoch: L7 rejects a Retrieved time after now + 10 min. */
   readonly now: number;
-  /** Per-URL progress lines while L8 checks the network (the CLI writes them to stderr). */
+}
+/** `bun run verify` (L8's link check, local only): lint and CI never touch the network. */
+export interface VerifyOptions {
+  readonly net: Net;
+  /** The clock, in ms since the epoch: an extract that fails L7 is never fetched. */
+  readonly now: number;
+  /** Per-URL progress lines (the CLI writes them to stderr). */
   readonly progress?: (line: string) => void;
+  /**
+   * The archive.today summary, when any new archive.today URL got a verified or rate-limited answer:
+   * `archive.today: N verified, M unverified (rate-limited)`, then each unverified URL on its own line, sorted
+   * (the CLI writes them to stdout, unprefixed).
+   */
+  readonly summary?: (line: string) => void;
 }
