@@ -804,6 +804,9 @@ describe("archive2Problem (Archive URL 2 value)", () => {
       "see http://example.test for it",
       "see HTTPS://EXAMPLE.TEST for it",
       "see Www.example.test for it",
+      // A scheme:// with no dotted host is caught by the scheme alone, in any case.
+      "see HTTPS://INTRANET/X for it",
+      "see ftp://intranet/x for it",
     ])
       bad(`attempted 2026-10-02: ${r}`, /contains a URL/);
     ok("attempted 2026-10-02: archive.today returned a CAPTCHA (aawww is not a host)");
