@@ -288,7 +288,7 @@ describe("paced verify and audit", () => {
   test("verify's exit: 1 with findings, else 3 when any URL has no verdict, else 0", () => {
     expect([verifyExit(0, 0), verifyExit(2, 0), verifyExit(1, 4), verifyExit(0, 1)]).toEqual([0, 1, 1, 3]);
   });
-  const FED = "issuers/FED/2026.md";
+  const FED = "base_money/issuers/FED/2026.md";
   const ORIG = "https://example.test/FED-new";
   const WB = `https://web.archive.org/web/20261002140500/${ORIG}`;
   const TODAY = T("AbC12");

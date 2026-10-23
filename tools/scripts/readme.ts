@@ -1,10 +1,11 @@
-// bun run readme: rewrite README.md's generated blocks and docs/evidence-index.md from base_money.csv, the roll-ups
+// bun run readme: rewrite README.md's generated blocks and evidence/README.md's quarter list from base_money.csv, the roll-ups
 // and catalog.json (lib/readme.ts). Lint (L13) fails when either file differs from what this writes.
 // Exit 0 written, 2 when an input cannot be read or a README marker is missing.
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { exitOnCrash } from "./lib/exit.ts";
-import { EVIDENCE_INDEX, fillReadme, generate, README } from "./lib/readme.ts";
+import { EVIDENCE_ROOT } from "./lib/paths.ts";
+import { EVIDENCE_INDEX, fillIndex, fillReadme, freshIndex, generate, README } from "./lib/readme.ts";
 import { REPO_ROOT } from "./lib/root.ts";
 
 exitOnCrash("readme");
@@ -17,7 +18,7 @@ const walk = (dir: string) => {
     else paths.push(relative(REPO_ROOT, p).split("\\").join("/"));
   }
 };
-for (const d of ["evidence", "issuers"]) walk(join(REPO_ROOT, d));
+walk(join(REPO_ROOT, EVIDENCE_ROOT));
 const text = new Map<string, string>();
 for (const p of [...paths, "base_money.csv", "catalog.json", README])
   text.set(p, readFileSync(join(REPO_ROOT, p), "utf8"));
@@ -32,6 +33,12 @@ if (Array.isArray(filled)) {
   for (const p of filled) console.error(`readme: ${p}`);
   process.exit(2);
 }
+const indexPath = join(REPO_ROOT, EVIDENCE_INDEX);
+const index = existsSync(indexPath) ? fillIndex(readFileSync(indexPath, "utf8"), g.index) : freshIndex(g.index);
+if (typeof index !== "string") {
+  console.error(`readme: ${EVIDENCE_INDEX} ${index.problem}`);
+  process.exit(2);
+}
 writeFileSync(join(REPO_ROOT, README), filled);
-writeFileSync(join(REPO_ROOT, EVIDENCE_INDEX), g.index);
+writeFileSync(indexPath, index);
 console.log(`readme: wrote ${README} and ${EVIDENCE_INDEX}`);

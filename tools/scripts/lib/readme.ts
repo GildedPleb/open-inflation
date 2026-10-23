@@ -1,11 +1,14 @@
-// The README's generated blocks (latest, table, yoy-notes) and docs/evidence-index.md, built from base_money.csv,
+// The README's generated blocks (latest, table, yoy-notes) and the quarter list (paths.ts QUARTER_LIST), built from base_money.csv,
 // each roll-up's current machine block and catalog.json. Pure over the repo's text: no I/O. `bun run readme` writes
 // them (scripts/readme.ts); lint (L13) fails when the committed files differ from what this would produce.
 import { machines } from "./checks.ts";
 import { type Decimal, ratioHalfEven, roundHalfEven } from "./decimal.ts";
+import { QUARTER_LIST, relLink } from "./paths.ts";
 
 export const README = "README.md";
-export const EVIDENCE_INDEX = "docs/evidence-index.md";
+export { QUARTER_LIST as EVIDENCE_INDEX } from "./paths.ts";
+/** The heading in the quarter list whose bullet list is generated (one line per quarter, newest first; gaps listed). */
+export const QUARTERS_HEADING = "## Quarters";
 export const BLOCKS = ["latest", "table", "yoy-notes"] as const;
 export type BlockName = (typeof BLOCKS)[number];
 export const begin = (n: BlockName) => `<!-- BEGIN GENERATED ${n} -->`;
@@ -27,6 +30,20 @@ export interface Quarter {
   readonly coverage: string;
 }
 
+const FULL_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -134,11 +151,12 @@ export function quarters(text: Texts): Quarter[] | null {
 
 export interface Generated {
   readonly blocks: Readonly<Record<BlockName, string>>;
+  /** The generated quarter list (the lines under "## Quarters"). */
   readonly index: string;
 }
 
 /** Everything generated, or null when an input cannot be read (other checks report why). */
-export function generate(text: Texts, paths: readonly string[]): Generated | null {
+export function generate(text: Texts, _paths: readonly string[]): Generated | null {
   const cat = catalogOf(text);
   const qs = quarters(text);
   if (!cat || !qs) return null;
@@ -174,68 +192,55 @@ export function generate(text: Texts, paths: readonly string[]): Generated | nul
       `${updated}dataset version ${cat.version} · next quarter: ${quarterLabel(shiftQuarter(latestQ.id, 1))}`,
     ].join("\n");
   }
-  return { blocks: { latest, table, "yoy-notes": yoyNotes }, index: evidenceIndex(cat, qs, paths) };
+  return { blocks: { latest, table, "yoy-notes": yoyNotes }, index: quarterList(qs) };
 }
 
-function evidenceIndex(cat: Catalog, qs: readonly Quarter[], paths: readonly string[]): string {
-  const rollups = paths
-    .map((p) => /^evidence\/base_money\/(\d{4}Q[1-4])\.md$/.exec(p))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => ({ path: m[0], id: m[1] as string }))
-    .sort((a, b) => b.id.localeCompare(a.id));
-  const rank = (iss: string) => (iss === "FX" ? 1e6 : cat.order.indexOf(iss) < 0 ? 1e5 : cat.order.indexOf(iss));
-  const years = paths
-    .map((p) => /^issuers\/([^/]+)\/(\d{4})\.md$/.exec(p))
-    .filter((m): m is RegExpExecArray => m !== null)
-    .map((m) => ({ path: m[0], iss: m[1] as string, year: m[2] as string }))
-    .sort((a, b) => b.year.localeCompare(a.year) || rank(a.iss) - rank(b.iss) || a.iss.localeCompare(b.iss));
-  const newest = [...qs].reverse();
-  const gaps: string[] = [];
-  for (let i = 1; i < qs.length; i++)
-    for (let q = shiftQuarter((qs[i - 1] as Quarter).id, 1); q < (qs[i] as Quarter).id; q = shiftQuarter(q, 1))
-      gaps.push(q);
-  const coverage = newest.map((q) => {
-    const head = `- ${quarterLabel(q.id)}: ${q.coverage}% of the basket`;
-    if (q.excluded.length === 0) return `${head}.`;
-    const ex = q.excluded.map((e) => `${e.issuer} excluded (${e.reason})`).join("; ");
-    const who = q.excluded.map((e) => e.issuer).join(" and ");
-    return `${head}; ${ex}. The CSV value is lower by ${who}'s amount; growth rates across this quarter are distorted.`;
-  });
-  return [
-    "# Evidence index",
-    "",
-    "Every quarterly roll-up in `evidence/base_money/` and every issuer-year file in `issuers/` is linked here. This page is generated from `base_money.csv`, the roll-ups and `catalog.json` by `bun run readme`; `bun run lint` fails if it is out of date or misses a file.",
-    "",
-    "## Quarterly roll-ups",
-    "",
-    ...(rollups.length ? rollups.map((r) => `- [${quarterLabel(r.id)} base money](../${r.path})`) : ["None yet."]),
-    "",
-    "## Issuer-year files",
-    "",
-    ...(years.length ? years.map((y) => `- [${y.iss} ${y.year}](../${y.path})`) : ["None yet."]),
-    "",
-    "## Baskets",
-    "",
-    "Rows on different basket versions are not strictly comparable; growth rates across a basket change are distorted.",
-    "",
-    ...[...cat.baskets].map(([v, ids]) => `- Basket v${v}: ${ids.join(", ")}`),
-    "",
-    ...(newest.length ? newest.map((q) => `- ${quarterLabel(q.id)}: basket v${q.basket}`) : ["No quarters yet."]),
-    "",
-    "## Coverage",
-    "",
-    ...(coverage.length ? coverage : ["No quarters yet."]),
-    "",
-    ...(gaps.length
-      ? [
-          "## Gaps",
-          "",
-          ...gaps.reverse().map((g) => `- ${quarterLabel(g)}: no row; a missing quarter is never estimated.`),
-          "",
-        ]
-      : []),
-  ].join("\n");
+/** 2026-06-30 -> "30 June 2026". */
+const longDay = (iso: string) =>
+  `${Number(iso.slice(8, 10))} ${FULL_MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
+
+/** The quarter list: every CSV row newest first (date and total), with any gap quarter listed. */
+function quarterList(qs: readonly Quarter[]): string {
+  const out: string[] = [];
+  for (let i = qs.length - 1; i >= 0; i--) {
+    const q = qs[i] as Quarter;
+    const link = relLink(QUARTER_LIST, q.evidenceId);
+    out.push(
+      `- [${quarterLabel(q.id)}](${link}): ${longDay(q.date)}, $${group(q.value.toString())} (about $${trillions(q.value)} trillion)`,
+    );
+    const prev = qs[i - 1];
+    if (prev)
+      for (let g = shiftQuarter(q.id, -1); g > prev.id; g = shiftQuarter(g, -1))
+        out.push(`- ${quarterLabel(g)}: no row; a missing quarter is never estimated.`);
+  }
+  return out.length ? out.join("\n") : "No quarters yet.";
 }
+
+/** The quarter-list file with its list replaced; a problem string when the "## Quarters" heading is missing. */
+export function fillIndex(index: string, list: string): string | { problem: string } {
+  const h = index.indexOf(`\n${QUARTERS_HEADING}\n`);
+  if (h < 0) return { problem: `has no "${QUARTERS_HEADING}" heading (the generated quarter list goes under it)` };
+  const start = h + QUARTERS_HEADING.length + 2;
+  let i = start;
+  while (index[i] === "\n") i++;
+  // The list runs to the next blank line (or the end of the file).
+  const stop = index.indexOf("\n\n", i);
+  const rest = stop < 0 ? "" : index.slice(stop + 1);
+  return `${index.slice(0, start)}\n${list}\n${rest}`;
+}
+
+/** A fresh quarter-list file around the quarter list (bun run readme writes it when the file is missing). */
+export const freshIndex = (list: string) =>
+  [
+    "# Base money quarters",
+    "",
+    "Every quarter of the base money series, newest first. Each quarter file shows the total, a table of the central banks in it, and links to each bank's quoted source and its archived copies.",
+    "",
+    QUARTERS_HEADING,
+    "",
+    list,
+    "",
+  ].join("\n");
 
 /** `readme` with each marker block's content replaced; a list of problems when a marker is missing or out of order. */
 export function fillReadme(readme: string, blocks: Readonly<Record<BlockName, string>>): string | string[] {

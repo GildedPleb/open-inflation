@@ -105,7 +105,7 @@ const text = (m: ReadonlyMap<string, Uint8Array> | null, p: string) => {
 describe("git snapshot loader", () => {
   test("working tree vs base; deleted and ignored files excluded; untracked included", () => {
     const dir = repo({
-      "issuers/A/2026.md": "one\n",
+      "base_money/issuers/A/2026.md": "one\n",
       "base_money.csv": "date,value,evidence_id\n",
       "catalog.json": "{}\n",
       "methodology/x.md": "m\n",
@@ -115,7 +115,7 @@ describe("git snapshot loader", () => {
     git(dir, "init", "-q", "--template=");
     git(dir, "add", ".");
     git(dir, "commit", "-qm", "base");
-    writeFileSync(join(dir, "issuers/A/2026.md"), "one\ntwo\n");
+    writeFileSync(join(dir, "base_money/issuers/A/2026.md"), "one\ntwo\n");
     writeFileSync(join(dir, "ignored.txt"), "no\n");
     writeFileSync(join(dir, "new.md"), "yes\n");
     unlinkSync(join(dir, "gone.txt"));
@@ -123,29 +123,33 @@ describe("git snapshot loader", () => {
     expect([...s.files.keys()].sort()).toEqual([
       ".gitignore",
       "base_money.csv",
+      "base_money/issuers/A/2026.md",
       "catalog.json",
-      "issuers/A/2026.md",
       "methodology/x.md",
       "new.md",
     ]);
     // P6-M1: the base catalog is loaded, so basket history (L4/L11) has something to compare against.
-    expect([...(s.base?.keys() ?? [])].sort()).toEqual(["base_money.csv", "catalog.json", "issuers/A/2026.md"]);
-    expect(text(s.files, "issuers/A/2026.md")).toBe("one\ntwo\n");
-    expect(text(s.base, "issuers/A/2026.md")).toBe("one\n");
+    expect([...(s.base?.keys() ?? [])].sort()).toEqual([
+      "base_money.csv",
+      "base_money/issuers/A/2026.md",
+      "catalog.json",
+    ]);
+    expect(text(s.files, "base_money/issuers/A/2026.md")).toBe("one\ntwo\n");
+    expect(text(s.base, "base_money/issuers/A/2026.md")).toBe("one\n");
   });
   test("git mv between base and HEAD: lint follows the rename; an edited move is a delete (L4)", async () => {
     const dir = repo(goodText());
     git(dir, "init", "-q", "--template=");
     git(dir, "add", ".");
     git(dir, "commit", "-qm", "base");
-    git(dir, "mv", "issuers/FED/2026.md", "issuers/FED/2025.md");
+    git(dir, "mv", "base_money/issuers/FED/2026.md", "base_money/issuers/FED/2025.md");
     git(dir, "commit", "-qm", "move");
     const moved = await lint(loadSnapshot(dir, "HEAD~1"), { now: Date.now() });
     expect(moved.filter((f) => f.check === "L3" || f.check === "L4")).toEqual([]);
-    const path = join(dir, "issuers/FED/2025.md");
+    const path = join(dir, "base_money/issuers/FED/2025.md");
     writeFileSync(path, readFileSync(path, "utf8").replace("synthetic): 1", "synthetic): 2"));
     const edited = await lint(loadSnapshot(dir, "HEAD~1"), { now: Date.now() });
-    expect(edited.some((f) => f.check === "L4" && f.file === "issuers/FED/2026.md")).toBe(true);
+    expect(edited.some((f) => f.check === "L4" && f.file === "base_money/issuers/FED/2026.md")).toBe(true);
   });
   test("null and all-zero base mean no base", () => {
     const dir = repo({ "a.txt": "a\n" });
@@ -192,7 +196,7 @@ describe("repository identity", () => {
     const data = await read("LICENSE-DATA");
     expect(data).toContain("https://creativecommons.org/licenses/by/4.0/legalcode");
     expect(data).toContain("Attribution 4.0 International");
-    for (const scope of ["base_money.csv", "catalog.json", "evidence/", "issuers/", "methodology/"])
+    for (const scope of ["base_money.csv", "catalog.json", "base_money/", "docs/methodology/"])
       expect(data).toContain(scope);
     const readme = await read("README.md");
     expect(readme).toMatch(/^## Reuse and citation$/m);
@@ -213,7 +217,7 @@ describe("repository identity", () => {
   });
   test("docs: pace env names, audit exit 3, Ghostarchive 503, who opens unverified captures (N-a, 2a, F-2, m-F)", async () => {
     const read = (p: string) => Bun.file(join(ROOT, p)).text();
-    const docs = await Promise.all(["docs/running.md", "AGENTS.md", "methodology/base_money.md"].map(read));
+    const docs = await Promise.all(["docs/running.md", "AGENTS.md", "docs/methodology/base_money.md"].map(read));
     for (const doc of docs) {
       // N-a: every default pace key's real variable, and the mapping rule's name, not an invented one.
       for (const key of Object.keys(DEFAULT_PACE.intervals)) expect(doc).toContain(`\`${envName(key)}\``);
@@ -236,7 +240,7 @@ describe("repository identity", () => {
     const read = (p: string) => Bun.file(join(ROOT, p)).text();
     // README's contributor content moved to docs/running.md (verify, audit) and docs/lint.md (the rules).
     const [running, rules, agents, methodology] = await Promise.all(
-      ["docs/running.md", "docs/lint.md", "AGENTS.md", "methodology/base_money.md"].map(read),
+      ["docs/running.md", "docs/lint.md", "AGENTS.md", "docs/methodology/base_money.md"].map(read),
     );
     for (const doc of [running, agents, methodology]) {
       // N-h: "a 429, or a 429 or 503" said 429 twice; a 429 is never a verdict, a 503 only when pacing gave up.
@@ -333,14 +337,14 @@ describe("CLI", () => {
       });
     }
   });
-  /** A repo with a bad CSV header and a new Wayback, archive.today and Ghostarchive URL (no docs/evidence-index.md, no catalog). */
+  /** A repo with a bad CSV header and a new Wayback, archive.today and Ghostarchive URL (no base_money/README.md, no catalog). */
   const badRepo = () => {
     const dir = repo({ "base_money.csv": "date,value\n" });
     git(dir, "init", "-q", "--template=");
     const original = "https://www.federalreserve.gov/releases/h6/20260723/";
-    mkdirSync(join(dir, "issuers/FED"), { recursive: true });
+    mkdirSync(join(dir, "base_money/issuers/FED"), { recursive: true });
     writeFileSync(
-      join(dir, "issuers/FED/2026.md"),
+      join(dir, "base_money/issuers/FED/2026.md"),
       [
         "# FED 2026",
         "",
@@ -386,7 +390,7 @@ describe("CLI", () => {
     const dir = badRepo();
     git(dir, "add", ".");
     git(dir, "commit", "-qm", "first");
-    const p = join(dir, "issuers/FED/2026.md");
+    const p = join(dir, "base_money/issuers/FED/2026.md");
     writeFileSync(p, readFileSync(p, "utf8").replace("# FED 2026\n", "# FED 2026 (edited)\n"));
     git(dir, "commit", "-qam", "second");
     return dir;
@@ -403,7 +407,7 @@ describe("CLI", () => {
     const bad = await cli(dir);
     expect(bad.code).toBe(1);
     expect(bad.out).toMatch(/L1 base_money\.csv: header/);
-    // No docs/evidence-index.md or catalog.json (L6, L11) and the bad header (L1); nothing else, and no L8 or network line.
+    // No base_money/README.md or catalog.json (L6, L11) and the bad header (L1); nothing else, and no L8 or network line.
     expect(bad.out).not.toMatch(/network|fetch|L8|archive\.today:/i);
     expect([...new Set(bad.out.match(/^L\d+ /gm))]).toEqual(["L1 ", "L6 ", "L11 "]);
     expect(await cli(dir, ["--nope"])).toEqual({ code: 2, stdout: "", out: "usage: bun run lint [--base <ref>]\n" });
@@ -436,7 +440,7 @@ describe("CLI", () => {
       "lint: push to refs/heads/feature: cannot find the merge-base of HEAD and origin/main (fetch origin/main; CI checks out with fetch-depth: 0)",
     ]);
     git(dir, "update-ref", "refs/remotes/origin/main", main);
-    // The bare repo has no docs/evidence-index.md or catalog.json (L6, L11 findings); only the base it reports matters here.
+    // The bare repo has no base_money/README.md or catalog.json (L6, L11 findings); only the base it reports matters here.
     const r = await cli(dir, [], { env });
     expect(r.code).toBe(1);
     expect(r.out).toContain(`lint: base ${main} (merge-base of HEAD and origin/main (push to refs/heads/feature))\n`);
@@ -469,7 +473,7 @@ describe("CLI", () => {
   });
   // N-d, through the CLI: verifyMain with a fake fetch and the default canary check over it.
   describe("verify in-process (fake network, virtual clock)", () => {
-    const FED = "issuers/FED/2026.md";
+    const FED = "base_money/issuers/FED/2026.md";
     const TODAY = "https://archive.ph/AbC12";
     const GHOST = "https://ghostarchive.org/archive/AbC12";
     const snap = (): Snapshot => {
@@ -702,7 +706,7 @@ describe("CLI", () => {
 // committed temp copy of the lint fixture repo. Each case is committed and linted with --base HEAD, so only the
 // committed content is judged (no L4 edit, no new archive URL). Nothing here names the catalog version (P6-m3).
 describe("CLI: fx_rate and As of on a fixture repo", () => {
-  const FXF = "issuers/FX/2026.md";
+  const FXF = "base_money/FX/2026.md";
   const lintCase = async (patch: Record<string, string>) => {
     const dir = repo({ ...goodText(), ...patch });
     git(dir, "init", "-q", "--template=");
@@ -720,7 +724,7 @@ describe("CLI: fx_rate and As of on a fixture repo", () => {
       fxExtract("EUR", { quote: "1.2", fx: "1.2" }),
       fxExtract("JPY", { title: "FX JPY confirming", rate: null, adopted: "no, confirming" }),
     ),
-    "issuers/FED/2026.md": issuerFile(
+    "base_money/issuers/FED/2026.md": issuerFile(
       "FED",
       "2026Q3",
       extract({
@@ -739,15 +743,15 @@ describe("CLI: fx_rate and As of on a fixture repo", () => {
   const wanted = [
     [
       "a block fx_rate that differs from the derived rate fails L9",
-      /^L9 evidence\/base_money\/2026Q3\.md: .*components\[1\] \(ECB\) fx_rate 1\.1 does not equal 1\.2 derived/m,
+      /^L9 base_money\/quarters\/2026Q3\.md: .*components\[1\] \(ECB\) fx_rate 1\.1 does not equal 1\.2 derived/m,
     ],
     [
       "an FX extract with no Rate fails L7",
-      /^L7 issuers\/FX\/2026\.md: .*extract "FX JPY confirming" \(line \d+\) has no - Rate: line/m,
+      /^L7 base_money\/FX\/2026\.md: .*extract "FX JPY confirming" \(line \d+\) has no - Rate: line/m,
     ],
     [
       "an As of after Retrieved fails L7",
-      /^L7 issuers\/FED\/2026\.md: .*As of 2026-09 \(taken as its last day, 2026-09-30\) is after Retrieved 2026-09-29/m,
+      /^L7 base_money\/issuers\/FED\/2026\.md: .*As of 2026-09 \(taken as its last day, 2026-09-30\) is after Retrieved 2026-09-29/m,
     ],
   ] as const;
   test("CLI: the fixture with Rate lines reports only the three planted defects", async () => {

@@ -355,7 +355,7 @@ describe("SNB: availability asked under each query form (archiveNet over a fake 
   const ORIG = "https://data.snb.ch/api/cube/snbmoba/data/json/en?fromDate=2026-06&toDate=2026-06";
   const TS = "20261022171830";
   const WB = `https://web.archive.org/web/${TS}/${ORIG}`;
-  const FED = "issuers/FED/2026.md";
+  const FED = "base_money/issuers/FED/2026.md";
   const text =
     (goodText()[FED] as string) +
     extract({
@@ -509,7 +509,7 @@ describe("archiveNet: verify's only network use", () => {
 // #18: `bun run verify` end to end over an injected fetch (by URL): what L8's online half did in lint.
 describe("verify over an injected fetch", () => {
   const NOW = Date.parse("2026-10-22T16:00:00Z");
-  const FED = "issuers/FED/2026.md";
+  const FED = "base_money/issuers/FED/2026.md";
   const fedText = goodText()[FED] as string;
   const ORIG = "https://example.test/FED-new";
   const TS = "20261002140500";

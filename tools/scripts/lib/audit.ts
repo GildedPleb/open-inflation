@@ -31,13 +31,15 @@ import {
   realClock,
   retryAfterMs,
 } from "./pacer.ts";
+import { QUARTER_TEXT } from "./paths.ts";
 import type { Files, GhostPage } from "./types.ts";
 
 export const AUDIT_USER_AGENT = "open-inflation-audit (+https://github.com/GildedPleb/open-inflation)";
 export const STORE_NAME = "open-inflation-archive";
 export const MAX_REDIRECTS = 10;
 export const MAX_BODY_BYTES = 100 * 1024 * 1024;
-export const RESEARCH_LOG = "research/base_money/<YYYY>Q<n>.md";
+/** Where Assay appends a link audit's findings: the quarter file's Audit trail. */
+export const AUDIT_LOG = QUARTER_TEXT;
 
 export type LinkClass = "ok" | "changed" | "lost" | "no verdict";
 export const CLASSES: readonly LinkClass[] = ["ok", "changed", "lost", "no verdict"];
@@ -515,8 +517,8 @@ export function renderMarkdown(r: Report): string {
     "Wayback captures are fetched raw (the `id_` modifier) for hashing. Originals are hashed as served: a dynamic",
     "original (timestamps, session tokens, rotating banners) may show as changed on every audit and needs a human look.",
     "",
-    `Findings are appended by Assay to the quarter's research log at \`${RESEARCH_LOG}\` under`,
-    `\`## Link audit ${r.date}\`. This report and the saved copies stay in the local store; never commit them.`,
+    `Findings are appended by Assay to the quarter file \`${AUDIT_LOG}\` (its Audit trail) under`,
+    `\`### Link audit ${r.date}\`. This report and the saved copies stay in the local store; never commit them.`,
     "",
   ];
   const section = (title: string, cls: LinkClass) => {

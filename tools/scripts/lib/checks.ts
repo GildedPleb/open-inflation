@@ -3,7 +3,23 @@
 import { posix } from "node:path";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, memoText, slugs } from "./markdown.ts";
-import { EVIDENCE_INDEX, fillReadme, generate, hasMarkers, README } from "./readme.ts";
+import {
+  anyQuarterOfPath,
+  EVIDENCE_ROOT,
+  extractOf,
+  extractPath,
+  FX_ID,
+  FX_TEXT,
+  fxPath,
+  ISSUER_TEXT,
+  isExtractPath,
+  QUARTER_LIST,
+  QUARTER_TEXT,
+  quarterOfPath,
+  quarterPath,
+  RETIRED_ROOTS,
+} from "./paths.ts";
+import { fillIndex, fillReadme, generate, hasMarkers, README } from "./readme.ts";
 import type { CheckId, Files, Finding, LintOptions, Snapshot } from "./types.ts";
 
 /** The series with a CSV and a roll-up schema today. A series id names its CSV and its evidence folder. */
@@ -11,11 +27,9 @@ export const SERIES = "base_money";
 export const CSV = `${SERIES}.csv`;
 export const CSV_HEADER = "date,value,evidence_id";
 export const MAX_BYTES = 1024 * 1024;
-/** evidence/<series>/YYYYQn.md -> [series, quarter]. */
-const ROLLUP = /^evidence\/([a-z][a-z0-9_]*)\/(\d{4}Q[1-4])\.md$/;
-/** The research log for one roll-up quarter (exact, case-sensitive). */
-const RESEARCH_LOG = /^research\/base_money\/\d{4}Q[1-4]\.md$/;
-const ISSUER_YEAR = /^issuers\/[^/]+\/\d{4}\.md$/;
+/** md() filters for the evidence file kinds (paths.ts owns the layout). */
+const QUARTER_FILE = { test: (p: string) => quarterOfPath(p) !== undefined };
+const EXTRACT_FILE = { test: (p: string) => extractOf(p) !== undefined };
 const QUARTER_ENDS = ["03-31", "06-30", "09-30", "12-31"];
 const BOM = "\uFEFF";
 
@@ -84,7 +98,8 @@ export const decodeAll = (fs: Files): Texts => {
   }
   return m;
 };
-const md = (ctx: Ctx, re: RegExp) => [...ctx.text].filter(([p]) => p.endsWith(".md") && re.test(p));
+const md = (ctx: Ctx, re: { test: (p: string) => boolean }) =>
+  [...ctx.text].filter(([p]) => p.endsWith(".md") && re.test(p));
 const quarterOf = (date: string) => `${date.slice(0, 4)}Q${Math.ceil(Number(date.slice(5, 7)) / 3)}`;
 const quarterEnd = (q: string) => `${q.slice(0, 4)}-${QUARTER_ENDS[Number(q.slice(5)) - 1]}`;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -216,46 +231,56 @@ function parseRow(l: string, line: number, prev: Row | undefined): Row | string 
 
 function evidenceExistence(ctx: Ctx, rows: Row[], emit: Emit) {
   for (const r of rows) {
-    const m = ROLLUP.exec(r.evidenceId);
-    if (!m || m[1] !== SERIES)
-      emit(
-        "L2",
-        CSV,
-        `line ${r.line}: evidence_id ${show(r.evidenceId)} must be a relative path evidence/${SERIES}/YYYYQn.md`,
-      );
+    const q = quarterOfPath(r.evidenceId);
+    if (q === undefined)
+      emit("L2", CSV, `line ${r.line}: evidence_id ${show(r.evidenceId)} must be a relative path ${QUARTER_TEXT}`);
     else if (!ctx.files.has(r.evidenceId)) emit("L2", CSV, `line ${r.line}: ${r.evidenceId} does not exist`);
-    else if (m[2] !== quarterOf(r.date))
-      emit("L2", CSV, `line ${r.line}: evidence_id quarter ${m[2]} differs from date quarter ${quarterOf(r.date)}`);
+    else if (q !== quarterOf(r.date))
+      emit("L2", CSV, `line ${r.line}: evidence_id quarter ${q} differs from date quarter ${quarterOf(r.date)}`);
   }
 }
 
 // ---------- L3, L4 ----------
 
-const APPEND_ONLY = /^(issuers|evidence)\/.*\.md$/;
-/** Where a committed append-only file may be renamed to and still be followed (L3/L4). Elsewhere it is a delete. */
-const RENAME_TARGET = APPEND_ONLY;
+/** Strictly append-only evidence (paths.ts isExtractPath): committed lines and headings never change (L3/L4). */
+const isExtract = isExtractPath;
+/** Where a committed extract may be renamed to and still be followed (L3/L4): an extract path. Elsewhere a delete. */
+const RENAME_TARGET = EXTRACT_FILE;
 
 const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
- * Renames lint follows: a committed append-only file absent from the tree, paired with a new file (absent from the
- * base) under RENAME_TARGET whose bytes are identical. This is git's rename detection at 100% similarity
- * (`git diff -M100%`): a file edited in any way while moving is a delete plus an add, so L4 reports the delete.
- * Rename-following never loosens L3/L4: the moved file is checked against its old path's committed content.
+ * Renames lint follows. An extract absent from the tree pairs with a new file (absent from the base) under
+ * RENAME_TARGET whose bytes are identical: git's rename detection at 100% similarity (`git diff -M100%`), so an
+ * extract edited in any way while moving is a delete plus an add and L4 reports the delete. A quarter file absent
+ * from the tree pairs by quarter with its new quarter path (its prose may be rewritten; its machine blocks are
+ * locked, see quarterLock). Rename-following never loosens L3/L4: the moved file is checked against its old content.
  */
 function findRenames(snap: Snapshot): Map<string, string> {
   const out = new Map<string, string>();
   const base = snap.base;
   if (!base) return out;
-  const gone = [...base.keys()].filter((p) => APPEND_ONLY.test(p) && !snap.files.has(p)).sort();
-  const added = [...snap.files.keys()].filter((p) => RENAME_TARGET.test(p) && !base.has(p)).sort();
+  const gone = [...base.keys()].filter((p) => !snap.files.has(p)).sort();
+  const added = [...snap.files.keys()].filter((p) => !base.has(p)).sort();
   const taken = new Set<string>();
   for (const p of gone) {
+    const q = anyQuarterOfPath(p);
+    if (q !== undefined) {
+      const to = quarterPath(q);
+      if (added.includes(to) && !taken.has(to)) {
+        taken.add(to);
+        out.set(p, to);
+      }
+      continue;
+    }
+    if (!isExtract(p)) continue;
     const old = base.get(p) as Uint8Array;
-    const q = added.find((a) => !taken.has(a) && sameBytes(old, snap.files.get(a) as Uint8Array));
-    if (q === undefined) continue;
-    taken.add(q);
-    out.set(p, q);
+    const to = added.find(
+      (a) => RENAME_TARGET.test(a) && !taken.has(a) && sameBytes(old, snap.files.get(a) as Uint8Array),
+    );
+    if (to === undefined) continue;
+    taken.add(to);
+    out.set(p, to);
   }
   return out;
 }
@@ -268,7 +293,7 @@ function headingImmutability(ctx: Ctx, emit: Emit) {
   if (!ctx.base) return;
   for (const [from, old] of ctx.base) {
     const p = ctx.renames.get(from) ?? from;
-    if (!APPEND_ONLY.test(from) || (ctx.files.has(p) && !ctx.text.has(p))) continue;
+    if (!isExtract(from) || (ctx.files.has(p) && !ctx.text.has(p))) continue;
     const now = new Map<string, number>();
     for (const h of headings(ctx.text.get(p) ?? "")) {
       const k = `${"#".repeat(h.level)} ${h.text}`;
@@ -287,9 +312,14 @@ function appendOnly(ctx: Ctx, emit: Emit) {
   if (!ctx.base) return;
   for (const [from, old] of ctx.base) {
     const p = ctx.renames.get(from) ?? from;
-    if (!APPEND_ONLY.test(from)) continue;
+    const quarter = anyQuarterOfPath(from) !== undefined;
+    if (!isExtract(from) && !quarter) continue;
     if (!ctx.files.has(p)) {
       emit("L4", p, "committed file was deleted; evidence is append-only");
+      continue;
+    }
+    if (quarter) {
+      quarterLock(ctx, p, old, emit);
       continue;
     }
     const now = ctx.text.get(p);
@@ -304,6 +334,54 @@ function appendOnly(ctx: Ctx, emit: Emit) {
         break;
       }
       j++;
+    }
+  }
+}
+
+/** `body` with every followed extract rename's old path replaced by its new path (whole path tokens only). */
+function rewriteRenamedPaths(ctx: Ctx, body: string): string {
+  let out = body;
+  for (const [from, to] of ctx.renames) {
+    if (!isExtract(from)) continue;
+    const esc = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(?<![\\w./-])${esc}(?![\\w/-])`, "g"), to);
+  }
+  return out;
+}
+
+/**
+ * A committed quarter file under L4: its prose is presentation and may be rewritten, but every committed machine
+ * block survives byte for byte, in order, as the file's first blocks. The only allowed edit is a followed extract
+ * rename's path inside an anchor (or comment), e.g. issuers/PBOC/2026.md -> its new extract path. Later blocks are
+ * appended revisions (L9 checks them).
+ */
+function quarterLock(ctx: Ctx, p: string, old: string, emit: Emit) {
+  const now = ctx.text.get(p);
+  if (now === undefined) return;
+  const was = fencedBlocks(old, ["yaml", "yml"]);
+  const cur = fencedBlocks(now, ["yaml", "yml"]);
+  for (const [i, b] of was.entries()) {
+    const want = rewriteRenamedPaths(ctx, b.body);
+    const got = cur[i];
+    if (got === undefined) {
+      emit(
+        "L4",
+        p,
+        `committed machine block ${i + 1} (base line ${b.line}) was removed; machine blocks are append-only`,
+      );
+      return;
+    }
+    if (got.body !== want && got.body !== b.body) {
+      const x = want.split("\n");
+      const y = got.body.split("\n");
+      const k = x.findIndex((l, j) => l !== y[j]);
+      const at = k < 0 ? x.length : k;
+      emit(
+        "L4",
+        p,
+        `committed machine block ${i + 1} (base line ${b.line}) changed at its line ${at + 1}: ${show(x[at] ?? "")} -> ${show(y[at] ?? "")}; only a renamed extract's path may change, and a correction is an appended revision block`,
+      );
+      return;
     }
   }
 }
@@ -349,9 +427,11 @@ function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
 // ---------- L5, L6 ----------
 
 function linkIntegrity(ctx: Ctx, emit: Emit) {
-  for (const [p, body] of md(ctx, /^(README\.md|docs\/evidence-index\.md|evidence\/.*\.md)$/)) {
+  for (const [p, body] of md(ctx, {
+    test: (x: string) => x === README || x === QUARTER_LIST || QUARTER_FILE.test(x),
+  })) {
     for (const l of links(body)) checkTarget(ctx, p, `link (line ${l.line})`, l.target, false, emit);
-    if (ROLLUP.exec(p)?.[1] !== SERIES) continue;
+    if (!QUARTER_FILE.test(p)) continue;
     const m = machine(body);
     if (!m.ok || !isObj(m.data)) continue;
     const anchors = [
@@ -373,7 +453,7 @@ function linkIntegrity(ctx: Ctx, emit: Emit) {
 
 /** One `## YYYYQn` section per issuer-year file: a second one would anchor as #yyyyqn-1. */
 function quarterHeadings(ctx: Ctx, emit: Emit) {
-  for (const [p, body] of md(ctx, ISSUER_YEAR)) {
+  for (const [p, body] of md(ctx, EXTRACT_FILE)) {
     const seen = new Map<string, number>();
     for (const h of headings(body)) {
       if (h.level !== 2 || !/^\d{4}Q[1-4]$/.test(h.text)) continue;
@@ -390,21 +470,20 @@ function quarterHeadings(ctx: Ctx, emit: Emit) {
 }
 
 function indexCompleteness(ctx: Ctx, emit: Emit) {
-  const I = EVIDENCE_INDEX;
+  const I = QUARTER_LIST;
   if (!ctx.files.has(I)) return emit("L6", I, `${I} is missing`);
   const body = ctx.text.get(I);
   if (body === undefined) return;
   const linked = new Set(links(body).map((l) => resolveLink(I, l.target, false)?.path));
   for (const p of [...ctx.files.keys()].sort()) {
-    if ((/^evidence\/.*\.md$/.test(p) || ISSUER_YEAR.test(p)) && !linked.has(p))
-      emit("L6", I, `${I} does not link ${p}`);
+    if (QUARTER_FILE.test(p) && !linked.has(p)) emit("L6", I, `${I} does not link ${p}`);
   }
   // The README's generated table links every roll-up too (once README.md carries the generated blocks).
   const readme = ctx.text.get(README);
   if (!hasMarkers(readme)) return;
   const fromReadme = new Set(links(readme ?? "").map((l) => resolveLink(README, l.target, false)?.path));
   for (const p of [...ctx.files.keys()].sort())
-    if (ROLLUP.exec(p)?.[1] === SERIES && !fromReadme.has(p)) emit("L6", README, `README.md table does not link ${p}`);
+    if (QUARTER_FILE.test(p) && !fromReadme.has(p)) emit("L6", README, `README.md table does not link ${p}`);
 }
 
 // ---------- L13 ----------
@@ -433,10 +512,13 @@ function generated(ctx: Ctx, emit: Emit) {
     const diff = firstDiff(readme ?? "", filled);
     emit("L13", README, `generated block differs from the data at line ${diff + 1}; ${fix}`);
   }
-  const index = ctx.text.get(EVIDENCE_INDEX);
-  if (index !== undefined && index !== g.index) {
-    const diff = firstDiff(index, g.index);
-    emit("L13", EVIDENCE_INDEX, `differs from the generated index at line ${diff + 1}; ${fix}`);
+  const index = ctx.text.get(QUARTER_LIST);
+  if (index === undefined) return; // L6 reports a missing list
+  const want = fillIndex(index, g.index);
+  if (typeof want !== "string") emit("L13", QUARTER_LIST, want.problem);
+  else if (want !== index) {
+    const diff = firstDiff(index, want);
+    emit("L13", QUARTER_LIST, `quarter list differs from the data at line ${diff + 1}; ${fix}`);
   }
 }
 
@@ -771,15 +853,13 @@ function blockProblems(b: Extract, now: number): string[] {
 }
 
 const issuerTexts = (texts: Texts | null) =>
-  [...(texts ?? [])]
-    .filter(([p]) => p.startsWith("issuers/") && p.endsWith(".md"))
-    .sort(([a], [b]) => a.localeCompare(b));
+  [...(texts ?? [])].filter(([p]) => EXTRACT_FILE.test(p)).sort(([a], [b]) => a.localeCompare(b));
 
 function extractSchema(ctx: Ctx, emit: Emit) {
   const startOfDay = catalogModel(ctx.text.get("catalog.json")).startOfDay;
   for (const [p, body] of issuerTexts(ctx.text)) {
     const { blocks, stray } = extracts(body);
-    const iss = /^issuers\/([^/]+)\//.exec(p)?.[1] ?? "";
+    const iss = extractOf(p)?.issuer ?? "";
     for (const line of stray) emit("L7", p, `line ${line}: extract field outside an ### extract block`);
     for (const b of blocks) {
       const at = `extract "${b.title}" (line ${b.line})`;
@@ -1029,11 +1109,9 @@ function rearchiveNotes(ctx: Ctx, emit: Emit) {
 // ---------- L9 ----------
 
 function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
-  for (const [p, body] of md(ctx, /^evidence\//)) {
+  for (const [p, body] of md(ctx, QUARTER_FILE)) {
     const e = (m: string) => emit("L9", p, m);
-    const r = ROLLUP.exec(p);
-    if (r?.[1] !== SERIES) continue; // L12 reports misplaced files
-    const q = r[2] as string;
+    const q = quarterOfPath(p) as string;
     const all = machines(body);
     const { baskets } = catalogModel(ctx.text.get("catalog.json"));
     const fx = fxCurrencies(ctx, q);
@@ -1056,14 +1134,127 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
           e,
         );
     }
+    const last = all.at(-1);
+    if (last?.ok && isObj(last.data)) for (const m of tableProblems(p, body, last.data)) e(m);
   }
 }
+
+const sameValue = (a: Decimal | null, b: Decimal | null) => {
+  if (!a || !b) return false;
+  const s = Math.max(a.scale, b.scale);
+  return a.digits * 10n ** BigInt(s - a.scale) === b.digits * 10n ** BigInt(s - b.scale);
+};
+/** A table cell's text without links (their text kept), emphasis and code ticks. */
+const cellText = (c: string) =>
+  c
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*`]/g, "")
+    .trim();
+const tableCells = (l: string) =>
+  l
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+
+/**
+ * The quarter file's reader table equals its current (last) machine block: one row per component, linked to its
+ * issuer's extract, with "CCY amount" = local_currency and local_value, the FX cell's quote = fx_rate ("X USD per
+ * CCY" is fx_rate; "X CCY per USD" gives fx_rate by the methodology FX rule; a USD row says "none"), USD =
+ * local_value x fx_rate in whole dollars, and the **Total** row = total_usd. The table is the first one whose header
+ * has Issuer, Local amount, FX rate and USD columns.
+ */
+function tableProblems(p: string, body: string, d: Record<string, unknown>): string[] {
+  const ls = lines(body);
+  let head = -1;
+  let col = { iss: -1, local: -1, fx: -1, usd: -1 };
+  for (const [i, l] of ls.entries()) {
+    if (l.fence !== "none" || !l.text.trim().startsWith("|")) continue;
+    const h = tableCells(l.text);
+    const c = {
+      iss: h.indexOf("Issuer"),
+      local: h.findIndex((x) => x.startsWith("Local amount")),
+      fx: h.findIndex((x) => x.startsWith("FX rate")),
+      usd: h.indexOf("USD"),
+    };
+    if (c.iss >= 0 && c.local >= 0 && c.fx >= 0 && c.usd >= 0) {
+      head = i;
+      col = c;
+      break;
+    }
+  }
+  if (head < 0) return ["has no reader table (a table with Issuer, Local amount, FX rate and USD columns)"];
+  const errs: string[] = [];
+  const comps = (Array.isArray(d.components) ? d.components : []).filter(isObj);
+  const seen = new Set<string>();
+  let total: string | null = null;
+  for (let i = head + 2; i < ls.length; i++) {
+    const l = ls[i] as (typeof ls)[number];
+    if (l.fence !== "none" || !l.text.trim().startsWith("|")) break;
+    const cells = tableCells(l.text);
+    const at = `table line ${l.line}`;
+    const raw = cells[col.iss] ?? "";
+    if (cellText(raw) === "Total") {
+      total = cellText(cells[col.usd] ?? "");
+      continue;
+    }
+    const link = links(raw)[0];
+    const target = link ? resolveLink(p, link.target, false) : null;
+    const iss = target ? extractOf(target.path)?.issuer : undefined;
+    const c = iss === undefined ? undefined : comps.find((x) => x.issuer === iss);
+    if (iss === undefined) {
+      errs.push(`${at}: the Issuer cell must link the issuer's extract (${ISSUER_TEXT})`);
+      continue;
+    }
+    if (!c) {
+      errs.push(`${at}: ${iss} is not a component of the current machine block`);
+      continue;
+    }
+    if (seen.has(iss)) errs.push(`${at}: ${iss} has a second row`);
+    seen.add(iss);
+    const local = /^([A-Z]{3}) ([\d,]+(?:\.\d+)?)$/.exec(cellText(cells[col.local] ?? ""));
+    if (
+      !local ||
+      local[1] !== c.local_currency ||
+      !sameValue(parseDecimal((local[2] ?? "").replace(/,/g, "")), parseDecimal(String(c.local_value)))
+    )
+      errs.push(
+        `${at}: Local amount ${show(cellText(cells[col.local] ?? ""))} differs from the machine block (${String(c.local_currency)} ${String(c.local_value)})`,
+      );
+    const fxText = cellText(cells[col.fx] ?? "");
+    const quote = /^(\d+(?:\.\d+)?) (?:USD per ([A-Z]{3})|([A-Z]{3}) per USD)$/.exec(fxText);
+    const rate = parseDecimal(String(c.fx_rate));
+    let fxOk = false;
+    if (/^none\b/.test(fxText)) fxOk = c.local_currency === "USD" && sameValue(rate, parseDecimal("1"));
+    else if (quote && (quote[2] ?? quote[3]) === c.local_currency) {
+      const r = parseDecimal(quote[1] ?? "");
+      fxOk = quote[2]
+        ? sameValue(r, rate)
+        : r !== null && r.digits > 0n && sameValue(parseDecimal(usdPerUnit(r, "per USD")), rate);
+    }
+    if (!fxOk)
+      errs.push(`${at}: FX rate ${show(fxText)} differs from the machine block's fx_rate ${String(c.fx_rate)}`);
+    const usd = cellText(cells[col.usd] ?? "");
+    const v = parseDecimal(String(c.local_value));
+    const want = v && rate ? `$${group(wholeUsd(v, rate).toString())}` : null;
+    if (usd !== want) errs.push(`${at}: USD ${show(usd)} differs from local_value x fx_rate (${want ?? "unreadable"})`);
+  }
+  for (const c of comps)
+    if (!seen.has(String(c.issuer))) errs.push(`reader table has no row for component ${String(c.issuer)}`);
+  const wantTotal = `$${group(String(d.total_usd))}`;
+  if (total === null) errs.push("reader table has no **Total** row");
+  else if (total !== wantTotal) errs.push(`reader table Total ${show(total)} differs from total_usd (${wantTotal})`);
+  return errs;
+}
+
+const group = (digits: string) => digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
 const FX_CURRENCY = /^\s*[-*]\s+Currency:\s*(\S+)\s*$/;
 
 /**
  * R1-11: the currencies with an FX extract for quarter `q`: a "- Currency: <ISO>" field line inside an ### extract
- * under "## <q>" in issuers/FX/<YYYY>.md (methodology FX extract format). Fenced lines do not count.
+ * under "## <q>" in the FX extract (paths.ts fxPath) (methodology FX extract format). Fenced lines do not count.
  */
 function fxCurrencies(ctx: Ctx, q: string): Set<string> {
   const out = new Set<string>();
@@ -1085,12 +1276,12 @@ function fxCurrencies(ctx: Ctx, q: string): Set<string> {
   return out;
 }
 
-const fxFile = (q: string) => `issuers/${FX_FOLDER}/${q.slice(0, 4)}.md`;
+const fxFile = (q: string) => fxPath(q.slice(0, 4));
 
 type Adopted = FxRate & { readonly title: string };
 
 /**
- * The adopted FX extracts of quarter `q`, by currency: ### extracts under "## <q>" in issuers/FX/<YYYY>.md whose
+ * The adopted FX extracts of quarter `q`, by currency: ### extracts under "## <q>" in the FX extract (paths.ts fxPath) whose
  * single "- Adopted:" value starts with "yes". Confirming extracts ("- Adopted: no, confirming") never count.
  */
 function adoptedRates(ctx: Ctx, q: string): Map<string, Adopted[]> {
@@ -1186,7 +1377,7 @@ function valueEntry(key: string, i: number, c: unknown, q: string, fxHave: Set<s
   if (!nonEmpty(c.issuer)) errs.push(`${key}[${i}].issuer is required`);
   if (!nonEmpty(c.anchor)) errs.push(`${key}[${i}].anchor is required`);
   else if (nonEmpty(c.issuer)) {
-    const want = `issuers/${c.issuer}/${q.slice(0, 4)}.md#${q.toLowerCase()}`;
+    const want = `${extractPath(String(c.issuer), q.slice(0, 4))}#${q.toLowerCase()}`;
     if (c.anchor !== want) errs.push(`${key}[${i}].anchor ${c.anchor} must be ${want} (the issuer's ${q} section)`);
   }
   if (typeof c.local_currency !== "string" || !/^[A-Z]{3}$/.test(c.local_currency))
@@ -1682,8 +1873,8 @@ const isBasket = (v: unknown): v is string[] =>
 
 // ---------- L12 ----------
 
-/** issuers/FX/ holds the FX-rate sources fx_source_anchor cites. It is not a basket issuer. */
-const FX_FOLDER = "FX";
+/** The FX folder (paths.ts FX_DIR) holds the FX-rate sources fx_source_anchor cites. It is not a basket issuer. */
+const FX_FOLDER = FX_ID;
 
 /** Issuers named by any valid catalog basket, all versions (the union). Lenient: L11 reports a bad catalog, and an empty set skips membership. */
 function catalogBasket(ctx: Ctx): Set<string> {
@@ -1702,19 +1893,28 @@ function placement(ctx: Ctx, emit: Emit) {
   const basket = catalogBasket(ctx);
   for (const p of [...ctx.files.keys()].sort()) {
     if (p.endsWith("/.gitkeep")) continue;
-    if (p.startsWith("issuers/")) {
-      const iss = /^issuers\/([A-Z][A-Z0-9]*)\/\d{4}\.md$/.exec(p)?.[1]; // upper-case issuer ids; FX exactly
+    const retired = RETIRED_ROOTS.find((r) => p.startsWith(r));
+    if (retired)
+      emit(
+        "L12",
+        p,
+        `${retired} is retired; quarters live at ${QUARTER_TEXT}, extracts at ${ISSUER_TEXT} and ${FX_TEXT}`,
+      );
+    else if (p.startsWith(EVIDENCE_ROOT)) {
+      if (p === QUARTER_LIST || QUARTER_FILE.test(p)) continue;
+      const iss = extractOf(p)?.issuer; // upper-case issuer ids; FX in its own folder
       if (iss === undefined)
-        emit("L12", p, "issuer files live only at issuers/<ISS>/<YYYY>.md (<ISS> an upper-case issuer id, or FX)");
-      else if (iss !== FX_FOLDER && basket.size > 0 && !basket.has(iss))
         emit(
           "L12",
           p,
-          `${iss} is not in the catalog basket (${[...basket].join(", ")}); issuers/<ISS>/ needs a basket issuer`,
+          `${EVIDENCE_ROOT} holds only the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id) and FX extracts ${FX_TEXT}`,
         );
-    } else if (p.startsWith("evidence/") && ROLLUP.exec(p)?.[1] !== SERIES)
-      emit("L12", p, `roll-ups live only at evidence/${SERIES}/YYYYQn.md`);
-    else if (p.startsWith("research/") && !RESEARCH_LOG.test(p))
-      emit("L12", p, `research logs live only at research/${SERIES}/YYYYQn.md`);
+      else if (iss !== FX_ID && basket.size > 0 && !basket.has(iss))
+        emit(
+          "L12",
+          p,
+          `${iss} is not in the catalog basket (${[...basket].join(", ")}); ${ISSUER_TEXT} needs a basket issuer`,
+        );
+    }
   }
 }

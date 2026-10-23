@@ -1,5 +1,14 @@
 // Synthetic, test-only evidence. None of these numbers are real observations.
+import { extractPath, fxPath, QUARTER_LIST, quarterPath, relLink } from "../scripts/lib/paths.ts";
 import type { Files, Snapshot } from "../scripts/lib/types.ts";
+
+/** Fixture paths, from the one layout module (scripts/lib/paths.ts). */
+export const Q3 = quarterPath("2026Q3");
+export const INDEX = QUARTER_LIST;
+export const FED = extractPath("FED", "2026");
+export const ECB = extractPath("ECB", "2026");
+export const BOJ = extractPath("BOJ", "2026");
+export const FX = fxPath("2026");
 
 const enc = new TextEncoder();
 
@@ -164,12 +173,12 @@ export const machineBlock = (o: {
     o.components ??
     [
       "  - issuer: FED",
-      "    anchor: issuers/FED/2026.md#2026q3",
+      `    anchor: ${FED}#2026q3`,
       "    local_currency: USD",
       '    local_value: "1001"',
       '    fx_rate: "1"',
       "  - issuer: ECB",
-      "    anchor: issuers/ECB/2026.md#2026q3",
+      `    anchor: ${ECB}#2026q3`,
       "    local_currency: EUR",
       '    local_value: "200.25"',
       '    fx_rate: "1.1"',
@@ -184,7 +193,7 @@ export const machineBlock = (o: {
           "reference_values:",
           ...excluded.flatMap((i) => [
             `  - issuer: ${i}`,
-            `    anchor: issuers/${i}/2026.md#${quarter.toLowerCase()}`,
+            `    anchor: ${extractPath(i, "2026")}#${quarter.toLowerCase()}`,
             "    local_currency: USD",
             `    local_value: "${REF_VALUE}"`,
             '    fx_rate: "1"',
@@ -197,7 +206,7 @@ export const machineBlock = (o: {
     `as_of: ${o.asOf ?? "2026-09-30"}`,
     "unit: USD",
     ...(o.basketVersion === undefined ? [] : [`basket_version: ${o.basketVersion}`]),
-    "fx_source_anchor: issuers/FX/2026.md#2026q3",
+    `fx_source_anchor: ${FX}#2026q3`,
     "components:",
     components,
     ...(o.crossChecks ? [o.crossChecks] : []),
@@ -212,20 +221,51 @@ export const machineBlock = (o: {
   ].join("\n");
 };
 
-export const rollup = (block = machineBlock({})): string =>
+const group = (d: string) => d.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+const link = (to: string) => relLink(Q3, to);
+
+/**
+ * The reader table for a block (its last ```yaml block): one row per component with "CCY amount", the FX quote as
+ * "fx_rate USD per CCY" (or "none" for USD) and the whole-dollar USD, and the **Total** row = total_usd. So every
+ * fixture quarter's table equals its machine block unless a test plants a difference.
+ */
+export const readerTable = (block: string): string => {
+  const yaml = block.split("```yaml").at(-1) ?? "";
+  const comps = (yaml.split(/^components:$/m)[1] ?? "").split(/^[a-z_]+:/m)[0] ?? "";
+  const rows = comps
+    .split(/^ {2}- /m)
+    .slice(1)
+    .map((c) => {
+      const f = (k: string) => new RegExp(`${k}: "?([^"\\n]*)"?`).exec(c)?.[1] ?? "";
+      const iss = f("issuer");
+      const ccy = f("local_currency");
+      const v = f("local_value");
+      const fx = f("fx_rate");
+      const [i = "", d = ""] = v.split(".");
+      const amount = `${ccy} ${group(i)}${d ? `.${d}` : ""}`;
+      const quote = ccy === "USD" ? "none (already USD)" : `${fx} USD per ${ccy}`;
+      return `| [${iss}](${link(extractPath(iss, "2026"))}) | ${amount} | ${quote} | $${group(usd([[v || "0", fx || "1"]]).toString())} |`;
+    });
+  const total = /total_usd: "?([^"\n]*)"?/.exec(yaml)?.[1] ?? "";
+  return [
+    "| Issuer | Local amount | FX rate | USD |",
+    "| :----- | -----------: | ------: | --: |",
+    ...rows,
+    `| **Total** | | | **$${group(total)}** |`,
+  ].join("\n");
+};
+
+export const rollup = (block = machineBlock({}), tableFrom = block): string =>
   [
     "# 2026Q3 base money",
     "",
-    "| Issuer | Local | FX | USD |",
-    "| --- | --- | --- | --- |",
-    "| FED | 1001 USD | 1 | 1001 |",
-    "| ECB | 200.25 EUR | 1.1 | 220 |",
+    readerTable(tableFrom),
     "",
     "## Components",
     "",
-    "- [FED](../../issuers/FED/2026.md#2026q3)",
-    "- [ECB](../../issuers/ECB/2026.md#2026q3)",
-    "- [FX](../../issuers/FX/2026.md#2026q3)",
+    `- [FED](${link(FED)}#2026q3)`,
+    `- [ECB](${link(ECB)}#2026q3)`,
+    `- [FX](${link(FX)}#2026q3)`,
     "",
     "## Conflicts",
     "",
@@ -235,6 +275,10 @@ export const rollup = (block = machineBlock({})): string =>
     "",
     block,
   ].join("\n");
+
+/** The fixture quarter with `block` appended as a revision; its reader table now shows that block (the last one). */
+export const revisedRollup = (block: string, first = machineBlock({})): string =>
+  `${rollup(first, block)}\n## Revision 1\n\n${block}`;
 
 export const CSV_HEADER = "date,value,evidence_id\n";
 
@@ -259,42 +303,23 @@ export const catalog = (series?: unknown): string =>
     2,
   )}\n`;
 
-/** Links in docs/evidence-index.md are relative to docs/. */
-const rel = (md: string): string => md.replace(/\]\((evidence|issuers)\//g, "](../$1/");
-
+/** The quarter list (links relative to its folder); `extra` lines are appended to the list. */
 export const index = (...extra: string[]): string =>
-  rel(
-    [
-      "# Index",
-      "",
-      "## Quarterly roll-ups",
-      "",
-      "- [2026Q3](evidence/base_money/2026Q3.md)",
-      "",
-      "## Issuer years",
-      "",
-      "- [FED 2026](issuers/FED/2026.md)",
-      "- [ECB 2026](issuers/ECB/2026.md)",
-      "- [BOJ 2026](issuers/BOJ/2026.md)",
-      "- [FX 2026](issuers/FX/2026.md)",
-      ...extra,
-      "",
-    ].join("\n"),
-  );
+  ["# Quarters", "", "## Quarters", "", `- [2026 Q3](${relLink(INDEX, Q3)})`, ...extra, ""].join("\n");
 
 /** A complete, valid one-quarter repo. Every check must pass on it. */
 export const goodText = (): Record<string, string> => ({
   "README.md": "# fixture\n",
   "catalog.json": catalog(),
-  "base_money.csv": `${CSV_HEADER}2026-09-30,1221,evidence/base_money/2026Q3.md\n`,
-  "docs/evidence-index.md": index(),
+  "base_money.csv": `${CSV_HEADER}2026-09-30,1221,${Q3}\n`,
+  [INDEX]: index(),
   "methodology/base_money.md": "# Methodology\n",
-  "evidence/base_money/2026Q3.md": rollup(),
-  "issuers/FED/2026.md": issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
-  "issuers/ECB/2026.md": issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement" })),
+  [Q3]: rollup(),
+  [FED]: issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
+  [ECB]: issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement" })),
   // Reference-only issuer: every quarter heading exists so default reference_values anchors resolve.
-  "issuers/BOJ/2026.md": `${issuerFile("BOJ", "2026Q3", extract({ title: "BOJ monetary base (reference only)" }))}\n## 2026Q1\n\n## 2026Q2\n\n## 2026Q4\n`,
-  "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")),
+  [BOJ]: `${issuerFile("BOJ", "2026Q3", extract({ title: "BOJ monetary base (reference only)" }))}\n## 2026Q1\n\n## 2026Q2\n\n## 2026Q4\n`,
+  [FX]: issuerFile("FX", "2026Q3", fxExtract("EUR")),
 });
 
 /** The empty skeleton: no data rows, no extracts. */
@@ -314,10 +339,8 @@ export const skeletonText = (): Record<string, string> => ({
     },
   ]),
   "base_money.csv": CSV_HEADER,
-  "docs/evidence-index.md": "# Index\n\nNo quarters yet.\n",
+  [INDEX]: "# Quarters\n\n## Quarters\n\nNo quarters yet.\n",
   "methodology/base_money.md": "# Methodology (stub)\n",
-  "evidence/base_money/.gitkeep": "",
-  "issuers/.gitkeep": "",
 });
 
 type Patch = Record<string, string | Uint8Array | null>;
