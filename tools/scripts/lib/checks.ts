@@ -2647,9 +2647,15 @@ function evidenceWording(ctx: Ctx, emit: Emit) {
 
 // ---------- L7 line types and superseded conversions ----------
 
-/** The `- <Label>:` lines an extract may hold: the template's fields and the defined record lines. */
+/**
+ * The `- <Label>:` lines an extract may hold, exactly: the template's fields and Assay's record lines (Capture check,
+ * Archive attempt <date>, Link audit <date>, Rejected source, Re-archive, Note <date>). attemptProblem checks the
+ * Archive attempt and Link audit forms; DATED_NOTE checks the Note form.
+ */
 const LINE_LABEL =
-  /^(?:Retrieved|Original URL|Archive URL(?: [23])?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Notes|Rejected source|Re-archive|Archive attempt\b.*|Link audit\b.*|Note \d{4}-\d{2}-\d{2}|Capture check(?: \(.*)?)$/;
+  /^(?:Retrieved|Original URL|Archive URL(?: [23])?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Notes|Rejected source|Re-archive|Capture check|(?:Archive attempt|Link audit|Note) \d{4}-\d{2}-\d{2})$/;
+/** `- Note <YYYY-MM-DD>: <text>.`: a real date, then non-empty text ending with a period. */
+const DATED_NOTE = /^- Note (\d{4}-\d{2}-\d{2}): \S.*\.$/;
 /** A Notes line that converts at a rate other than the quarter's FX table row. */
 const OLD_CONVERSION = /H\.10|official rate|quarter-end rate/i;
 /** A dated Note retiring the older conversion: it says the conversion is superseded, or that it is not used. */
@@ -2682,8 +2688,17 @@ function extractLines(ctx: Ctx, emit: Emit) {
         emit(
           "L7",
           p,
-          `extract "${block.title}" line ${l.line}: "- ${(lab[1] as string).trim()}:" is not a defined line type (the template's fields, Archive attempt, Link audit, Rejected source, Re-archive, Note <date>, Capture check)`,
+          `extract "${block.title}" line ${l.line}: "- ${(lab[1] as string).trim()}:" is not a defined line type (the template's fields, Capture check, Archive attempt <date>, Link audit <date>, Rejected source, Re-archive, Note <date>)`,
         );
+      else if (lab && /^Note /.test(lab[1] as string)) {
+        const n = DATED_NOTE.exec(l.text);
+        if (!n || !isIsoDate(n[1] as string))
+          emit(
+            "L7",
+            p,
+            `extract "${block.title}" line ${l.line}: a Note line has the form "- Note <YYYY-MM-DD>: <text>." (a real date, non-empty text ending with a period)`,
+          );
+      }
     }
     close();
   }

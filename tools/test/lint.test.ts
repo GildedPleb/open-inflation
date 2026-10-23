@@ -3774,13 +3774,27 @@ describe("L7 defined line types and superseded conversions", () => {
       good(
         withLines(
           "- Note 2026-10-23: a note.",
-          "- Capture check (Ghostarchive; opened and checked): shows the figure.",
+          "- Capture check: Ghostarchive capture opened; it shows the figure.",
           "- Rejected source: x: not the series used.",
         ),
       ),
     ));
   test("an undefined `- <Label>:` line fails", () =>
     fails(good(withLines("- Archive check: fine.")), ["L7"], /"- Archive check:" is not a defined line type/));
+  test("a label with extra words fails (Capture check takes no parenthetical)", () =>
+    fails(
+      good(withLines("- Capture check (Ghostarchive): shows the figure.")),
+      ["L7"],
+      /"- Capture check \(Ghostarchive\):" is not a defined line type/,
+    ));
+  test("a Note without a date fails", () =>
+    fails(good(withLines("- Note: a note.")), ["L7"], /"- Note:" is not a defined line type/));
+  for (const [what, line] of [
+    ["no closing period", "- Note 2026-10-23: a note"],
+    ["no text", "- Note 2026-10-23: ."],
+    ["an impossible date", "- Note 2026-02-30: a note."],
+  ] as const)
+    test(`a Note with ${what} fails`, () => fails(good(withLines(line)), ["L7"], /a Note line has the form/));
   test("committed lines are checked too (committed text is freely editable)", () => {
     const old = (goodText()[FED] as string).replace("- Adopted: yes", "- Archive check: committed.\n- Adopted: yes");
     const base = files(goodText(), { [FED]: old });
