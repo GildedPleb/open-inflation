@@ -220,6 +220,13 @@ Its kinds are rate-limited, blocked, unconfirmed, Ghostarchive error page, offli
 
 ## Archive host quirks
 
+Captures are made before verify runs:
+
+- archive.today and Ghostarchive captures are made in a browser, with any CAPTCHA solved.
+- A capture counts as failed only after a real browser attempt. A scripted submission that meets a CAPTCHA or challenge is not an attempt.
+- The browser confirms each snapshot's content at capture, recorded as a `- Capture check:` line under its extract.
+- See [Third and fourth links](methodology/base_money.md#third-and-fourth-links).
+
 What verify asks each archive. Audit fetches every link with a GET and applies the same Ghostarchive page test.
 
 | Host | What we check | Verified when | No verdict when |
