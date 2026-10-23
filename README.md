@@ -1,4 +1,4 @@
-# Open Base-Money Evidence Repository
+# open-inflation
 
 Quarterly base money of the world's largest central banks, summed in US dollars, with every figure traceable to the bank's own published page.
 
@@ -92,7 +92,7 @@ More banks will be added over time. Each row keeps the basket it was first publi
 - **Code:** [MIT](LICENSE).
 - Quotes from central banks stay under each bank's own terms.
 
-Suggested citation: *Open Base-Money Evidence Repository, base_money dataset, version [as shown above]. https://github.com/GildedPleb/open-inflation (accessed [date]). CC BY 4.0.*
+Suggested citation: *open-inflation, base_money dataset, version [as shown above]. https://github.com/GildedPleb/open-inflation (accessed [date]). CC BY 4.0.*
 
 ## More
 
