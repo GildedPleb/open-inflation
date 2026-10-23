@@ -1,6 +1,7 @@
 // bun run verify [--base <ref>]   (local only: never a CI step, never a merge gate)
 // Checks the working tree against a base commit: --base; on a GitHub push to any ref but main, merge-base(HEAD,
-// origin/main); else $LINT_BASE (all zeros: none); else HEAD if it exists. See lib/lint-base.ts.
+// origin/main); else $LINT_BASE (all zeros: none); else locally merge-base(HEAD, origin/main), or HEAD~1 when that
+// is HEAD itself or missing, or HEAD for a lone root commit. See lib/lint-base.ts.
 // L8's link check, the network half moved out of lint: HEAD each archive URL the diff adds (that passes L7), once,
 // and every Re-archive note URL the diff adds, even one already committed elsewhere: web.archive.org, else
 // archive.org availability, asked under each equivalent query form (exact timestamp passes; anything else

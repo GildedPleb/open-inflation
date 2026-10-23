@@ -52,6 +52,7 @@ export async function verifyMain(io: VerifyIo): Promise<number> {
     ref: io.env.GITHUB_REF,
     hasHead: git.hasHead(dir),
     mergeBase: () => git.mergeBase(dir, "HEAD", "origin/main"),
+    revParse: (ref) => git.revParse(dir, ref),
   });
   if ("error" in choice) {
     io.err(`verify: ${choice.error}`);
