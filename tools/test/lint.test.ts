@@ -7,6 +7,7 @@ import {
   CSV_HEADER,
   catalog,
   extract,
+  failedLog,
   files,
   fxExtract,
   good,
@@ -3090,4 +3091,126 @@ describe("L9 whole-dollar USD", () => {
     passes(cov("938", "1500", "55", "940", "94.00")));
   test("the floor is compared on the whole-dollar figures: 93 / (93 + 6) fails (unrounded 94.44)", () =>
     fails(cov("93", "500", "5", "93", "93.94"), ["L9"], /coverage 93\.93\d*…?% is below the basket 1 floor 94%/));
+});
+
+describe("failed attempts log (L9 form, L4 append-only; never a machine block)", () => {
+  const entry = (o: Record<string, string> = {}) => {
+    const f: Record<string, string> = {
+      kind: "archive",
+      issuer: "FED",
+      url: "https://www.federalreserve.gov/releases/h41/",
+      target: "archive.today",
+      attempted: "2026-10-02T14:03:00Z",
+      method: "script",
+      outcome: "captcha",
+      http_status: "429",
+      detail: '"archive.ph served a CAPTCHA"',
+      ...o,
+    };
+    return Object.entries(f)
+      .filter(([, v]) => v !== "DROP")
+      .map(([k, v], i) => `${i === 0 ? "  - " : "    "}${k}: ${v}`)
+      .join("\n");
+  };
+  const section = (...entries: string[]) =>
+    failedLog(`failed_attempts:${entries.length === 0 ? " []" : `\n${entries.join("\n")}`}`);
+  const bare = () => rollup(machineBlock({}), machineBlock({}), "");
+  const withLog = (log: string) => `${bare()}${log}`;
+  const q = (log: string) => good({ [ROLLUP]: withLog(log) });
+  const A = entry();
+  const B = entry({
+    kind: "source",
+    issuer: "null",
+    url: "null",
+    target: "null",
+    method: "null",
+    outcome: "rejected",
+    http_status: "null",
+    detail: '"a mirror only"',
+  });
+  const C = entry({ issuer: "ECB", target: "ghostarchive", outcome: "cloudflare_challenge", http_status: "403" });
+  /** Base has `was` as the quarter's log, the working tree `now`. */
+  const logs = (was: string, now: string): Snapshot => ({
+    files: files(goodText(), { [ROLLUP]: withLog(now) }),
+    base: files(goodText(), { [ROLLUP]: withLog(was) }),
+  });
+
+  test("the fixture quarter carries an empty log and passes", () => passes(good()));
+  test("a quarter with no failed_attempts block fails L9 (required)", () =>
+    fails(good({ [ROLLUP]: bare() }), ["L9"], /has no failed_attempts block/));
+  test("valid entries pass (date or Z datetime; source with null issuer, url, target, method, http_status)", () =>
+    passes(q(section(A, B, entry({ attempted: "2026-10-02", http_status: "null", detail: "null" })))));
+  test("appending entries to a committed log passes", () => passes(logs(section(A), section(A, B, C))));
+  test("adding the log to a committed quarter passes", () => passes(logs("", section(A))));
+  test("mutant: a bad enum value fails L9", () =>
+    fails(q(section(entry({ outcome: "blocked" }))), ["L9"], /outcome "blocked" is not one of/));
+  test("mutant: a bad target fails L9", () =>
+    fails(q(section(entry({ target: "archive.ph" }))), ["L9"], /target "archive.ph"/));
+  test("a missing field fails L9", () => fails(q(section(entry({ url: "DROP" }))), ["L9"], /missing url/));
+  test("an unknown field fails L9", () => fails(q(section(`${A}\n    note: x`)), ["L9"], /unknown field note/));
+  test("kind archive needs a url, target and method", async () => {
+    await fails(q(section(entry({ target: "null" }))), ["L9"], /kind archive needs a target/);
+    await fails(q(section(entry({ method: "null" }))), ["L9"], /kind archive needs a method/);
+    await fails(q(section(entry({ url: "null" }))), ["L9"], /kind archive needs a url/);
+  });
+  test("kind source needs outcome rejected and a null target and method", async () => {
+    await fails(q(section(B.replace("outcome: rejected", "outcome: not_found"))), ["L9"], /needs outcome rejected/);
+    await fails(q(section(B.replace("method: null", "method: browser"))), ["L9"], /kind source needs method: null/);
+    await fails(q(section(B.replace("target: null", "target: wayback"))), ["L9"], /kind source needs target: null/);
+  });
+  test("attempted: a real date, or a UTC datetime with Z; offsets and bare times fail L9", async () => {
+    await fails(q(section(entry({ attempted: "2026-13-02" }))), ["L9"], /attempted "2026-13-02"/);
+    await fails(q(section(entry({ attempted: "2026-10-02T14:03:00+02:00" }))), ["L9"], /attempted/);
+    await fails(q(section(entry({ attempted: "2026-10-02T14:03:00" }))), ["L9"], /attempted/);
+    await passes(q(section(entry({ attempted: "2026-10-02T14:03Z" }))));
+  });
+  test("http_status not an integer fails L9", () =>
+    fails(q(section(entry({ http_status: '"429"' }))), ["L9"], /http_status "429"/));
+  test("mutant: a malformed block fails L9", () =>
+    fails(q(section(`${A}\n  - [unclosed`)), ["L9"], /failed_attempts block .* not valid YAML/));
+  test("mutant: failed_attempts that is not a list fails L9", () =>
+    fails(q(failedLog("failed_attempts: none")), ["L9"], /must hold only a failed_attempts: list/));
+  test("two failed_attempts blocks fail L9", () =>
+    fails(q(section(A) + section(B)), ["L9"], /has 2 failed_attempts blocks/));
+  test("mutant: an edited committed entry fails L4", () =>
+    fails(logs(section(A, B), section(A, B.replace("a mirror", "a copy"))), ["L4"], /entry 2 changed/));
+  test("mutant: a reorder fails L4", () =>
+    fails(logs(section(A, B), section(B, A)), ["L4"], /committed failed_attempts entry 1 changed/));
+  test("mutant: an insert in the middle fails L4", () =>
+    fails(logs(section(A, B), section(A, C, B)), ["L4"], /committed failed_attempts entry 2 changed/));
+  test("a removed committed entry fails L4", () =>
+    fails(logs(section(A, B), section(A)), ["L4"], /entry 2 was removed/));
+  test("a removed committed log fails L4 (and L9: it is required)", () =>
+    fails(logs(section(A), ""), ["L4", "L9"], /committed failed_attempts block was removed/));
+  test("mutant: the log is not a machine block (no L9 arithmetic, no table check, CSV still matches)", () =>
+    passes(q(section(A, C))));
+  test("mutant: the log is not a machine block for the lock (committed block 1 is still compared to block 1)", () =>
+    passes(logs(section(A), section(A, B))));
+  test("a log placed before the machine block does not shift the lock or the current block", () =>
+    passes(onGood({ [ROLLUP]: bare().replace("## Machine block", `${section(A)}\n## Machine block`) })));
+  test("a failed_attempts block with a leading comment is still the log", () =>
+    passes(q(section(A).replace("```yaml\n", "```yaml\n# attempts that failed\n"))));
+  test("on a quarter rename the log is compared against the old path's content", async () => {
+    const OLD_Q3 = "evidence/base_money/2026Q3.md";
+    const toOld = (t: string) =>
+      t
+        .replaceAll("base_money/quarters/", "evidence/base_money/")
+        .replaceAll("base_money/FX/", "issuers/FX/")
+        .replaceAll("base_money/issuers/", "issuers/");
+    const legacy = (log: string): Record<string, string> =>
+      Object.fromEntries(
+        Object.entries(goodText()).map(([p, t]) => [
+          toOld(p),
+          p === ROLLUP ? toOld(withLog(log)) : p === "base_money.csv" ? toOld(t) : t,
+        ]),
+      );
+    const moved = (was: string, now: string): Snapshot => ({
+      files: files(goodText(), { [ROLLUP]: withLog(now) }),
+      base: files(legacy(was)),
+    });
+    expect(OLD_Q3 in legacy("")).toBe(true);
+    await passes(moved(section(A), section(A, B)));
+    const fs = await lint(moved(section(A, B), section(B, A)), OFF);
+    expect(fs.some((f) => f.check === "L4" && /committed failed_attempts entry 1 changed/.test(f.message))).toBe(true);
+  });
 });

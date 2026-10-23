@@ -255,7 +255,11 @@ export const readerTable = (block: string): string => {
   ].join("\n");
 };
 
-export const rollup = (block = machineBlock({}), tableFrom = block): string =>
+/** The quarter file's closing failed-attempts section; required in every quarter file. */
+export const failedLog = (body = "failed_attempts: []"): string =>
+  `\n## Failed attempts (machine-readable)\n\n\`\`\`yaml\n${body}\n\`\`\`\n`;
+
+export const rollup = (block = machineBlock({}), tableFrom = block, log = failedLog()): string =>
   [
     "# 2026Q3 base money",
     "",
@@ -274,7 +278,7 @@ export const rollup = (block = machineBlock({}), tableFrom = block): string =>
     "## Machine block",
     "",
     block,
-  ].join("\n");
+  ].join("\n") + log;
 
 /** The fixture quarter with `block` appended as a revision; its reader table now shows that block (the last one). */
 export const revisedRollup = (block: string, first = machineBlock({})): string =>
