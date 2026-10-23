@@ -2387,16 +2387,17 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     expect(progress.at(-1)).toBe(`L8 [2/2] ok (HTTP 200, Ghostarchive) ${GHOST}`);
     expect(summary).toEqual(["ghostarchive: 1 verified, 0 unverified"]);
   });
-  test("HTTP 403 and 503 (its Cloudflare challenge) are no verdict, not a fail", async () => {
-    for (const status of [403, 503]) {
+  test("HTTP 403 and 503 (its Cloudflare challenge) and 429 (its rate limit) are no verdict, not a fail", async () => {
+    for (const status of [403, 429, 503]) {
       const { fs, progress, summary } = await run(onGood({ [FED]: added }), fake({ kind: "http", status }).opts);
       expect(fs).toEqual([]);
-      expect(progress.at(-1)).toBe(`L8 [2/2] unverified (HTTP ${status}, Ghostarchive challenge; no verdict) ${GHOST}`);
+      const why = status === 429 ? "rate limit" : "challenge";
+      expect(progress.at(-1)).toBe(`L8 [2/2] unverified (HTTP ${status}, Ghostarchive ${why}; no verdict) ${GHOST}`);
       expect(summary).toEqual(["ghostarchive: 0 verified, 1 unverified", GHOST]);
     }
   });
-  test("HTTP 404, 410, 429 and 500 fail (only 403/503 are no verdict); a Re-archive note excuses 404 and 410", async () => {
-    for (const status of [404, 410, 429, 500]) {
+  test("HTTP 404, 410 and 500 fail (only 403/429/503 are no verdict); a Re-archive note excuses 404 and 410", async () => {
+    for (const status of [404, 410, 500]) {
       const { opts } = fake({ kind: "http", status });
       await fails(onGood({ [FED]: added }), ["L8"], new RegExp(`Ghostarchive answered HTTP ${status}`), opts);
       if (status === 404 || status === 410) await passes(onGood({ [FED]: noted }), opts);

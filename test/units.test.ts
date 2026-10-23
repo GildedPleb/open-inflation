@@ -643,6 +643,7 @@ describe("archive2Problem (Archive URL 2 value)", () => {
       "captured as archive.ph/abc instead",
       "captured as archive.today/AbC12 instead",
       "the page example.com was blocked",
+      "example.com returned a CAPTCHA page",
       "fetch raw.githubusercontent.com/x/y failed twice",
       "the host (example.com) was blocked",
       "mirror at sub.example.co.uk, blocked",
@@ -654,6 +655,9 @@ describe("archive2Problem (Archive URL 2 value)", () => {
   test("prose with dots still passes: sentence ends, abbreviations, numbers, file types, archive.today's names", () => {
     for (const r of [
       "archive.today returned a CAPTCHA, blocked.",
+      "archive.today returned a CAPTCHA page",
+      "archive.ph returned a CAPTCHA page",
+      "archive.is returned a CAPTCHA page",
       "blocked by CAPTCHA, e.g. twice",
       "the U.S. mirror was blocked",
       "H.4.1 release blocked, i.e. CAPTCHA",

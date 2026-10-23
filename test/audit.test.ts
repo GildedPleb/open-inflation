@@ -119,10 +119,11 @@ describe("audit: classes (one per class)", () => {
     for (const error of ["timed out after 1000 ms", "ECONNRESET", "more than 10 redirects"])
       expect(res({ httpStatus: null, sha256: null, error }).status).toBe("no verdict");
   });
-  test("no verdict on Ghostarchive: 403 and 503 are its Cloudflare challenge; 404 is still lost", () => {
+  test("no verdict on Ghostarchive: 403 and 503 are its Cloudflare challenge, 429 as on every host; 404 is still lost", () => {
     const g = (httpStatus: number) => classify({ httpStatus, finalUrl: null, sha256: null, error: null }, prior, GHOST);
     for (const s of [403, 503])
       expect(g(s)).toEqual({ status: "no verdict", detail: `HTTP ${s} (blocked: Ghostarchive Cloudflare challenge)` });
+    expect(g(429)).toEqual({ status: "no verdict", detail: "HTTP 429 (blocked or rate-limited)" });
     expect(g(404).status).toBe("lost");
     // Elsewhere a 503 is plain no verdict, and a 403 is the generic block.
     expect(classify({ httpStatus: 503, finalUrl: null, sha256: null, error: null }, prior, ORIG).detail).toBe(
@@ -265,6 +266,10 @@ describe("audit: run, manifest and report", () => {
       status: "no verdict",
       detail: "HTTP 503 (blocked: Ghostarchive Cloudflare challenge)",
     });
+    // The report's class line names Ghostarchive's 503 among the no-verdict statuses.
+    expect(readFileSync(r.mdPath, "utf8").replace(/\n/g, " ")).toContain(
+      "no verdict (403, 429, blocked; Ghostarchive also 503; retried at the next audit).",
+    );
   });
   test("a same-date rerun is idempotent: same report, one manifest entry per date, compared with the earlier date", async () => {
     const store = join(tmp(), "store");

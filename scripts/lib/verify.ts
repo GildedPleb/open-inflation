@@ -105,10 +105,11 @@ async function todayVerdict(net: Net, url: string): Promise<Verdict> {
 }
 
 /**
- * Ghostarchive statuses that are a block, not a verdict: its Cloudflare challenge answers a script with 403 or 503.
- * Logged as unverified (the researcher opens the capture in a browser); not a failure.
+ * Ghostarchive statuses that are a block, not a verdict: its Cloudflare challenge answers a script with 403 or 503,
+ * and its rate limit with 429 (Assay: the same as archive.today). Logged as unverified (the researcher opens the
+ * capture in a browser); not a failure.
  */
-const GHOST_BLOCKED = [403, 503];
+const GHOST_BLOCKED = [403, RATE_LIMITED, 503];
 
 /** HEAD a Ghostarchive capture (Archive URL 3). No availability fallback. */
 async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
@@ -126,7 +127,10 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
     };
   if (r.kind === "http") {
     if (GHOST_BLOCKED.includes(r.status))
-      return { problem: null, limited: `HTTP ${r.status}, Ghostarchive challenge; no verdict` };
+      return {
+        problem: null,
+        limited: `HTTP ${r.status}, Ghostarchive ${r.status === RATE_LIMITED ? "rate limit" : "challenge"}; no verdict`,
+      };
     return {
       problem: {
         dead: DEAD.includes(r.status),

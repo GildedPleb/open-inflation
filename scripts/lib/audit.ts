@@ -7,7 +7,8 @@
 //   changed     resolves, but its sha256 differs from the last saved copy, or it redirects to a different final
 //               URL than last time
 //   lost        404, 410, DNS failure or gone
-//   no verdict  403, 429 or blocked, and 503 on Ghostarchive (its Cloudflare challenge); also any other status, a
+//   no verdict  403, 429 or blocked (on every host, Ghostarchive included), and 503 on Ghostarchive (its Cloudflare
+//               challenge); also any other status, a
 //               timeout, a reset or a redirect loop: retried next audit
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
@@ -317,8 +318,9 @@ export function renderMarkdown(r: Report): string {
     "",
     "Classes: ok (resolves, same content as the last saved copy; on a first run any resolving URL is ok), changed",
     "(resolves, but its sha256 differs from the last saved copy, or it redirects to a different final URL than last",
-    "time), lost (404, 410, DNS failure or gone), no verdict (403, 429 or blocked; retried at the next audit). The",
-    "script does not judge content: open each changed link and record whether it still shows the figure used.",
+    "time), lost (404, 410, DNS failure or gone), no verdict (403, 429, blocked; Ghostarchive also 503; retried at the",
+    "next audit). The script does not judge content: open each changed link and record whether it still shows the",
+    "figure used.",
     "",
     "Wayback captures are fetched raw (the `id_` modifier) for hashing. Originals are hashed as served: a dynamic",
     "original (timestamps, session tokens, rotating banners) may show as changed on every audit and needs a human look.",
