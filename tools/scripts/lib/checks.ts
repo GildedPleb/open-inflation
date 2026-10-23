@@ -567,7 +567,7 @@ function dateWindowProblem(what: string, day: string, retrieved?: string, now?: 
     return `${what} ${day} is in the future (now ${new Date(now).toISOString()}, UTC date ${utcDate(now + SKEW_MS)} with the 10 min skew)`;
   return null;
 }
-/** A URL in an attempt reason: any scheme:// (a bare host, www. ones included, is caught by hostWord). */
+/** A URL in an attempt reason: any scheme:// (a bare host, www. ones included, an IPv4 address, or a host joined to anything by / : @ or \, is caught by hostWord). */
 const URLISH = /[a-z][a-z0-9+.-]*:\/\//i;
 /**
  * A bare host or host/path word (example.com, archive.ph/abc, raw.githubusercontent.com/x/y): two or more dot-joined
@@ -578,13 +578,28 @@ const HOSTISH = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+([a-z]{2,63})(?:[/:?#]\S
 const FILE_TYPES = new Set(["csv", "doc", "docx", "htm", "html", "json", "pdf", "txt", "xls", "xlsx", "xml", "zip"]);
 /** archive.today's own names, as prose ("archive.today returned a CAPTCHA"), with no path. */
 const ARCHIVE_TODAY_NAMES = new Set(["archive.today", "archive.ph", "archive.is"]);
+/** A dotted IPv4 address, each part 0-255 (1.2.3.4); a version or section number (3.5, H.4.1) is not one. */
+const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
+/** A host on its own: name.tld that is not a file name (data.xlsx), or an IPv4 address. */
+const hostAlone = (w: string): boolean => {
+  if (IPV4.test(w)) return true;
+  const m = HOSTISH.exec(w);
+  return m !== null && !/[/:?#]/.test(w) && !FILE_TYPES.has((m[1] ?? "").toLowerCase());
+};
 const hostWord = (word: string): boolean => {
   const w = word.replace(/^[("'«“‘[<]+/, "").replace(/[)"'»”’\]>.,;:!?]+$/, "");
   const m = HOSTISH.exec(w);
-  if (!m) return false;
-  if (ARCHIVE_TODAY_NAMES.has(w.toLowerCase())) return false;
-  // A file name ("data.xlsx") is not a host; with a path ("example.zip/download", .zip is a TLD) it is.
-  return !(!/[/:?#]/.test(w) && FILE_TYPES.has((m[1] ?? "").toLowerCase()));
+  if (m) {
+    if (ARCHIVE_TODAY_NAMES.has(w.toLowerCase())) return false;
+    // A file name ("data.xlsx") is not a host; with a path ("example.zip/download", .zip is a TLD) it is.
+    return !(!/[/:?#]/.test(w) && FILE_TYPES.has((m[1] ?? "").toLowerCase()));
+  }
+  if (IPV4.test(w)) return true;
+  // m-D: a host joined to anything by / : @ or \ is a (malformed) URL too: x/example.com, http//example.com,
+  // https:example.com, http:/example.com, localhost:8080, 1.2.3.4:80. Only the bare names archive.today, archive.ph
+  // and archive.is pass, as prose.
+  const parts = w.split(/[/:@\\]+/).filter((x) => x !== "");
+  return parts.length > 1 && parts.some((x) => x.toLowerCase() === "localhost" || hostAlone(x));
 };
 /** A word counts toward the minimum only if it has a letter or a digit ("-", "—", "..." do not). */
 const reasonWords = (reason: string) => reason.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
@@ -610,7 +625,7 @@ function attemptProblem(
   if (reasonWords(reason).length < MIN_REASON_WORDS)
     return `${label} attempt reason ${show(reason)} is too short: say what failed in at least ${MIN_REASON_WORDS} words (a word has a letter or digit)`;
   if (URLISH.test(reason) || reason.split(/\s+/).some(hostWord))
-    return `${label} attempt reason ${show(reason)} contains a URL (a scheme://, or a bare host or host/path); a reason is prose (record links in their own fields)`;
+    return `${label} attempt reason ${show(reason)} contains a URL (a scheme://, a bare host, IP address or host/path, or a malformed URL such as x/example.com or localhost:8080); a reason is prose (record links in their own fields)`;
   return dateWindowProblem(`${label} attempt date`, day, retrieved, now);
 }
 

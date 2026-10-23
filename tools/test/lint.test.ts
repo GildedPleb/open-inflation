@@ -184,7 +184,7 @@ describe("L4 append-only (no committed line changes)", () => {
         ...csv("2026-09-30,1002,evidence/base_money/2026Q3.md"),
       }),
     ));
-  test("INDEX is not append-only", () =>
+  test("evidence index is not append-only", () =>
     passes(onGood({ "docs/evidence-index.md": index().replace("# Index", "# Evidence index") })));
 });
 
@@ -270,7 +270,7 @@ describe("L5 link integrity", () => {
   test("same-file anchor that exists passes", () => passes(withLink("- [up](#machine-block)")));
   test("external and in-code links are ignored", () =>
     passes(withLink("- [fed](https://www.federalreserve.gov/)\n\n```\n[x](missing.md)\n```\n\n`[y](missing.md)`")));
-  test("broken INDEX link", () =>
+  test("broken evidence index link", () =>
     fails(good({ "docs/evidence-index.md": index("- [Q4](evidence/base_money/2026Q4.md)") }), ["L5"], /2026Q4/));
   test("machine-block anchor uses the exact slug", () =>
     fails(
@@ -290,7 +290,7 @@ describe("L5 link integrity", () => {
     ));
 });
 
-describe("L6 INDEX completeness", () => {
+describe("L6 evidence index completeness", () => {
   test("links with anchors count as linking the file", () =>
     passes(
       good({ "docs/evidence-index.md": index().replace("(../issuers/FX/2026.md)", "(../issuers/FX/2026.md#2026q3)") }),
@@ -307,7 +307,8 @@ describe("L6 INDEX completeness", () => {
       ["L6"],
       /base_money\/2026Q3/,
     ));
-  test("missing INDEX.md", () => fails(good({ "docs/evidence-index.md": null }), ["L6"], /evidence-index\.md/));
+  test("missing docs/evidence-index.md", () =>
+    fails(good({ "docs/evidence-index.md": null }), ["L6"], /evidence-index\.md/));
 });
 
 describe("L7 extract schema", () => {
@@ -627,7 +628,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
     const second = extract({ title: "FED newer" }); // archive URL .../FED-newer
     await lint(onGood({ [FED]: added + second }), { ...f.opts, progress: (l) => lines.push(l) });
     expect(lines).toEqual([
-      "L8 checking 2 new archive URLs",
+      "L8 checking 2 distinct new archive URLs",
       `L8 [1/2] fail ${NEW}`,
       `L8 [2/2] fail ${NEW.replace("FED-new", "FED-newer")}`,
     ]);
@@ -1278,7 +1279,7 @@ describe("L9 component anchors", () => {
 describe("L10 byte-order marks", () => {
   test("BOM on a Markdown file fails", () =>
     fails(good({ "methodology/base_money.md": "\uFEFF# Methodology\n" }), ["L10"], /byte-order mark/));
-  test("BOM on INDEX.md fails", () =>
+  test("BOM on docs/evidence-index.md fails", () =>
     fails(good({ "docs/evidence-index.md": `\uFEFF${index()}` }), ["L10"], /byte-order mark/));
 });
 
@@ -2505,18 +2506,27 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     expect(fs).toEqual([]);
     expect(f.heads).toEqual([WAYBACK, GHOST]);
     expect(progress.at(-1)).toBe(`L8 [2/2] ok (HTTP 200, Ghostarchive) ${GHOST}`);
-    expect(summary).toEqual(["ghostarchive: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
+    expect(summary).toEqual(["ghostarchive (distinct URLs): 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
-  test("HTTP 403 (its Cloudflare challenge), 429 (its rate limit) and an unretried 503 are no verdict, not a fail", async () => {
-    for (const status of [403, 429, 503]) {
-      const { fs, progress, summary } = await run(onGood({ [FED]: added }), fake({ kind: "http", status }).opts);
+  test("HTTP 403 (its Cloudflare challenge), 429 and an unretried 503 (its rate limit) are no verdict, not a fail", async () => {
+    // Assay: a 403 may be labelled a challenge; a 503 with no challenge detected never is, retried or not.
+    for (const [status, challenge] of [
+      [403, false],
+      [429, false],
+      [503, false],
+      [503, true],
+      [429, true],
+    ] as const) {
+      const r = { kind: "http", status, ...(challenge ? { challenge } : {}) } as const;
+      const { fs, progress, summary } = await run(onGood({ [FED]: added }), fake(r).opts);
       expect(fs).toEqual([]);
-      const why = status === 429 ? "rate limit" : "Cloudflare challenge";
-      const word = status === 429 ? "rate-limited (" : "blocked (challenge/CAPTCHA; ";
+      const blocked = status === 403 || challenge;
+      const why = blocked ? "Cloudflare challenge" : "rate limit";
+      const word = blocked ? "blocked (challenge/CAPTCHA; " : "rate-limited (";
       // Assay (#19): the host and the HTTP status on every no-verdict line.
       expect(progress.at(-1)).toBe(`L8 [2/2] ${word}ghostarchive.org HTTP ${status}, ${why}; no verdict) ${GHOST}`);
-      const split = status === 429 ? "1 rate-limited, 0 blocked" : "0 rate-limited, 1 blocked";
-      expect(summary).toEqual([`ghostarchive: 0 verified, 1 unverified (${split})`, GHOST]);
+      const split = blocked ? "0 rate-limited, 1 blocked" : "1 rate-limited, 0 blocked";
+      expect(summary).toEqual([`ghostarchive (distinct URLs): 0 verified, 1 unverified (${split})`, GHOST]);
     }
   });
   // R5-n1: Ghostarchive answers 200 for its failed captures too; the page decides.
@@ -2541,12 +2551,12 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
       `L8 [2/2] unconfirmed (ghostarchive.org HTTP 200, no capture on the page (loading, in progress or unrecognised); no verdict) ${GHOST}`,
     );
     expect(summary).toEqual([
-      "ghostarchive: 0 verified, 1 unverified (0 rate-limited, 0 blocked, 1 unconfirmed)",
+      "ghostarchive (distinct URLs): 0 verified, 1 unverified (0 rate-limited, 0 blocked, 1 unconfirmed)",
       GHOST,
     ]);
     expect(
       (await run(onGood({ [FED]: added }), fake({ kind: "ok", status: 200, page: "capture" }).opts)).summary,
-    ).toEqual(["ghostarchive: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
+    ).toEqual(["ghostarchive (distinct URLs): 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
   test("HTTP 404, 410 and 500 fail (only 403/429/503 are no verdict); a Re-archive note excuses 404 and 410", async () => {
     for (const status of [404, 410, 500]) {
@@ -2585,7 +2595,9 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
       noVerdict: (u, why) => nv.push(`${why} ${u}`),
     });
     expect([fs, nv]).toEqual([[], [`offline ${GHOST}`]]);
-    expect(summary[0]).toBe("ghostarchive: 0 verified, 1 unverified (0 rate-limited, 0 blocked, 1 offline)");
+    expect(summary[0]).toBe(
+      "ghostarchive (distinct URLs): 0 verified, 1 unverified (0 rate-limited, 0 blocked, 1 offline)",
+    );
   });
   test("an attempt record and a committed Ghostarchive URL are never fetched", async () => {
     const f = fake({ kind: "http", status: 404 });
@@ -2621,8 +2633,8 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     const { fs, summary } = await run(onGood({ [FED]: text }), { ...OFF, archive: "added", net } as Opts);
     expect(fs).toEqual([]);
     expect(summary).toEqual([
-      "archive.today: 1 verified, 0 unverified (0 rate-limited, 0 blocked)",
-      "ghostarchive: 1 verified, 2 unverified (0 rate-limited, 2 blocked)",
+      "archive.today (distinct URLs): 1 verified, 0 unverified (0 rate-limited, 0 blocked)",
+      "ghostarchive (distinct URLs): 1 verified, 2 unverified (1 rate-limited, 1 blocked)",
       M,
       Z,
     ]);
@@ -2663,7 +2675,7 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
     expect(fs).toEqual([]);
     expect([f.heads, f.avail]).toEqual([[WAYBACK, TODAY], []]);
     expect(lines).toEqual([
-      "L8 checking 2 new archive URLs",
+      "L8 checking 2 distinct new archive URLs",
       `L8 [1/2] ok (HTTP 200, 20261002140500) ${WAYBACK}`,
       `L8 [2/2] ok (HTTP 200, archive.today) ${TODAY}`,
     ]);
@@ -2770,14 +2782,45 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
     });
     const { fs, lines } = await summaryOf(several([Z, A, D, M]), opts);
     expect(fs.map((f) => f.check)).toEqual(["L8"]);
-    expect(lines).toEqual(["archive.today: 1 verified, 2 unverified (1 rate-limited, 1 blocked)", M, Z]);
+    expect(lines).toEqual([
+      "archive.today (distinct URLs): 1 verified, 2 unverified (1 rate-limited, 1 blocked)",
+      M,
+      Z,
+    ]);
+  });
+  // m-A (Assay): verify's counts are of distinct URLs, and say so: a URL cited by two extracts is checked once.
+  test("summary and progress count distinct URLs: one URL in two extracts is checked and counted once (m-A)", async () => {
+    const heads: string[] = [];
+    const opts = byUrl({ [A]: { kind: "ok", status: 200 }, [M]: { kind: "http", status: 429 } });
+    const inner = opts.net as Net;
+    const net: Net = {
+      ...inner,
+      head: async (u, ...r) => {
+        heads.push(u);
+        return inner.head(u, ...r);
+      },
+    };
+    const progress: string[] = [];
+    const lines: string[] = [];
+    const fs = await lint(several([A, M, A, M, A]), {
+      ...opts,
+      net,
+      progress: (l) => progress.push(l),
+      summary: (l) => lines.push(l),
+    });
+    expect(fs).toEqual([]);
+    expect(heads.filter((u) => u.startsWith("https://archive.ph/")).sort()).toEqual([A, M]);
+    // Five extracts: five Archive URLs of their own and five Archive URL 2 citations of two captures, 7 distinct.
+    expect(progress[0]).toBe("L8 checking 7 distinct new archive URLs");
+    expect(progress.filter((l) => /^L8 \[\d\/7\]/.test(l))).toHaveLength(7);
+    expect(lines).toEqual(["archive.today (distinct URLs): 1 verified, 1 unverified (1 rate-limited, 0 blocked)", M]);
   });
   test("summary: all verified prints the count line alone", async () => {
     const { lines } = await summaryOf(
       several([A, M]),
       byUrl({ [A]: { kind: "ok", status: 200 }, [M]: { kind: "ok", status: 200 } }),
     );
-    expect(lines).toEqual(["archive.today: 2 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
+    expect(lines).toEqual(["archive.today (distinct URLs): 2 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
   test("summary: none when no new archive.today URL got a verified or rate-limited answer", async () => {
     expect((await summaryOf(several([D]), byUrl({ [D]: { kind: "http", status: 404 } }))).lines).toEqual([]);
@@ -2801,7 +2844,7 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
     });
     expect(fs).toEqual([]);
     expect(nv).toEqual([`rate-limited ${WAYBACK}`]);
-    expect(summary).toEqual(["archive.today: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
+    expect(summary).toEqual(["archive.today (distinct URLs): 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
 });
 

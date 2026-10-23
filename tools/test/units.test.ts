@@ -540,7 +540,7 @@ describe("verify over an injected fetch", () => {
   test("200 on both archives: clean, with the summary line", async () => {
     const r = await run(added, { [WB]: [200], [TODAY]: [200] });
     expect(r.fs).toEqual([]);
-    expect(r.summary).toEqual(["archive.today: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
+    expect(r.summary).toEqual(["archive.today (distinct URLs): 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
   for (const status of [404, 410]) {
     test(`Wayback ${status} without a Re-archive note fails and asks for one`, async () => {
@@ -568,7 +568,7 @@ describe("verify over an injected fetch", () => {
       const r = await run(added, { [WB]: [200], [TODAY]: [status] });
       expect(r.fs).toEqual([]);
       expect(r.summary).toEqual([
-        `archive.today: 0 verified, 1 unverified (${status === 403 ? "0 rate-limited, 1 blocked" : "1 rate-limited, 0 blocked"})`,
+        `archive.today (distinct URLs): 0 verified, 1 unverified (${status === 403 ? "0 rate-limited, 1 blocked" : "1 rate-limited, 0 blocked"})`,
         TODAY,
       ]);
     });
@@ -599,7 +599,11 @@ describe("verify over an injected fetch", () => {
     for (const m of text.matchAll(/https:\/\/web\.archive\.org\/web\/\S+/g)) table[m[0]] = [200];
     const r = await run(text, table);
     expect(r.fs).toEqual([]);
-    expect(r.summary).toEqual(["archive.today: 1 verified, 2 unverified (1 rate-limited, 1 blocked)", A, Z]);
+    expect(r.summary).toEqual([
+      "archive.today (distinct URLs): 1 verified, 2 unverified (1 rate-limited, 1 blocked)",
+      A,
+      Z,
+    ]);
   });
 });
 
@@ -801,6 +805,9 @@ describe("archive2Problem (Archive URL 2 value)", () => {
       "see http://example.test for it",
       "see HTTPS://EXAMPLE.TEST for it",
       "see Www.example.test for it",
+      // A scheme:// with no dotted host is caught by the scheme alone, in any case.
+      "see HTTPS://INTRANET/X for it",
+      "see ftp://intranet/x for it",
     ])
       bad(`attempted 2026-10-02: ${r}`, /contains a URL/);
     ok("attempted 2026-10-02: archive.today returned a CAPTCHA (aawww is not a host)");
@@ -822,6 +829,35 @@ describe("archive2Problem (Archive URL 2 value)", () => {
       "fetch example.zip/download failed",
     ])
       bad(`attempted 2026-10-02: ${r}`, /contains a URL/);
+  });
+  // m-D (Probe): a malformed URL, a host:port or an IP address is a link too; archive.today's bare names stay prose.
+  test("an attempt reason may not contain a malformed URL, localhost:port or an IP address", () => {
+    for (const r of [
+      "copy at x/example.com failed",
+      "copy at http//example.com failed",
+      "copy at https:example.com failed",
+      "copy at http:/example.com failed",
+      "copy at localhost:8080 failed",
+      "copy at http:localhost failed",
+      "copy at 1.2.3.4 failed",
+      "copy at 1.2.3.4:8080 failed",
+      "copy at x/1.2.3.4 failed",
+      "copy at user@example.com failed",
+      "copy at x\\example.com failed",
+      "copy at x/archive.ph failed",
+    ])
+      bad(`attempted 2026-10-02: ${r}`, /contains a URL .*malformed URL such as x\/example\.com or localhost:8080/);
+  });
+  test("prose with slashes, colons and numbers still passes (m-D)", () => {
+    for (const r of [
+      "HTTP/1.1 403 and/or CAPTCHA",
+      "blocked at 10:30 twice, N/A",
+      "localhost was not used",
+      "the data/file.xlsx was blocked",
+      "version 1.2.3 then 256.1.1.1 blocked",
+      "blocked: archive.ph, archive.is and archive.today",
+    ])
+      ok(`attempted 2026-10-02: ${r}`);
   });
   test("prose with dots still passes: sentence ends, abbreviations, numbers, file types, archive.today's names", () => {
     for (const r of [

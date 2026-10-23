@@ -136,7 +136,8 @@ async function todayVerdict(net: Net, url: string): Promise<Verdict> {
 /**
  * Ghostarchive statuses that are no verdict: its Cloudflare challenge answers a script with 403, its rate limit with
  * 429 (Assay: the same as archive.today); a 503 is retried by pacing as a rate limit and, still there at the cap,
- * is rate-limited (F-2), blocked only when a challenge was detected or it was not retried (no pacer, one try). Logged as unverified (the researcher opens the
+ * is rate-limited (F-2), and so is one that was not retried (no pacer, one try): a 503 is blocked, and called a
+ * Cloudflare challenge, only when a challenge was detected (Assay). Logged as unverified (the researcher opens the
  * capture in a browser); not a failure.
  */
 const GHOST_BLOCKED = [403, RATE_LIMITED, 503];
@@ -175,12 +176,12 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
     };
   if (r.kind === "http") {
     if (GHOST_BLOCKED.includes(r.status)) {
-      // A 503 retried to the cap is a rate limit; a challenge, or a 503 that was not retried (no pacer), is blocked.
-      const limit = r.status === RATE_LIMITED || r.gaveUp !== undefined;
+      // A 403 or a detected challenge is blocked; a 429 or 503 otherwise is a rate limit, retried to the cap or not.
+      const blocked = r.challenge === true || r.status === 403;
       return {
         problem: null,
-        limited: `${gaveUp(r)}${hostOf(url)} HTTP ${r.status}, ${limit ? "rate limit" : "Cloudflare challenge"}; no verdict`,
-        why: r.challenge || !limit ? "blocked" : "rate-limited",
+        limited: `${gaveUp(r)}${hostOf(url)} HTTP ${r.status}, ${blocked ? "Cloudflare challenge" : "rate limit"}; no verdict`,
+        why: blocked ? "blocked" : "rate-limited",
       };
     }
     return {
@@ -226,7 +227,8 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
     const before = was.notes.get(k);
     return [...(now.notes.get(k) ?? [])].some((n) => n !== url && !before?.has(n));
   };
-  if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
+  // m-A: every count is of distinct URLs: one cited by several extracts is checked, and counted, once.
+  if (todo.length > 0) progress?.(`L8 checking ${todo.length} distinct new archive URL${todo.length === 1 ? "" : "s"}`);
   if (todo.length > 0 && opts.pacer) {
     const e = opts.pacer.estimate(todo.map(([url]) => url));
     const hosts = e.hosts.map((h) => `${h.key} ${h.urls} x ${duration(h.intervalMs)}`).join(", ");
@@ -296,7 +298,7 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
       (n("unconfirmed") > 0 ? `, ${n("unconfirmed")} unconfirmed` : "") +
       (n("offline") > 0 ? `, ${n("offline")} offline` : "");
     summary?.(
-      `${name}: ${ok.length} verified, ${open.length} unverified (${n("rate-limited")} rate-limited, ${n("blocked")} blocked${u})`,
+      `${name} (distinct URLs): ${ok.length} verified, ${open.length} unverified (${n("rate-limited")} rate-limited, ${n("blocked")} blocked${u})`,
     );
     for (const url of open.map(([x]) => x).sort()) summary?.(url);
   };
