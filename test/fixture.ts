@@ -5,6 +5,8 @@ const enc = new TextEncoder();
 
 /** The fixture's default Archive URL 2: a dated record of an archive.today attempt (never fetched). */
 export const ARCHIVE2_ATTEMPT = "attempted 2026-10-02: archive.today returned a CAPTCHA (synthetic fixture)";
+/** The fixture's default Archive URL 3: a dated record of a Ghostarchive attempt (never fetched). */
+export const ARCHIVE3_ATTEMPT = "attempted 2026-10-02: Ghostarchive showed a Cloudflare challenge (synthetic fixture)";
 
 export const extract = (o: {
   title: string;
@@ -13,6 +15,8 @@ export const extract = (o: {
   archive?: string;
   /** The Archive URL 2 value; null drops the line. Default: a dated attempt, so no fixture HEADs archive.today. */
   archive2?: string | null;
+  /** The Archive URL 3 value; null drops the line. Default: a dated attempt, so no fixture HEADs Ghostarchive. */
+  archive3?: string | null;
   quote?: string;
   /** Extra field lines, e.g. "- Currency: EUR" for an FX extract. */
   fields?: string[];
@@ -26,6 +30,7 @@ export const extract = (o: {
     `- Original URL: ${original}`,
     `- Archive URL: ${archive}`,
     ...(o.archive2 === null ? [] : [`- Archive URL 2: ${o.archive2 ?? ARCHIVE2_ATTEMPT}`]),
+    ...(o.archive3 === null ? [] : [`- Archive URL 3: ${o.archive3 ?? ARCHIVE3_ATTEMPT}`]),
     ...(o.fields ?? []),
     "- Notes: synthetic fixture",
     "",
