@@ -227,7 +227,8 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
     const before = was.notes.get(k);
     return [...(now.notes.get(k) ?? [])].some((n) => n !== url && !before?.has(n));
   };
-  if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
+  // m-A: every count is of distinct URLs: one cited by several extracts is checked, and counted, once.
+  if (todo.length > 0) progress?.(`L8 checking ${todo.length} distinct new archive URL${todo.length === 1 ? "" : "s"}`);
   if (todo.length > 0 && opts.pacer) {
     const e = opts.pacer.estimate(todo.map(([url]) => url));
     const hosts = e.hosts.map((h) => `${h.key} ${h.urls} x ${duration(h.intervalMs)}`).join(", ");
@@ -297,7 +298,7 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
       (n("unconfirmed") > 0 ? `, ${n("unconfirmed")} unconfirmed` : "") +
       (n("offline") > 0 ? `, ${n("offline")} offline` : "");
     summary?.(
-      `${name}: ${ok.length} verified, ${open.length} unverified (${n("rate-limited")} rate-limited, ${n("blocked")} blocked${u})`,
+      `${name} (distinct URLs): ${ok.length} verified, ${open.length} unverified (${n("rate-limited")} rate-limited, ${n("blocked")} blocked${u})`,
     );
     for (const url of open.map(([x]) => x).sort()) summary?.(url);
   };

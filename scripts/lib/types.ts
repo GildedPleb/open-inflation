@@ -85,7 +85,7 @@ export interface VerifyOptions {
   readonly progress?: (line: string) => void;
   /**
    * The archive.today and Ghostarchive summaries, when any new URL of that archive got a verified or no-verdict
-   * answer: `archive.today: N verified, M unverified (R rate-limited, B blocked[, U unconfirmed][, O offline])`, M = R + B +
+   * answer: `archive.today (distinct URLs): N verified, M unverified (R rate-limited, B blocked[, U unconfirmed][, O offline])`, M = R + B +
    * U + O (U and O shown only when not 0), then each unverified URL on its own line, sorted (the CLI writes them to stdout, unprefixed).
    */
   readonly summary?: (line: string) => void;

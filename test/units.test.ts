@@ -539,7 +539,7 @@ describe("verify over an injected fetch", () => {
   test("200 on both archives: clean, with the summary line", async () => {
     const r = await run(added, { [WB]: [200], [TODAY]: [200] });
     expect(r.fs).toEqual([]);
-    expect(r.summary).toEqual(["archive.today: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
+    expect(r.summary).toEqual(["archive.today (distinct URLs): 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
   for (const status of [404, 410]) {
     test(`Wayback ${status} without a Re-archive note fails and asks for one`, async () => {
@@ -567,7 +567,7 @@ describe("verify over an injected fetch", () => {
       const r = await run(added, { [WB]: [200], [TODAY]: [status] });
       expect(r.fs).toEqual([]);
       expect(r.summary).toEqual([
-        `archive.today: 0 verified, 1 unverified (${status === 403 ? "0 rate-limited, 1 blocked" : "1 rate-limited, 0 blocked"})`,
+        `archive.today (distinct URLs): 0 verified, 1 unverified (${status === 403 ? "0 rate-limited, 1 blocked" : "1 rate-limited, 0 blocked"})`,
         TODAY,
       ]);
     });
@@ -598,7 +598,11 @@ describe("verify over an injected fetch", () => {
     for (const m of text.matchAll(/https:\/\/web\.archive\.org\/web\/\S+/g)) table[m[0]] = [200];
     const r = await run(text, table);
     expect(r.fs).toEqual([]);
-    expect(r.summary).toEqual(["archive.today: 1 verified, 2 unverified (1 rate-limited, 1 blocked)", A, Z]);
+    expect(r.summary).toEqual([
+      "archive.today (distinct URLs): 1 verified, 2 unverified (1 rate-limited, 1 blocked)",
+      A,
+      Z,
+    ]);
   });
 });
 

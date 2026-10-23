@@ -9,8 +9,8 @@
 // challenge (no verdict, blocked), a 503 is retried as a rate limit (blocked when it shows a challenge), its 200
 // "Archiving error" page a finding, and a 200 with no capture on it (loading, in progress) "unconfirmed". When
 // archive.today or Ghostarchive does not answer at all and no canary host answers either, the URL is "offline", no
-// verdict. Each archive's no-verdict URLs are listed after "archive.today: N verified, M unverified (R rate-limited,
-// B blocked[, U unconfirmed][, O offline])" (the same for ghostarchive).
+// verdict. Each archive's no-verdict URLs are listed after "archive.today (distinct URLs): N verified, M unverified (R rate-limited,
+// B blocked[, U unconfirmed][, O offline])" (the same for ghostarchive). Every count is of distinct URLs (m-A).
 // A 404/410 is excused only by a "- Re-archive: <new archive URL>" line added to the same extract in the same diff;
 // the new capture is verified too. Committed links are never re-swept.
 // Paced (lib/pacer.ts): one host's requests serial and spaced (archive.today 30 s; OBM_RATE_<KEY>_MS overrides,
