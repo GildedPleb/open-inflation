@@ -49,7 +49,7 @@ const zsplit = (b: Uint8Array) => new TextDecoder().decode(b).split("\0").filter
 
 /**
  * The working tree (tracked plus untracked-not-ignored files that exist on disk)
- * and, unless `base` is null or the all-zero SHA, the base commit's append-only files.
+ * and, unless `base` is null or the all-zero SHA, the base commit's evidence files (verify; lint passes null).
  */
 export function loadSnapshot(dir: string, base: string | null): Snapshot {
   if (!isGitCheckout(dir)) throw new NotGitCheckout();

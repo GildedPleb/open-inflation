@@ -55,7 +55,7 @@ function parseLines(md: string): Line[] {
   });
 }
 
-/** ATX headings outside code, memoized like lines (L3 and every anchor check re-read the same files). */
+/** ATX headings outside code, memoized like lines (every anchor check re-read the same files). */
 export const headings: (md: string) => readonly Heading[] = memoText(parseHeadings);
 function parseHeadings(md: string): Heading[] {
   const out: Heading[] = [];

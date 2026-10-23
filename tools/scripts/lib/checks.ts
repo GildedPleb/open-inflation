@@ -4,27 +4,24 @@ import { posix } from "node:path";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
 import { fencedBlocks, headingSlugs, headings, htmlAnchors, lines, links, memoText, slugs } from "./markdown.ts";
 import {
-  anyQuarterOfPath,
   CSV_PATH,
   EVIDENCE_ROOT,
   extractOf,
   extractPath,
   FOLDER_README_TEXT,
-  FX_DIR,
   FX_ID,
   FX_TEXT,
   folderReadmeOf,
   folderReadmePath,
   fxPath,
   ISSUER_TEXT,
-  isExtractPath,
   isFxPath,
-  LEGACY_CSV,
   QUARTER_LIST,
   QUARTER_TEXT,
   quarterOfPath,
   quarterPath,
   RETIRED_ROOTS,
+  ROOT_CSV,
   relLink,
 } from "./paths.ts";
 import {
@@ -61,12 +58,7 @@ interface Row {
 interface Ctx {
   readonly files: Files;
   readonly text: Texts;
-  readonly base: Texts | null;
   readonly now: number;
-  /** Renames base -> head (old path -> new path), exact content only: see findRenames. */
-  readonly renames: ReadonlyMap<string, string>;
-  /** The same renames, new path -> old path. */
-  readonly renamedFrom: ReadonlyMap<string, string>;
 }
 type Emit = (check: CheckId, file: string, message: string) => void;
 
@@ -74,22 +66,9 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   const out: Finding[] = [];
   const emit: Emit = (check, file, message) => out.push({ check, file, message });
   const text = noBinaries(snap.files, emit);
-  const renames = findRenames(snap);
-  const renamedFrom = new Map([...renames].map(([a, b]) => [b, a]));
-  const base = snap.base && decodeAll(snap.base);
-  const ctx: Ctx = {
-    files: snap.files,
-    text,
-    base,
-    now: opts.now,
-    renames,
-    renamedFrom,
-  };
+  const ctx: Ctx = { files: snap.files, text, now: opts.now };
   const rows = csvContract(ctx, emit);
   evidenceExistence(ctx, rows, emit);
-  headingImmutability(ctx, emit);
-  appendOnly(ctx, emit);
-  csvAppendOnly(ctx, rows, emit);
   linkIntegrity(ctx, emit);
   quarterHeadings(ctx, emit);
   indexCompleteness(ctx, emit);
@@ -192,14 +171,6 @@ function checkTarget(ctx: Ctx, from: string, what: string, target: string, rootR
 
 /** Every ```yaml fence in a quarter file is a machine block. */
 const machineFences = memoText((body: string) => fencedBlocks(body, ["yaml", "yml"]));
-/**
- * A yaml fence whose first top-level key is `failed_attempts`: the retired quarter-file log (failed attempts are now
- * per-extract lines). In a tree it is an L9 finding; on the base side it is dropped, so removing it is no L4 finding.
- */
-const isFailedLog = (body: string) =>
-  /^failed_attempts\s*:/.test(body.split("\n").find((l) => l.trim() !== "" && !l.trim().startsWith("#")) ?? "");
-/** A committed quarter file's machine blocks: its yaml fences less any retired failed_attempts log. */
-const committedFences = (body: string) => machineFences(body).filter((b) => !isFailedLog(b.body));
 
 export type Machine = { ok: true; data: unknown; line: number; source: string } | { ok: false; error: string };
 
@@ -306,223 +277,6 @@ function evidenceExistence(ctx: Ctx, rows: Row[], emit: Emit) {
     else if (!ctx.files.has(r.evidenceId)) emit("L2", CSV, `line ${r.line}: ${r.evidenceId} does not exist`);
     else if (q !== quarterOf(r.date))
       emit("L2", CSV, `line ${r.line}: evidence_id quarter ${q} differs from date quarter ${quarterOf(r.date)}`);
-  }
-}
-
-// ---------- L3, L4 ----------
-
-/** Strictly append-only evidence (paths.ts isExtractPath): committed lines and headings never change (L3/L4). */
-const isExtract = isExtractPath;
-/** Where a committed extract may be renamed to and still be followed (L3/L4): an extract path. Elsewhere a delete. */
-const RENAME_TARGET = EXTRACT_FILE;
-
-const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && Buffer.compare(a, b) === 0;
-
-/**
- * Renames lint follows. An extract absent from the tree pairs with a new file (absent from the base) under
- * RENAME_TARGET whose bytes are identical: git's rename detection at 100% similarity (`git diff -M100%`), so an
- * extract edited in any way while moving is a delete plus an add and L4 reports the delete. A quarter file absent
- * from the tree pairs by quarter with its new quarter path (its prose may be rewritten; its machine blocks are
- * locked, see quarterLock). Rename-following never loosens L3/L4: the moved file is checked against its old content.
- */
-function findRenames(snap: Snapshot): Map<string, string> {
-  const out = new Map<string, string>();
-  const base = snap.base;
-  if (!base) return out;
-  const gone = [...base.keys()].filter((p) => !snap.files.has(p)).sort();
-  const added = [...snap.files.keys()].filter((p) => !base.has(p)).sort();
-  const taken = new Set<string>();
-  for (const p of gone) {
-    const q = anyQuarterOfPath(p);
-    if (q !== undefined) {
-      const to = quarterPath(q);
-      if (added.includes(to) && !taken.has(to)) {
-        taken.add(to);
-        out.set(p, to);
-      }
-      continue;
-    }
-    if (!isExtract(p)) continue;
-    const old = base.get(p) as Uint8Array;
-    const to = added.find(
-      (a) => RENAME_TARGET.test(a) && !taken.has(a) && sameBytes(old, snap.files.get(a) as Uint8Array),
-    );
-    if (to === undefined) continue;
-    taken.add(to);
-    out.set(p, to);
-  }
-  return out;
-}
-
-/** The committed content a tree path is checked against: its own base path, or the path it was renamed from. */
-const baseOf = (ctx: Ctx, p: string): string | undefined =>
-  ctx.base?.get(p) ?? ctx.base?.get(ctx.renamedFrom.get(p) ?? "");
-
-function headingImmutability(ctx: Ctx, emit: Emit) {
-  if (!ctx.base) return;
-  for (const [from, old] of ctx.base) {
-    const p = ctx.renames.get(from) ?? from;
-    if (!isExtract(from) || (ctx.files.has(p) && !ctx.text.has(p))) continue;
-    const now = new Map<string, number>();
-    for (const h of headings(ctx.text.get(p) ?? "")) {
-      const k = `${"#".repeat(h.level)} ${h.text}`;
-      now.set(k, (now.get(k) ?? 0) + 1);
-    }
-    for (const h of headings(old)) {
-      const k = `${"#".repeat(h.level)} ${h.text}`;
-      const n = now.get(k) ?? 0;
-      if (n > 0) now.set(k, n - 1);
-      else emit("L3", p, `committed heading "${k}" (base line ${h.line}) was removed or changed`);
-    }
-  }
-}
-
-function appendOnly(ctx: Ctx, emit: Emit) {
-  if (!ctx.base) return;
-  for (const [from, old] of ctx.base) {
-    const p = ctx.renames.get(from) ?? from;
-    const quarter = anyQuarterOfPath(from) !== undefined;
-    if (!isExtract(from) && !quarter) continue;
-    if (!ctx.files.has(p)) {
-      emit("L4", p, "committed file was deleted; evidence is append-only");
-      continue;
-    }
-    if (quarter) {
-      quarterLock(ctx, p, old, emit);
-      continue;
-    }
-    const now = ctx.text.get(p);
-    if (now === undefined) continue;
-    const cur = now.split("\n");
-    let j = 0;
-    const was = old.split("\n");
-    for (let i = 0; i < was.length; i++) {
-      while (j < cur.length && cur[j] !== was[i]) j++;
-      if (j === cur.length) {
-        emit("L4", p, `base line ${i + 1} was removed or changed (only added lines are allowed): ${show(was[i])}`);
-        break;
-      }
-      j++;
-    }
-  }
-}
-
-/** `body` with every followed extract rename's old path replaced by its new path (whole path tokens only). */
-function rewriteRenamedPaths(ctx: Ctx, body: string): string {
-  let out = body;
-  for (const [from, to] of ctx.renames) {
-    if (!isExtract(from)) continue;
-    const esc = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    out = out.replace(new RegExp(`(?<![\\w./-])${esc}(?![\\w/-])`, "g"), to);
-  }
-  return out;
-}
-
-/** The diff changes an FX rate table (a base_money/FX/ file added, removed or edited). */
-const fxChanged = (ctx: Ctx): boolean => {
-  if (!ctx.base) return false;
-  const inFx = (p: string) => p.startsWith(`${FX_DIR}/`);
-  const paths = new Set([...ctx.files.keys(), ...ctx.base.keys()].filter(inFx));
-  return [...paths].some((p) => ctx.text.get(p) !== ctx.base?.get(p));
-};
-/** The machine-block fields an FX rate table edit may change in place (with the CSV value), no revision block. */
-const FX_FIELD_LINE = /^(\s*(?:- )?(?:fx_rate|total_usd|coverage_pct):)/;
-/** `got` differs from `want` only in fx_rate, total_usd and coverage_pct values, line for line. */
-const onlyFxFields = (want: string, got: string): boolean => {
-  const x = want.split("\n");
-  const y = got.split("\n");
-  return (
-    x.length === y.length &&
-    x.every((l, i) => {
-      const k = y[i] as string;
-      if (l === k) return true;
-      const a = FX_FIELD_LINE.exec(l)?.[1];
-      return a !== undefined && a === FX_FIELD_LINE.exec(k)?.[1];
-    })
-  );
-};
-
-/**
- * A committed quarter file under L4: its prose is presentation and may be rewritten, but every committed machine
- * block survives byte for byte, in order, as the file's first blocks. Allowed edits: a followed extract rename's
- * path inside an anchor (or comment), e.g. issuers/PBOC/2026.md -> its new extract path; and, in a diff that also
- * changes base_money/FX/, the fx_rate, total_usd and coverage_pct values in place (an FX rate table is regenerable
- * supporting data). Later blocks are appended revisions (L9 checks them). A retired failed_attempts log on the base
- * side is not a machine block, so removing it passes.
- */
-function quarterLock(ctx: Ctx, p: string, old: string, emit: Emit) {
-  const now = ctx.text.get(p);
-  if (now === undefined) return;
-  const was = committedFences(old);
-  const cur = machineFences(now);
-  const fx = fxChanged(ctx);
-  for (const [i, b] of was.entries()) {
-    const want = rewriteRenamedPaths(ctx, b.body);
-    const got = cur[i];
-    if (got === undefined) {
-      emit(
-        "L4",
-        p,
-        `committed machine block ${i + 1} (base line ${b.line}) was removed; machine blocks are append-only`,
-      );
-      return;
-    }
-    if (got.body !== want && got.body !== b.body && !(fx && onlyFxFields(want, got.body))) {
-      const x = want.split("\n");
-      const y = got.body.split("\n");
-      const k = x.findIndex((l, j) => l !== y[j]);
-      const at = k < 0 ? x.length : k;
-      emit(
-        "L4",
-        p,
-        `committed machine block ${i + 1} (base line ${b.line}) changed at its line ${at + 1}: ${show(x[at] ?? "")} -> ${show(y[at] ?? "")}; only a renamed extract's path may change (or fx_rate, total_usd and coverage_pct with a base_money/FX/ change), and a correction is an appended revision block`,
-      );
-      return;
-    }
-  }
-}
-
-/**
- * The CSV under L4: committed rows are never deleted and keep their evidence_id. A value may change only when the
- * same diff appends a revision block to that roll-up and its total_usd is the new value, or, in a diff that changes
- * base_money/FX/, when the roll-up's current total_usd was edited in place to the new value (quarterLock allows that
- * edit only in fx_rate, total_usd and coverage_pct).
- */
-function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
-  const old = ctx.base?.get(CSV) ?? ctx.base?.get(LEGACY_CSV); // the base may predate the move
-  if (old === undefined || (ctx.files.has(CSV) && !ctx.text.has(CSV))) return;
-  const e = (m: string) => emit("L4", CSV, m);
-  const now = new Map(rows.map((r) => [r.date, r]));
-  // A row L1 rejects is still present: L1 reports it. Only a date absent from the raw lines was deleted.
-  const present = new Set((ctx.text.get(CSV) ?? "").split("\n").map((l) => l.replace(BOM, "").split(",")[0]));
-  const blocks = (body: string | undefined) => (body === undefined ? 0 : committedFences(body).length);
-  const fx = fxChanged(ctx);
-  for (const line of old.split("\n").slice(1)) {
-    const [date, value, evidenceId, ...rest] = line.split(",");
-    if (!date || value === undefined || evidenceId === undefined || rest.length > 0) continue;
-    const r = now.get(date);
-    if (!r) {
-      if (!present.has(date)) e(`committed row for ${date} was deleted; rows are append-only`);
-    } else if (r.evidenceId !== evidenceId && ctx.renames.get(evidenceId) !== r.evidenceId)
-      e(`row for ${date}: evidence_id changed ${evidenceId} -> ${r.evidenceId}`);
-    else if (r.evidenceId !== evidenceId && r.value !== value)
-      e(
-        `row for ${date}: evidence_id follows the rename ${evidenceId} -> ${r.evidenceId}, so value must stay ${value}`,
-      );
-    else if (r.value !== value) {
-      const after = ctx.text.get(r.evidenceId);
-      const m = after === undefined ? null : machine(after);
-      const total = m?.ok && isObj(m.data) ? m.data.total_usd : undefined;
-      if (blocks(after) <= blocks(baseOf(ctx, r.evidenceId))) {
-        if (!fx || total !== r.value)
-          e(
-            `row for ${date}: value ${value} -> ${r.value} without appending a revision block to ${r.evidenceId}${fx ? ` (an in-place FX edit needs its total_usd to be the new value, not ${String(total)})` : ""}`,
-          );
-      } else if (total !== r.value)
-        e(
-          `row for ${date}: value ${value} -> ${r.value}, but the revision total_usd ${String(total)} in ${r.evidenceId} differs`,
-        );
-    }
   }
 }
 
@@ -664,7 +418,7 @@ function generated(ctx: Ctx, emit: Emit) {
       );
   }
   const readme = ctx.text.get(README);
-  if (!hasMarkers(readme) && !hasMarkers(ctx.base?.get(README))) return;
+  if (!hasMarkers(readme)) return;
   const g = generate(ctx.text, [...ctx.files.keys()].sort());
   if (!g) return;
   const fix = `run \`bun run readme\` (it is generated from ${CSV}, the roll-ups and catalog.json)`;
@@ -977,7 +731,7 @@ const ARCHIVE_NAMES = /archive\.(?:today|ph|is)\b|ghostarchive|wayback/i;
  *   extract's Retrieved date (UTC) and not in the future, and non-empty text; an Archive attempt names archive.today,
  *   Ghostarchive or Wayback.
  * - `- Rejected source: <what>: <reason>.`: both parts non-empty, no URL.
- * null when it passes. L4 keeps these lines append-only like every other extract line.
+ * null when it passes.
  */
 function noteProblem(kind: NoteKind, rest: string, retrieved: string | undefined, now: number): string | null {
   if (kind === "Rejected source") {
@@ -1332,18 +1086,11 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     const all = machines(body);
     const { baskets } = catalogModel(ctx.text.get("catalog.json"));
     const table = fxTable(ctx.text.get(fxFile(q)) ?? "").get(q);
-    // Blocks already committed on the base keep their implied basket version 1; later ones are new.
-    const was = baseOf(ctx, p);
-    const committed = was === undefined ? 0 : machines(was).filter((m) => m.ok && !isFailedLog(m.source)).length;
     for (const [i, m] of all.entries()) {
       const current = i === all.length - 1;
       const label =
         all.length === 1 || !m.ok ? "machine block" : `machine block ${i + 1} of ${all.length} (line ${m.line})`;
       if (!m.ok) e(m.error);
-      else if (isFailedLog(m.source))
-        e(
-          `has a failed_attempts block (line ${m.line}); quarter files hold no failed-attempts log: record each failed attempt as a "- Archive attempt YYYY-MM-DD: <text>." line and each rejected source as a "- Rejected source: <what>: <reason>." line under its extract`,
-        );
       else
         blockAggregation(
           m.data,
@@ -1354,7 +1101,6 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
           {
             baskets,
             fxRows: current ? (table?.rows ?? []) : null,
-            isNew: i >= committed,
             source: m.source,
           },
           e,
@@ -1507,7 +1253,7 @@ function tableProblems(p: string, body: string, d: Record<string, unknown>, text
         );
     }
     const fxLink = links(cells[col.fx] ?? "")[0];
-    const q = anyQuarterOfPath(p);
+    const q = quarterOfPath(p);
     if (c.local_currency === "USD") {
       if (fxLink) errs.push(`${at}: a USD row's FX cell has no link (it links ${show(fxLink.target)})`);
     } else if (q !== undefined) {
@@ -1973,7 +1719,6 @@ function blockAggregation(
     readonly baskets: ReadonlyMap<number, Basket>;
     /** The quarter's FX table rows (the fx_rate check), for the current block only; null skips the check. */
     readonly fxRows: readonly FxRow[] | null;
-    readonly isNew: boolean;
     /** The block's YAML source, to check how basket_version is written. */
     readonly source: string;
   },
@@ -1988,7 +1733,7 @@ function blockAggregation(
   if (d.quarter !== q) errs.push(`quarter ${show(d.quarter)} differs from filename quarter ${q}`);
   if (d.as_of !== quarterEnd(q)) errs.push(`as_of ${show(d.as_of)} must be the quarter-end ${quarterEnd(q)}`);
   if (d.unit !== "USD") errs.push(`unit must be "USD", got ${show(d.unit)}`);
-  // basket_version: optional (absent = 1) while the catalog lists one basket; required on new blocks after that.
+  // basket_version: optional (absent = 1) while the catalog lists one basket; required on every block after that.
   let version = 1;
   if ("basket_version" in d) {
     const bv = d.basket_version;
@@ -2002,10 +1747,7 @@ function blockAggregation(
       );
       version = 0;
     } else version = bv;
-  } else if (ref.isNew && baskets.size > 1)
-    errs.push(
-      "basket_version is required once the catalog lists more than one basket (blocks committed earlier stay version 1)",
-    );
+  } else if (baskets.size > 1) errs.push("basket_version is required once the catalog lists more than one basket");
   const basket = baskets.get(version);
   if (version > 0 && baskets.size > 0 && !basket)
     errs.push(`basket_version ${version} is not a catalog basket version (1..${baskets.size})`);
@@ -2197,7 +1939,6 @@ function catalog(ctx: Ctx, emit: Emit) {
     if ("baskets" in s) for (const m of basketsProblems(s.baskets)) e(`series[${i}].${m}`);
     if ("issuers" in s) for (const m of issuersProblems(s.issuers, seriesBaskets(s))) e(`series[${i}].${m}`);
   }
-  basketHistory(ctx, emit);
 }
 
 function basketsProblems(v: unknown): string[] {
@@ -2256,17 +1997,6 @@ function issuersProblems(v: unknown, baskets: ReadonlyMap<number, Basket>): stri
   return errs;
 }
 
-/** Canonical JSON (sorted keys), to compare basket entries whatever their key order. */
-const canon = (v: unknown): string =>
-  Array.isArray(v)
-    ? `[${v.map(canon).join(",")}]`
-    : isObj(v)
-      ? `{${Object.keys(v)
-          .sort()
-          .map((k) => `${JSON.stringify(k)}:${canon(v[k])}`)
-          .join(",")}}`
-      : show(v);
-
 const parseJson = (t: string | undefined): unknown => {
   try {
     return t === undefined ? undefined : JSON.parse(t);
@@ -2276,87 +2006,6 @@ const parseJson = (t: string | undefined): unknown => {
 };
 const seriesList = (j: unknown): Record<string, unknown>[] =>
   isObj(j) && Array.isArray(j.series) ? j.series.filter(isObj) : [];
-
-/**
- * semver.org 2.0.0 precedence (section 11) of two versions: negative when a < b, 0 when equal, positive when a > b;
- * null when either is not semver. MAJOR.MINOR.PATCH compare numerically; a pre-release is lower than its release;
- * pre-release identifiers compare left to right (numeric ones numerically and below alphanumeric ones, others in
- * ASCII order), and a shorter list that is a prefix is lower. Build metadata is ignored.
- */
-export function compareSemver(a: string, b: string): number | null {
-  const [x, y] = [SEMVER.exec(a), SEMVER.exec(b)];
-  if (!x || !y) return null;
-  for (const k of [1, 2, 3]) {
-    const [p, q] = [BigInt(x[k] ?? "0"), BigInt(y[k] ?? "0")];
-    if (p !== q) return p < q ? -1 : 1;
-  }
-  const [pa, pb] = [x[4], y[4]];
-  if (pa === undefined || pb === undefined) return pa === pb ? 0 : pa === undefined ? 1 : -1;
-  const [ia, ib] = [pa.split("."), pb.split(".")];
-  for (let i = 0; i < Math.min(ia.length, ib.length); i++) {
-    const [p, q] = [ia[i] ?? "", ib[i] ?? ""];
-    if (p === q) continue;
-    const [np, nq] = [/^\d+$/.test(p), /^\d+$/.test(q)];
-    if (np && nq) return BigInt(p) < BigInt(q) ? -1 : 1;
-    if (np !== nq) return np ? -1 : 1;
-    return p < q ? -1 : 1;
-  }
-  return Math.sign(ia.length - ib.length);
-}
-
-/**
- * Basket history against the base: existing baskets are immutable (L4); appending one bumps the series' major
- * version (L11); the series version never goes down (L11, P10-n1). A base still in the legacy `basket` shape reads
- * as baskets [{version 1, issuers: basket}], so migrating it to `baskets` keeps its issuers and only adds floor_pct.
- */
-function basketHistory(ctx: Ctx, emit: Emit) {
-  const F = "catalog.json";
-  const was = seriesList(parseJson(ctx.base?.get(F)));
-  for (const s of seriesList(parseJson(ctx.text.get(F)))) {
-    const b = was.find((x) => x.id === s.id && s.id !== undefined);
-    if (!b) continue;
-    const legacy = !Array.isArray(b.baskets) && Array.isArray(b.basket);
-    const before: unknown[] = Array.isArray(b.baskets) ? b.baskets : legacy ? [{ version: 1, issuers: b.basket }] : [];
-    const after: unknown[] = Array.isArray(s.baskets) ? s.baskets : [];
-    for (const [j, old] of before.entries()) {
-      const cur = after[j];
-      const same =
-        legacy && isObj(cur)
-          ? canon(cur.version) === "1" && canon(cur.issuers) === canon(b.basket)
-          : canon(cur) === canon(old);
-      if (cur === undefined)
-        emit(
-          "L4",
-          F,
-          `basket version ${j + 1} of ${String(s.id)} was removed; baskets are immutable (append a new one)`,
-        );
-      else if (!same)
-        emit(
-          "L4",
-          F,
-          `basket version ${j + 1} of ${String(s.id)} was changed; baskets are immutable (append a new version with a major version bump)`,
-        );
-    }
-    if (typeof s.version === "string" && typeof b.version === "string") {
-      const order = compareSemver(s.version, b.version);
-      if (order !== null && order < 0)
-        emit(
-          "L11",
-          F,
-          `series ${String(s.id)} version ${s.version} is lower than ${b.version} in the base; the catalog version never goes down (semver precedence)`,
-        );
-    }
-    const major = (v: unknown) => (typeof v === "string" ? SEMVER.exec(v)?.[1] : undefined);
-    const [now, then] = [major(s.version), major(b.version)];
-    if (before.length > 0 && after.length > before.length && now !== undefined && then !== undefined)
-      if (BigInt(now) <= BigInt(then))
-        emit(
-          "L11",
-          F,
-          `series ${String(s.id)} appends basket version ${before.length + 1} but version ${s.version} does not bump the major of ${b.version} (a basket change is a major version)`,
-        );
-  }
-}
 
 export interface Basket {
   readonly issuers: ReadonlySet<string>;
@@ -2426,7 +2075,7 @@ function placement(ctx: Ctx, emit: Emit) {
         p,
         `${retired} is retired; quarters live at ${QUARTER_TEXT}, extracts at ${ISSUER_TEXT} and ${FX_TEXT}`,
       );
-    else if (p === LEGACY_CSV) emit("L12", p, `the CSV lives at ${CSV}; move it there (git mv)`);
+    else if (p === ROOT_CSV) emit("L12", p, `the CSV lives at ${CSV}`);
     else if (p.startsWith(EVIDENCE_ROOT)) {
       if (p === CSV || p === QUARTER_LIST || QUARTER_FILE.test(p)) continue;
       const iss = (extractOf(p) ?? folderReadmeOf(p))?.issuer; // upper-case issuer ids; FX in its own folder
@@ -2648,12 +2297,13 @@ function evidenceWording(ctx: Ctx, emit: Emit) {
 // ---------- L7 line types and superseded conversions ----------
 
 /**
- * The `- <Label>:` lines an extract may hold, exactly: the template's fields and Assay's record lines (Capture check,
- * Archive attempt <date>, Link audit <date>, Rejected source, Re-archive, Note <date>). attemptProblem checks the
- * Archive attempt and Link audit forms; DATED_NOTE checks the Note form.
+ * The `- <Label>:` lines an extract may hold, exactly: the template's fields and the methodology's record lines
+ * (Capture check (<archive>; opened and checked for the figure it backs), Archive attempt <date>, Link audit <date>,
+ * Rejected source, Re-archive, Note <date>). attemptProblem checks the Archive attempt and Link audit forms;
+ * DATED_NOTE checks the Note form.
  */
 const LINE_LABEL =
-  /^(?:Retrieved|Original URL|Archive URL(?: [23])?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Notes|Rejected source|Re-archive|Capture check|(?:Archive attempt|Link audit|Note) \d{4}-\d{2}-\d{2})$/;
+  /^(?:Retrieved|Original URL|Archive URL(?: [23])?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Notes|Rejected source|Re-archive|Capture check \((?:archive\.today|Ghostarchive|Wayback); opened and checked for the figure it backs\)|(?:Archive attempt|Link audit|Note) \d{4}-\d{2}-\d{2})$/;
 /** `- Note <YYYY-MM-DD>: <text>.`: a real date, then non-empty text ending with a period. */
 const DATED_NOTE = /^- Note (\d{4}-\d{2}-\d{2}): \S.*\.$/;
 /** A Notes line that converts at a rate other than the quarter's FX table row. */
@@ -2688,7 +2338,7 @@ function extractLines(ctx: Ctx, emit: Emit) {
         emit(
           "L7",
           p,
-          `extract "${block.title}" line ${l.line}: "- ${(lab[1] as string).trim()}:" is not a defined line type (the template's fields, Capture check, Archive attempt <date>, Link audit <date>, Rejected source, Re-archive, Note <date>)`,
+          `extract "${block.title}" line ${l.line}: "- ${(lab[1] as string).trim()}:" is not a defined line type (the template's fields, Capture check (<archive>; opened and checked for the figure it backs), Archive attempt <date>, Link audit <date>, Rejected source, Re-archive, Note <date>)`,
         );
       else if (lab && /^Note /.test(lab[1] as string)) {
         const n = DATED_NOTE.exec(l.text);

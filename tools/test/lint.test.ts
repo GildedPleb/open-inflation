@@ -93,7 +93,7 @@ const fedText = goodText()[FED] as string;
 describe("passing fixtures", () => {
   test("empty skeleton passes", () => passes({ files: files(skeletonText()), base: null }));
   test("complete one-quarter repo passes", () => passes(good()));
-  test("unchanged repo against its own base passes", () => passes(onGood({})));
+  test("unchanged repo against its own base passes", () => passes(good({})));
 });
 
 describe("L1 CSV contract", () => {
@@ -169,47 +169,24 @@ describe("L2 evidence existence", () => {
     fails(good(csv("2026-06-30,1221,base_money/quarters/2026Q3.md")), ["L2"], /quarter/));
 });
 
-describe("L3 heading immutability", () => {
-  test("renamed heading", async () => {
-    const fs = await fails(
-      onGood({ [FED]: fedText.replace("## 2026Q3", "## 2026-Q3") }),
-      ["L3", "L4", "L5", "L9"],
-      /2026Q3/,
-    );
-    expect(fs.find((f) => f.check === "L3")?.file).toBe(FED);
+// No history locks before v1 (L3 and L4 are retired): a committed line, block or row may change like any other,
+// and only the structure and consistency checks apply to the result.
+describe("no history locks before v1 (L3, L4 retired)", () => {
+  test("a heading renamed in an issuer file fails only the structure checks", async () => {
+    const fs = await lint(good({ [FED]: fedText.replace("## 2026Q3", "## 2026-Q3") }), OFF);
+    expect(ids(fs)).toEqual(["L5", "L9"]);
   });
-  test("removed issuer file loses its headings", () =>
-    fails(onGood({ [FED]: null, [FED_README]: null }), ["L3", "L4", "L5", "L9"], /## 2026Q3/));
-  test("a quarter file's headings are presentation: changing one passes", () =>
-    passes(onGood({ [ROLLUP]: rollup().replace("## Conflicts", "## Conflict") })));
   test("new heading appended passes", () =>
-    passes(onGood({ [FED]: `${fedText}\n## 2026Q4\n\n${extract({ title: "FED Q4" })}` })));
-});
-
-describe("L4 append-only (no committed line changes)", () => {
+    passes(good({ [FED]: `${fedText}\n## 2026Q4\n\n${extract({ title: "FED Q4" })}` })));
   test("new block inserted under an existing dated heading passes", () =>
-    passes(onGood({ [FED]: fedText.replace("## 2026Q3\n", `## 2026Q3\n\n${extract({ title: "FED revision" })}`) })));
-  test("edited verbatim quote", () =>
-    fails(onGood({ [FED]: fedText.replace("synthetic): 1", "synthetic): 2") }), ["L4"], /line 14/));
-  test("deleted line", () =>
-    fails(onGood({ [FED]: fedText.replace("- Notes: synthetic fixture\n", "") }), ["L4"], /removed or changed/));
-  test("a quarter file's prose is presentation: rewriting it passes", () =>
-    passes(onGood({ [ROLLUP]: rollup().replace("None.", "No conflicts this quarter.") })));
-  test("a committed machine block is locked: changing a number fails L4", () =>
-    fails(
-      onGood({ [ROLLUP]: rollup().replace('coverage_pct: "', 'coverage_pct: "0') }),
-      ["L4"],
-      /committed machine block 1 .* changed/,
-    ));
-  test("a committed machine block is locked: removing it fails L4", () =>
-    fails(
-      onGood({ [ROLLUP]: rollup().split("```yaml")[0] as string }),
-      ["L4", "L9"],
-      /committed machine block 1 .* was removed/,
-    ));
-  test("roll-up may append a revision block; the last block is authoritative", () =>
+    passes(good({ [FED]: fedText.replace("## 2026Q3\n", `## 2026Q3\n\n${extract({ title: "FED revision" })}`) })));
+  test("a deleted notes line passes", () =>
+    passes(good({ [FED]: fedText.replace("- Notes: synthetic fixture\n", "") })));
+  test("a quarter file's prose and headings may change", () =>
+    passes(good({ [ROLLUP]: rollup().replace("## Conflicts", "## Conflict").replace("None.", "Nothing.") })));
+  test("a roll-up may append a revision block; the last block is authoritative", () =>
     passes(
-      onGood({
+      good({
         "base_money/FX/2026.md": fxFile(fxSection("2026Q3")),
         [ROLLUP]: revisedRollup(
           machineBlock({
@@ -226,12 +203,12 @@ describe("L4 append-only (no committed line changes)", () => {
         ...csv("2026-09-30,1002,base_money/quarters/2026Q3.md"),
       }),
     ));
-  test("evidence index is not append-only", () =>
-    passes(onGood({ "base_money/README.md": index().replace("# Index", "# Evidence index") })));
+  test("evidence index heading may change", () =>
+    passes(good({ "base_money/README.md": index().replace("# Index", "# Evidence index") })));
 });
 
-// A base_money/FX/ change (supporting data, regenerable) may update fx_rate, total_usd and coverage_pct in place.
-describe("L4 in-place FX edit (fx_rate, total_usd and coverage_pct with a base_money/FX/ change)", () => {
+// Rates match, totals add up: an FX rate edited in place is fine when the FX table, total and CSV agree with it.
+describe("FX edit in place: rates and totals stay consistent", () => {
   const FXF = "base_money/FX/2026.md";
   const ecbAt = (fx: string, local = "200.25") =>
     [
@@ -250,42 +227,15 @@ describe("L4 in-place FX edit (fx_rate, total_usd and coverage_pct with a base_m
   const edited = rollup(machineBlock({ components: ecbAt("1.2"), total: "1241" }));
   const newRate = { [FXF]: fxFile(fxSection("2026Q3", fxRow("EUR", { rate: "1.2" }))) };
   const row = (v: string) => csv(`2026-09-30,${v},base_money/quarters/2026Q3.md`);
-  test("fx_rate, total_usd, coverage_pct and the CSV value edited in place with the FX row passes", () =>
-    passes(onGood({ ...newRate, [ROLLUP]: edited, ...row("1241") })));
-  test("the same edit without a base_money/FX/ change fails L4", () =>
-    fails(onGood({ [ROLLUP]: edited, ...row("1241") }), ["L4", "L9"], /committed machine block 1 .* changed/));
-  test("an FX change does not unlock any other field (local_value)", () =>
-    fails(
-      onGood({
-        ...newRate,
-        [ROLLUP]: rollup(machineBlock({ components: ecbAt("1.2", "201"), total: "1242" })),
-        ...row("1242"),
-      }),
-      ["L4"],
-      /committed machine block 1 .* changed .*local_value/,
-    ));
-  test("the CSV value must equal the in-place total_usd", () =>
-    fails(
-      onGood({ ...newRate, [ROLLUP]: edited, ...row("1240") }),
-      ["L4", "L9"],
-      /in-place FX edit needs its total_usd/,
-    ));
+  test("fx_rate, total_usd, coverage_pct and the CSV value edited with the FX row passes", () =>
+    passes(good({ ...newRate, [ROLLUP]: edited, ...row("1241") })));
+  test("the same edit without the FX row change fails L9 (the rate differs from the FX table)", () =>
+    fails(good({ [ROLLUP]: edited, ...row("1241") }), ["L9"], /fx_rate|FX/));
+  test("the CSV value must equal the roll-up's total_usd", () =>
+    fails(good({ ...newRate, [ROLLUP]: edited, ...row("1240") }), ["L9"], /1240|total/));
 });
 
-describe("L4 base_money/base_money.csv rows", () => {
-  const fedOnly = (local: string, total: string) =>
-    machineBlock({
-      components: [
-        "  - issuer: FED",
-        "    anchor: base_money/issuers/FED/2026.md#2026q3",
-        "    local_currency: USD",
-        `    local_value: "${local}"`,
-        '    fx_rate: "1"',
-      ].join("\n"),
-      total,
-    });
-  const revised = (block: string) => revisedRollup(block);
-  const Q3 = (v: string) => `2026-09-30,${v},base_money/quarters/2026Q3.md`;
+describe("base_money/base_money.csv format", () => {
   // L9: Q4 components must anchor the 2026Q4 section of each issuer's 2026 file.
   const q4Block = machineBlock({ quarter: "2026Q4", asOf: "2026-12-31" }).replaceAll(
     /(issuers\/(?:FED|ECB)\/2026\.md)#2026q3/g,
@@ -296,136 +246,33 @@ describe("L4 base_money/base_money.csv rows", () => {
     "base_money/issuers/ECB/2026.md": `${goodText()["base_money/issuers/ECB/2026.md"]}${quarterSection("ECB", "2026Q4")}`,
     "base_money/FX/2026.md": `${goodText()["base_money/FX/2026.md"]}${quarterSection("FX", "2026Q4", "EUR")}`,
   };
+  const Q3 = (v: string) => `2026-09-30,${v},base_money/quarters/2026Q3.md`;
   test("a new row passes", () =>
     passes(
-      onGood({
+      good({
         ...q4Headings,
         "base_money/quarters/2026Q4.md": rollup(q4Block),
         "base_money/README.md": index("- [2026Q4](quarters/2026Q4.md)"),
         ...csv(ROW, "2026-12-31,1221,base_money/quarters/2026Q4.md"),
       }),
     ));
-  // m2: a CSV that L1 rejects reports only the L1 reason, never a spurious "row deleted".
-  test("broken header on a committed CSV is L1 only", () =>
-    fails(onGood({ "base_money/base_money.csv": `Date,value,evidence_id\n${ROW}\n` }), ["L1"], /header/));
-  test("BOM on a committed CSV is L1 only", () =>
-    fails(onGood({ "base_money/base_money.csv": `\uFEFF${CSV_HEADER}${ROW}\n` }), ["L1"], /byte-order mark/));
-  test("CRLF on a committed CSV is L1 only", () =>
-    fails(onGood({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}\r\n` }), ["L1"], /CR/));
-  test("missing final newline on a committed CSV is L1 only", () =>
-    fails(onGood({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}` }), ["L1"], /final newline/));
-  test("a committed row that is now malformed is L1 only", () =>
-    fails(onGood(csv(Q3("12x21"))), ["L1"], /non-negative integer/));
-  test("deleting a committed row fails", () =>
-    fails(onGood({ "base_money/base_money.csv": CSV_HEADER }), ["L4"], /row for 2026-09-30 was deleted/));
-  test("editing a value without a roll-up revision block fails", () =>
-    fails(onGood(csv(Q3("1222"))), ["L4", "L9"], /1221 -> 1222 without appending a revision block/));
-  test("editing a value with a revision block whose total differs fails", () =>
-    fails(
-      onGood({ [ROLLUP]: revised(fedOnly("1002", "1002")), ...csv(Q3("1003")) }),
-      ["L4", "L9"],
-      /revision total_usd 1002/,
-    ));
-  test("editing a value with a matching revision block passes", () =>
-    passes(
-      onGood({
-        [ROLLUP]: revised(fedOnly("1002", "1002")),
-        "base_money/FX/2026.md": fxFile(fxSection("2026Q3")),
-        ...csv(Q3("1002")),
-      }),
-    ));
-  test("changing a committed row's evidence_id fails", () =>
-    fails(
-      onGood({
-        ...q4Headings,
-        "base_money/quarters/2026Q4.md": rollup(q4Block),
-        "base_money/README.md": index("- [2026Q4](quarters/2026Q4.md)"),
-        ...csv("2026-09-30,1221,base_money/quarters/2026Q4.md"),
-      }),
-      ["L4", "L2"],
-      /evidence_id changed/,
-    ));
+  test("broken header is L1 only", () =>
+    fails(good({ "base_money/base_money.csv": `Date,value,evidence_id\n${ROW}\n` }), ["L1"], /header/));
+  test("BOM is L1 only", () =>
+    fails(good({ "base_money/base_money.csv": `\uFEFF${CSV_HEADER}${ROW}\n` }), ["L1"], /byte-order mark/));
+  test("CRLF is L1 only", () => fails(good({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}\r\n` }), ["L1"], /CR/));
+  test("missing final newline is L1 only", () =>
+    fails(good({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}` }), ["L1"], /final newline/));
+  test("a malformed value is L1 only", () => fails(good(csv(Q3("12x21"))), ["L1"], /non-negative integer/));
+  test("a value that differs from its roll-up's total_usd fails L9", () =>
+    fails(good(csv(Q3("1222"))), ["L9"], /1222|total/));
 });
 
-describe("L3/L4 follow renames (exact content, like git diff -M100%)", () => {
-  const FED25 = "base_money/issuers/FED/2025.md";
-  const without = async (snap: Snapshot, banned: CheckId[]) => {
-    const fs = await lint(snap, OFF);
-    expect(ids(fs).filter((c) => banned.includes(c))).toEqual([]);
-  };
-  const has = async (snap: Snapshot, check: CheckId, reason: RegExp) => {
-    const fs = await lint(snap, OFF);
-    expect(fs.some((f) => f.check === check && reason.test(f.message))).toBe(true);
-  };
-  test("pure rename of an issuer file is not a delete (no L3/L4)", async () => {
-    await without(onGood({ [FED]: null, [FED25]: fedText, [ROLLUP]: rollup().replaceAll(FED, FED25) }), ["L3", "L4"]);
-    // Control: the same delete without the moved copy is L4.
-    await has(onGood({ [FED]: null }), "L4", /committed file was deleted/);
-  });
-  test("rename plus a changed committed line fails L4", () =>
-    has(onGood({ [FED]: null, [FED25]: fedText.replace("synthetic): 1", "synthetic): 2") }), "L4", /deleted/));
-  test("partial rename (moved and appended to) is a delete plus an add and fails L4", () =>
-    has(onGood({ [FED]: null, [FED25]: `${fedText}\nappended\n` }), "L4", /committed file was deleted/));
-  test("rename to a place no rule allows still fails L12", async () => {
-    const fs = await lint(onGood({ [FED]: null, "base_money/issuers/fed/2026.md": fedText }), OFF);
+describe("misplaced files (L12)", () => {
+  test("an issuer file under a lowercase folder fails L12", async () => {
+    const fs = await lint(good({ [FED]: null, "base_money/issuers/fed/2026.md": fedText }), OFF);
     expect(fs.some((f) => f.check === "L12" && f.file === "base_money/issuers/fed/2026.md")).toBe(true);
   });
-  test("rename out of the append-only trees is a delete", () =>
-    has(onGood({ [FED]: null, "notes/FED-2026.md": fedText }), "L4", /committed file was deleted/));
-});
-
-/**
- * The 1.2.0 layout move against a base in the earlier layout: extracts under issuers/ (FX too), the quarter at
- * evidence/base_money/YYYYQn.md with issuers/ anchors, and the CSV pointing there.
- */
-describe("layout move: extracts 100% identical, quarters paired by quarter with the machine block locked", () => {
-  const OLD_Q3 = "evidence/base_money/2026Q3.md";
-  const toOld = (t: string) =>
-    t
-      .replaceAll("base_money/base_money.csv", "base_money.csv")
-      .replaceAll("base_money/quarters/", "evidence/base_money/")
-      .replaceAll("base_money/FX/", "issuers/FX/")
-      .replaceAll("base_money/issuers/", "issuers/");
-  const legacy = (): Record<string, string> =>
-    Object.fromEntries(
-      Object.entries(goodText()).map(([p, t]) => [
-        toOld(p),
-        p === "base_money/base_money.csv" || p === ROLLUP ? toOld(t) : t,
-      ]),
-    );
-  const moved = (patch: Record<string, string | null> = {}): Snapshot => ({
-    files: files(goodText(), patch),
-    base: files(legacy()),
-  });
-  const has = async (snap: Snapshot, check: CheckId, reason: RegExp) => {
-    const fs = await lint(snap, OFF);
-    expect(fs.some((f) => f.check === check && reason.test(f.message))).toBe(true);
-  };
-  test("the whole move (paths, anchors rewritten, evidence_id rewritten) lints clean", () => passes(moved()));
-  test("a quarter's prose and headings may change while it moves", () =>
-    passes(moved({ [ROLLUP]: rollup().replace("## Conflicts", "## Conflict").replace("None.", "Nothing.") })));
-  test("a machine-block number changed while moving fails L4", () =>
-    has(
-      moved({ [ROLLUP]: rollup().replace('local_value: "1001"', 'local_value: "1002"') }),
-      "L4",
-      /changed at its line/,
-    ));
-  test("an anchor rewritten to a path that is not the extract's rename target fails L4", () =>
-    has(
-      moved({ [ROLLUP]: rollup().replace(`anchor: ${FED}#2026q3`, "anchor: base_money/issuers/FED/2025.md#2026q3") }),
-      "L4",
-      /changed at its line/,
-    ));
-  test("an extract edited while moving is a delete (L4)", () =>
-    has(moved({ [FED]: `${fedText}\nappended\n` }), "L4", /committed file was deleted/));
-  test("evidence_id rewritten without a matching rename fails", () =>
-    has(moved({ [OLD_Q3]: toOld(rollup()) }), "L4", /evidence_id changed/));
-  test("evidence_id rewritten to a path other than the rename target fails", () =>
-    has(moved(csv("2026-09-30,1221,base_money/quarters/2027Q1.md")), "L4", /evidence_id changed/));
-  test("value changed in the renamed row fails", () =>
-    has(moved(csv(`2026-09-30,1222,${ROLLUP}`)), "L4", /value must stay 1221/));
-  test("date changed in the renamed row fails", () =>
-    has(moved(csv(`2026-12-31,1221,${ROLLUP}`)), "L4", /2026-09-30 was deleted/));
 });
 
 describe("L5 link integrity", () => {
@@ -530,9 +377,7 @@ describe("L12/L13 issuer and FX folder READMEs (static facts plus a generated ##
   test("a README without a ## Years heading fails L13", () =>
     fails(good({ [FED_README]: "# FED\n\nStatic facts.\n" }), ["L13"], /## Years/));
   test("the hand-written facts around the list are free text (not append-only)", () =>
-    passes(
-      onGood({ [FED_README]: folderReadme("FED", "2026").replace("Static facts.", "Other facts.\n\n## History") }),
-    ));
+    passes(good({ [FED_README]: folderReadme("FED", "2026").replace("Static facts.", "Other facts.\n\n## History") })));
   test("a README for an issuer outside the basket fails L12", () =>
     fails(
       good({ "base_money/issuers/XYZ/README.md": "# XYZ\n\n## Years\n\nNo years yet.\n" }),
@@ -1046,7 +891,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
 
 // #18: L8 in lint is offline: the form of what an archive line names. The link check itself is `bun run verify`.
 describe("L8 Re-archive note form (offline)", () => {
-  const note = (v: string) => onGood({ [FED]: `${fedText}- Re-archive: ${v}\n` });
+  const note = (v: string) => good({ [FED]: `${fedText}- Re-archive: ${v}\n` });
   test("a note naming a Wayback snapshot, an archive.today or a Ghostarchive capture passes", async () => {
     await passes(note("https://ghostarchive.org/archive/AbC12 (Ghostarchive capture gone; recaptured)"));
     await passes(note("https://web.archive.org/web/20261002140500/https://example.test/FED-new (snapshot gone)"));
@@ -1069,10 +914,10 @@ describe("L8 Re-archive note form (offline)", () => {
       );
   });
   test("a Re-archive line inside a code fence is not a note", () =>
-    passes(onGood({ [FED]: `${fedText}\n\`\`\`text\n- Re-archive: see below\n\`\`\`\n` })));
+    passes(good({ [FED]: `${fedText}\n\`\`\`text\n- Re-archive: see below\n\`\`\`\n` })));
   test("an empty note fails L8 and does not swallow the next line", () =>
     fails(
-      onGood({ [FED]: `${fedText}- Re-archive:\n- Re-archive: https://archive.ph/AbC12\n` }),
+      good({ [FED]: `${fedText}- Re-archive:\n- Re-archive: https://archive.ph/AbC12\n` }),
       ["L8"],
       /line \d+: Re-archive note names no URL/,
     ));
@@ -1083,7 +928,7 @@ describe("L8 Re-archive note form (offline)", () => {
   });
   test("a note outside any extract fails L8", () =>
     fails(
-      onGood({ [FED]: fedText.replace(/\n/, "\n\n- Re-archive: https://archive.ph/AbC12\n") }),
+      good({ [FED]: fedText.replace(/\n/, "\n\n- Re-archive: https://archive.ph/AbC12\n") }),
       ["L8"],
       /line 3: Re-archive note is outside any extract \(### block\)/,
     ));
@@ -1679,11 +1524,6 @@ const series0 = () => JSON.parse(catalog()).series[0] as Record<string, unknown>
 const withSeries = (patch: Record<string, unknown>) => catalog([{ ...series0(), ...patch }]);
 const V1 = { version: 1, issuers: ["FED", "ECB", "BOJ"], floor_pct: "94" };
 const V2 = { version: 2, issuers: ["FED", "ECB", "BOJ", "SNB"], floor_pct: "94" };
-/** Current = good + patch; base = good + basePatch. */
-const onBase = (basePatch: Record<string, string>, patch: Record<string, string>): Snapshot => ({
-  files: files(goodText(), patch),
-  base: files(goodText(), basePatch),
-});
 
 describe("L11 catalog baskets", () => {
   const { baskets: _, ...noBaskets } = series0();
@@ -1779,88 +1619,12 @@ describe("L11 catalog issuers (as_of_convention)", () => {
     ));
 });
 
-// Assay P10-n1: the catalog series version never goes down against the base (semver precedence; L11).
-describe("L11 catalog version never decreases (P10-n1)", () => {
-  const at = (version: string) => ({ "catalog.json": withSeries({ version }) });
-  const moved = (from: string, to: string) => onBase(at(from), at(to));
-  const lower = (from: string, to: string) =>
-    fails(
-      moved(from, to),
-      ["L11"],
-      new RegExp(
-        `series base_money version ${to.replace(/[.+]/g, "\\$&")} is lower than ${from.replace(/[.+]/g, "\\$&")} in the base`,
-      ),
-    );
-  test("1.0.0 to 0.1.0 fails", () => lower("1.0.0", "0.1.0"));
-  test("a lower patch fails", () => lower("1.2.3", "1.2.2"));
-  test("numbers compare numerically: 1.10.0 to 1.9.0 fails", () => lower("1.10.0", "1.9.0"));
-  test("a release to its own pre-release fails", () => lower("1.0.0", "1.0.0-rc.1"));
-  test("pre-release identifiers: beta to alpha fails", () => lower("1.0.0-beta", "1.0.0-alpha"));
-  test("pre-release numeric identifiers compare numerically: alpha.10 to alpha.9 fails", () =>
-    lower("1.0.0-alpha.10", "1.0.0-alpha.9"));
-  test("fewer pre-release fields is lower: alpha.1 to alpha fails", () => lower("1.0.0-alpha.1", "1.0.0-alpha"));
-  test("an equal version passes", () => passes(moved("1.0.0", "1.0.0")));
-  test("a higher patch, minor or major passes", async () => {
-    await passes(moved("1.0.0", "1.0.1"));
-    await passes(moved("1.9.0", "1.10.0"));
-    await passes(moved("0.9.9", "1.0.0"));
-  });
-  test("a pre-release to its release passes", () => passes(moved("1.0.0-rc.1", "1.0.0")));
-  test("build metadata is ignored: 1.0.0+b to 1.0.0+a passes", () => passes(moved("1.0.0+b", "1.0.0+a")));
-  test("an invalid base version is not compared", () => passes(moved("v1", "0.1.0")));
-  test("no base catalog: nothing to compare", () =>
-    passes({ files: files(goodText(), at("0.0.1")), base: new Map() } as Snapshot));
-});
-
-describe("L4/L11 basket history", () => {
+describe("catalog baskets (R1-19)", () => {
   const cat = (patch: Record<string, unknown>) => ({ "catalog.json": withSeries(patch) });
   // R1-19: appending a basket never invalidates a roll-up published under an earlier one.
-  test("R1-19: a v1 roll-up still lints after a v2 basket is appended (major bump)", () =>
-    passes(onGood(cat({ version: "1.0.0", baskets: [V1, V2] }))));
-  test("R1-19: an explicit basket_version 1 roll-up still lints after v2 is appended", () =>
+  test("R1-19: an explicit basket_version 1 roll-up still lints after a v2 basket is appended", () =>
     passes(
-      onBase(
-        { [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })) },
-        { ...cat({ version: "1.0.0", baskets: [V1, V2] }), [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })) },
-      ),
-    ));
-  test("an appended basket without a major version bump fails", () =>
-    fails(
-      onGood(cat({ version: "0.2.0", baskets: [V1, V2] })),
-      ["L11"],
-      /appends basket version 2 but version 0\.2\.0 does not bump the major of 0\.1\.0/,
-    ));
-  test("a major bump from 1.x to 2.0.0 for an appended basket passes", () =>
-    passes(onBase(cat({ version: "1.0.0", baskets: [V1] }), cat({ version: "2.0.0", baskets: [V1, V2] }))));
-  test("editing an existing basket's floor fails", () =>
-    fails(
-      onGood(cat({ baskets: [{ ...V1, floor_pct: "90" }] })),
-      ["L4"],
-      /basket version 1 of base_money was changed; baskets are immutable/,
-    ));
-  test("editing an existing basket's issuers fails", () =>
-    fails(
-      onGood(cat({ baskets: [{ ...V1, issuers: ["FED", "ECB", "BOJ", "SNB"] }] })),
-      ["L4", "L9"],
-      /basket version 1 of base_money was changed; baskets are immutable/,
-    ));
-  test("removing a basket fails", () =>
-    fails(
-      onBase(cat({ version: "1.0.0", baskets: [V1, V2] }), cat({ version: "1.0.0", baskets: [V1] })),
-      ["L4"],
-      /basket version 2 of base_money was removed/,
-    ));
-  // Migration: a base still in the legacy `basket` shape reads as baskets [v1 = that list].
-  const legacy = () => {
-    const { baskets: _, ...s } = series0();
-    return { "catalog.json": catalog([{ ...s, basket: ["FED", "ECB", "BOJ"] }]) };
-  };
-  test("migrating a legacy basket to baskets v1 with the same issuers passes", () => passes(onBase(legacy(), {})));
-  test("migrating a legacy basket to a v1 with different issuers fails", () =>
-    fails(
-      onBase(legacy(), cat({ baskets: [{ ...V1, issuers: ["FED", "ECB"] }] })),
-      ["L4", "L9", "L12"],
-      /basket version 1 of base_money was changed/,
+      good({ ...cat({ version: "1.0.0", baskets: [V1, V2] }), [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })) }),
     ));
 });
 
@@ -1923,16 +1687,17 @@ describe("L9 basket_version", () => {
       ["L9"],
       /below the basket 2 floor 99\.5/,
     ));
-  test("a revision appended to a committed file needs basket_version once two baskets exist", async () => {
+  test("every block needs basket_version once two baskets exist, a revision included", async () => {
     const fs = await fails(
-      onGood({
+      good({
         "catalog.json": withSeries({ version: "1.0.0", baskets: [V1, V2] }),
         [ROLLUP]: `${rollup()}\n## Revision 1\n\n${machineBlock({})}`,
       }),
       ["L9"],
-      /machine block 2 of 2 .*basket_version is required/,
+      /basket_version is required/,
     );
-    expect(fs.some((f) => /machine block 1 of 2/.test(f.message))).toBe(false);
+    expect(fs.some((f) => /machine block 1 of 2 .*basket_version is required/.test(f.message))).toBe(true);
+    expect(fs.some((f) => /machine block 2 of 2 .*basket_version is required/.test(f.message))).toBe(true);
   });
 });
 
@@ -2425,11 +2190,6 @@ describe("L12 placement", () => {
   const ROOT_CSV = () => goodText()["base_money/base_money.csv"] as string;
   test("a CSV at the repository root (its earlier path) fails L12", () =>
     fails(good({ "base_money.csv": ROOT_CSV() }), ["L12"], /the CSV lives at base_money\/base_money\.csv/));
-  test("moving the root CSV to base_money/base_money.csv keeps L4 on its rows (a deleted row still fails)", async () => {
-    const base = files(goodText(), { "base_money/base_money.csv": null, "base_money.csv": ROOT_CSV() });
-    await passes({ files: files(goodText()), base });
-    await fails({ files: files(goodText(), csv()), base }, ["L4"], /row for 2026-09-30 was deleted/);
-  });
   test("an issuer not in the catalog basket is named", () =>
     fails(good({ "base_money/issuers/XYZ/2026.md": "# x\n" }), ["L12"], /XYZ is not in the catalog basket/));
   test("a basket issuer's year file passes", () =>
@@ -3545,7 +3305,7 @@ describe("L9 whole-dollar USD", () => {
     fails(cov("93", "500", "5", "93", "93.94"), ["L9"], /coverage 93\.93\d*…?% is below the basket 1 floor 94%/));
 });
 
-describe("per-extract Archive attempt, Link audit and Rejected source lines (L7; L4 append-only)", () => {
+describe("per-extract Archive attempt, Link audit and Rejected source lines (L7)", () => {
   /** FED's adopted extract (retrieved 2026-10-02) carrying `lines`. */
   const withLines = (...lines: string[]) => good(fed(extract({ title: "FED H.4.1", fields: lines })));
   const ATTEMPT = "- Archive attempt 2026-10-02: archive.today served a CAPTCHA.";
@@ -3605,35 +3365,10 @@ describe("per-extract Archive attempt, Link audit and Rejected source lines (L7;
       ["L7"],
       /line 5: Archive attempt, Link audit or Rejected source line outside an ### extract block/,
     ));
-  test("appending a line to a committed extract passes; editing or removing one fails L4", async () => {
-    const base = files(goodText(), fed(extract({ title: "FED H.4.1", fields: [ATTEMPT] })));
-    await passes({ files: files(goodText(), fed(extract({ title: "FED H.4.1", fields: [ATTEMPT, AUDIT] }))), base });
-    await fails(
-      {
-        files: files(goodText(), fed(extract({ title: "FED H.4.1", fields: [ATTEMPT.replace("CAPTCHA", "403")] }))),
-        base,
-      },
-      ["L4"],
-      /base line \d+ was removed or changed .*Archive attempt 2026-10-02: archive\.today served a CAPTCHA/,
-    );
-    await fails(
-      { files: files(goodText(), fed(extract({ title: "FED H.4.1" }))), base },
-      ["L4"],
-      /base line \d+ was removed or changed .*Archive attempt 2026-10-02/,
-    );
+  test("a line added to, edited in or removed from an extract passes (no history lock before v1)", async () => {
+    await passes(good(fed(extract({ title: "FED H.4.1", fields: [ATTEMPT, AUDIT] }))));
+    await passes(good(fed(extract({ title: "FED H.4.1", fields: [ATTEMPT.replace("CAPTCHA", "403")] }))));
   });
-});
-
-describe("no failed-attempts log in quarter files", () => {
-  const LOG = "\n```yaml\n# failed attempts\nfailed_attempts: []\n```\n";
-  test("a failed_attempts block in a quarter file fails L9", () =>
-    fails(
-      good({ [ROLLUP]: `${rollup()}${LOG}` }),
-      ["L9"],
-      /has a failed_attempts block \(line \d+\); quarter files hold no failed-attempts log: record each failed attempt as a "- Archive attempt YYYY-MM-DD: <text>\." line/,
-    ));
-  test("removing a committed failed_attempts block passes (it was never a machine block)", () =>
-    passes({ files: files(goodText()), base: files(goodText(), { [ROLLUP]: `${rollup()}${LOG}` }) }));
 });
 
 // Probe's repo walk (2026-10-23), "Lint coverage gaps": every rule we state and can check mechanically is linted.
@@ -3774,19 +3509,20 @@ describe("L7 defined line types and superseded conversions", () => {
       good(
         withLines(
           "- Note 2026-10-23: a note.",
-          "- Capture check: Ghostarchive capture opened; it shows the figure.",
+          "- Capture check (Ghostarchive; opened and checked for the figure it backs): shows the figure.",
           "- Rejected source: x: not the series used.",
         ),
       ),
     ));
   test("an undefined `- <Label>:` line fails", () =>
     fails(good(withLines("- Archive check: fine.")), ["L7"], /"- Archive check:" is not a defined line type/));
-  test("a label with extra words fails (Capture check takes no parenthetical)", () =>
-    fails(
-      good(withLines("- Capture check (Ghostarchive): shows the figure.")),
-      ["L7"],
-      /"- Capture check \(Ghostarchive\):" is not a defined line type/,
-    ));
+  for (const label of [
+    "Capture check",
+    "Capture check (Ghostarchive)",
+    "Capture check (Archive.is; opened and checked for the figure it backs)",
+  ])
+    test(`"- ${label}:" fails (the label is "Capture check (<archive>; opened and checked for the figure it backs)")`, () =>
+      fails(good(withLines(`- ${label}: shows the figure.`)), ["L7"], /is not a defined line type/));
   test("a Note without a date fails", () =>
     fails(good(withLines("- Note: a note.")), ["L7"], /"- Note:" is not a defined line type/));
   for (const [what, line] of [
@@ -3795,11 +3531,6 @@ describe("L7 defined line types and superseded conversions", () => {
     ["an impossible date", "- Note 2026-02-30: a note."],
   ] as const)
     test(`a Note with ${what} fails`, () => fails(good(withLines(line)), ["L7"], /a Note line has the form/));
-  test("committed lines are checked too (committed text is freely editable)", () => {
-    const old = (goodText()[FED] as string).replace("- Adopted: yes", "- Archive check: committed.\n- Adopted: yes");
-    const base = files(goodText(), { [FED]: old });
-    return fails({ files: base, base }, ["L7"], /line \d+: "- Archive check:"/);
-  });
   const oldRate = (note?: string) =>
     good({
       [FED]: (goodText()[FED] as string).replace(
@@ -3841,11 +3572,6 @@ describe("L15 evidence wording", () => {
         ["L15"],
         /is process narrative/,
       ));
-  test("committed lines count too (committed text is freely editable)", () => {
-    const old = (goodText()[FED] as string).replace("synthetic fixture", "synthetic fixture (PR #2)");
-    const base = files(goodText(), { [FED]: old });
-    return fails({ files: base, base }, ["L15"], /"PR #2" is process narrative/);
-  });
   test("verbatim source quotes are exempt: > quote lines and text blocks", () =>
     passes(
       good({

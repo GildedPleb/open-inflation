@@ -60,6 +60,14 @@ export async function verifyMain(io: VerifyIo): Promise<number> {
   }
   const { base } = choice;
   if (base !== null && choice.why !== "HEAD" && choice.why !== "--base") io.err(`verify: base ${base} (${choice.why})`);
+  // An explicit base that is HEAD's own commit (e.g. --base origin/main on main) checks only uncommitted changes.
+  if (base !== null && base !== "HEAD" && (choice.why === "--base" || choice.why === "LINT_BASE")) {
+    const sha = git.revParse(dir, base);
+    if (sha !== null && sha === git.revParse(dir, "HEAD"))
+      io.err(
+        `verify: note: base ${base} is HEAD itself, so only uncommitted changes count as new (plain \`bun run verify\` uses HEAD~1 on main)`,
+      );
+  }
   let snapshot: Snapshot;
   try {
     snapshot = git.loadSnapshot(dir, base);
