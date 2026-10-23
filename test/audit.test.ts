@@ -336,7 +336,7 @@ describe("audit: run, manifest and report", () => {
     });
     // The report's class line: item (b), "any other HTTP status" is listed under no verdict.
     expect(readFileSync(r.mdPath, "utf8").replace(/\n/g, " ")).toContain(
-      'no verdict (rate-limited: 429, or a 429 or 503 still there when pacing gave up; blocked: a challenge/CAPTCHA page or header, or a 403; a Ghostarchive 200 with no capture (its "Archiving error" page, or loading); any other HTTP status; a timeout, reset, redirect loop or any other DNS error; no network, when no canary answers. Each carries its HTTP status or error code, is retried at the next audit, and makes the run INCOMPLETE).',
+      'no verdict (rate-limited: a 429 or 503 still there when pacing gave up (a 429 is never a verdict); blocked: a challenge/CAPTCHA page or header, or a 403; a Ghostarchive 200 with no capture (its "Archiving error" page, or loading); any other HTTP status; a timeout, reset, redirect loop or any other DNS error while a canary answers; offline: any network error while no canary answers. Each carries its HTTP status or error code, is retried at the next audit, and makes the run INCOMPLETE).',
     );
   });
   test("a Ghostarchive Archiving error page (HTTP 200) is no verdict and is not saved; a capture page is", async () => {

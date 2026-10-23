@@ -7,11 +7,12 @@
 //   changed     resolves, but its sha256 differs from the last saved copy, or it redirects to a different final
 //               URL than last time
 //   lost        404, 410, or the host name does not exist (DNS ENOTFOUND) while a canary host still answers
-//   no verdict  rate-limited (429, or a 429/503 still there when pacing gave up), blocked (a challenge/CAPTCHA
-//               page or header, or a 403; a Ghostarchive 503 without one is retried as a rate limit), a Ghostarchive
-//               200 that is its "Archiving error" page or any other page without the capture (loading, in
-//               progress), which is not saved; also any other HTTP status, a timeout, a reset, a redirect loop, any
-//               other DNS error, or no network at all (no canary answers). Each row names its HTTP status or error
+//   no verdict  rate-limited (a 429 or 503 still there when pacing gave up; a 429 is never a verdict), blocked
+//               (a challenge/CAPTCHA page or header, or a 403; a Ghostarchive 503 without one is a rate limit), a
+//               Ghostarchive 200 that is its "Archiving error" page or any other page without the capture (loading,
+//               in progress), which is not saved; also any other HTTP status, a timeout, a reset, a redirect loop or
+//               any other DNS error while a canary answers; offline, any network error while no canary answers, after
+//               which requests go out without pacing waits until a link answers. Each row names its HTTP status or error
 //               code (AuditNoVerdict says which kind); retried next audit, and the run is INCOMPLETE (exit 3)
 
 import { createHash } from "node:crypto";
@@ -125,7 +126,7 @@ const CHALLENGE_READ = 512 * 1024;
 
 /**
  * Why a link has no verdict, so the INCOMPLETE line counts from the row itself (F-1, Probe: it matched detail
- * substrings, and two of the three "blocked" wordings were not counted). rate-limited: 429, or pacing gave up at the
+ * substrings, and two of the three "blocked" wordings were not counted). rate-limited: any 429, or pacing gave up at the
  * cap; blocked: a challenge/CAPTCHA page or header, or a 403 (a Ghostarchive 503 is rate-limited, retried
  * or not, unless a challenge was detected); unconfirmed: a Ghostarchive 200 with no capture on it (loading, in progress, unrecognised);
  * error page: Ghostarchive's "Archiving error" page; offline: a network error while no canary host answers; other:
@@ -502,10 +503,11 @@ export function renderMarkdown(r: Report): string {
     "",
     "Classes: ok (resolves, same content as the last saved copy; on a first run any resolving URL is ok), changed",
     "(resolves, but its sha256 differs from the last saved copy, or it redirects to a different final URL than last",
-    "time), lost (404, 410, or host not found while a canary host answers), no verdict (rate-limited: 429, or a 429",
-    "or 503 still there when pacing gave up; blocked: a challenge/CAPTCHA page or header, or a 403; a Ghostarchive 200",
-    'with no capture (its "Archiving error" page, or loading); any other HTTP status; a timeout, reset, redirect loop or',
-    "any other DNS error; no network, when no canary answers. Each carries its HTTP status or error code, is retried at",
+    "time), lost (404, 410, or host not found while a canary host answers), no verdict (rate-limited: a 429 or 503",
+    "still there when pacing gave up (a 429 is never a verdict); blocked: a challenge/CAPTCHA page or header, or a 403;",
+    'a Ghostarchive 200 with no capture (its "Archiving error" page, or loading); any other HTTP status; a timeout,',
+    "reset, redirect loop or any other DNS error while a canary answers; offline: any network error while no canary",
+    "answers. Each carries its HTTP status or error code, is retried at",
     "the next audit, and makes the run INCOMPLETE). The script does not judge content: open each changed link and",
     "record whether it still shows the",
     "figure used.",
