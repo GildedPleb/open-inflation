@@ -1,3 +1,4 @@
+import "./no-network.ts";
 import { afterAll, describe, expect, test } from "bun:test";
 import {
   existsSync,

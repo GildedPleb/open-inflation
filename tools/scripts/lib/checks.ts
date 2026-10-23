@@ -1,8 +1,9 @@
-// All integrity checks (L1-L12 in WP1_REQUIREMENTS). Pure over a Snapshot: no network, no I/O. L8's link check
+// All integrity checks (L1-L12 in WP1_REQUIREMENTS, L13 in WP_FRONTPAGE_REQUIREMENTS). Pure over a Snapshot: no network, no I/O. L8's link check
 // (HEAD on each new archive URL) is not here; it is `bun run verify` (lib/verify.ts), run locally, never in CI.
 import { posix } from "node:path";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
 import { fencedBlocks, headings, lines, links, memoText, slugs } from "./markdown.ts";
+import { EVIDENCE_INDEX, fillReadme, generate, hasMarkers, README } from "./readme.ts";
 import type { CheckId, Files, Finding, LintOptions, Snapshot } from "./types.ts";
 
 /** The series with a CSV and a roll-up schema today. A series id names its CSV and its evidence folder. */
@@ -51,6 +52,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   aggregation(ctx, rows, emit);
   catalog(ctx, emit);
   placement(ctx, emit);
+  generated(ctx, emit);
   const order = (c: CheckId) => Number(c.slice(1));
   return out.sort((a, b) => order(a.check) - order(b.check));
 }
@@ -302,7 +304,7 @@ function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
 // ---------- L5, L6 ----------
 
 function linkIntegrity(ctx: Ctx, emit: Emit) {
-  for (const [p, body] of md(ctx, /^(INDEX\.md|evidence\/.*\.md)$/)) {
+  for (const [p, body] of md(ctx, /^(README\.md|docs\/evidence-index\.md|evidence\/.*\.md)$/)) {
     for (const l of links(body)) checkTarget(ctx, p, `link (line ${l.line})`, l.target, false, emit);
     if (ROLLUP.exec(p)?.[1] !== SERIES) continue;
     const m = machine(body);
@@ -343,13 +345,53 @@ function quarterHeadings(ctx: Ctx, emit: Emit) {
 }
 
 function indexCompleteness(ctx: Ctx, emit: Emit) {
-  if (!ctx.files.has("INDEX.md")) return emit("L6", "INDEX.md", "INDEX.md is missing");
-  const body = ctx.text.get("INDEX.md");
+  const I = EVIDENCE_INDEX;
+  if (!ctx.files.has(I)) return emit("L6", I, `${I} is missing`);
+  const body = ctx.text.get(I);
   if (body === undefined) return;
-  const linked = new Set(links(body).map((l) => resolveLink("INDEX.md", l.target, false)?.path));
+  const linked = new Set(links(body).map((l) => resolveLink(I, l.target, false)?.path));
   for (const p of [...ctx.files.keys()].sort()) {
     if ((/^evidence\/.*\.md$/.test(p) || ISSUER_YEAR.test(p)) && !linked.has(p))
-      emit("L6", "INDEX.md", `INDEX.md does not link ${p}`);
+      emit("L6", I, `${I} does not link ${p}`);
+  }
+  // The README's generated table links every roll-up too (once README.md carries the generated blocks).
+  const readme = ctx.text.get(README);
+  if (!hasMarkers(readme)) return;
+  const fromReadme = new Set(links(readme ?? "").map((l) => resolveLink(README, l.target, false)?.path));
+  for (const p of [...ctx.files.keys()].sort())
+    if (ROLLUP.exec(p)?.[1] === SERIES && !fromReadme.has(p)) emit("L6", README, `README.md table does not link ${p}`);
+}
+
+// ---------- L13 ----------
+
+/**
+ * README.md's generated blocks and docs/evidence-index.md equal what `bun run readme` writes from the CSV, the
+ * roll-ups and the catalog. Applies once README.md (or the base's README.md) carries the markers, so removing them
+ * fails too. Skipped when an input cannot be read: L1, L2, L9 or L11 report that.
+ */
+const firstDiff = (a: string, b: string) => {
+  const x = a.split("\n");
+  const y = b.split("\n");
+  const i = x.findIndex((l, k) => l !== y[k]);
+  return i < 0 ? x.length : i;
+};
+
+function generated(ctx: Ctx, emit: Emit) {
+  const readme = ctx.text.get(README);
+  if (!hasMarkers(readme) && !hasMarkers(ctx.base?.get(README))) return;
+  const g = generate(ctx.text, [...ctx.files.keys()].sort());
+  if (!g) return;
+  const fix = "run `bun run readme` (it is generated from base_money.csv, the roll-ups and catalog.json)";
+  const filled = fillReadme(readme ?? "", g.blocks);
+  if (Array.isArray(filled)) for (const p of filled) emit("L13", README, p);
+  else if (filled !== readme) {
+    const diff = firstDiff(readme ?? "", filled);
+    emit("L13", README, `generated block differs from the data at line ${diff + 1}; ${fix}`);
+  }
+  const index = ctx.text.get(EVIDENCE_INDEX);
+  if (index !== undefined && index !== g.index) {
+    const diff = firstDiff(index, g.index);
+    emit("L13", EVIDENCE_INDEX, `differs from the generated index at line ${diff + 1}; ${fix}`);
   }
 }
 

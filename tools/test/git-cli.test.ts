@@ -1,3 +1,4 @@
+import "./no-network.ts";
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,11 +9,12 @@ import { lint } from "../scripts/lib/checks.ts";
 import { loadSnapshot, NotGitCheckout } from "../scripts/lib/git.ts";
 import { type LintGit, lintMain } from "../scripts/lib/lint-main.ts";
 import { DEFAULT_PACE, envName } from "../scripts/lib/pacer.ts";
+import { REPO_ROOT } from "../scripts/lib/root.ts";
 import type { Snapshot } from "../scripts/lib/types.ts";
 import { type VerifyIo, verifyMain } from "../scripts/lib/verify-main.ts";
 import { extract, files, fxExtract, GHOST_CAPTURE_PAGE, goodText, issuerFile, virtualClock } from "./fixture.ts";
 
-const ROOT = resolve(import.meta.dir, "..");
+const ROOT = REPO_ROOT;
 const dec = new TextDecoder();
 const dirs: string[] = [];
 afterAll(() => {
@@ -179,24 +181,25 @@ describe("repository identity", () => {
     for (const scope of ["base_money.csv", "catalog.json", "evidence/", "issuers/", "methodology/"])
       expect(data).toContain(scope);
     const readme = await read("README.md");
-    expect(readme).toMatch(/^## License$/m);
+    expect(readme).toMatch(/^## Reuse and citation$/m);
     expect(readme).toContain("[MIT](LICENSE)");
     expect(readme).toContain("[CC BY 4.0](LICENSE-DATA)");
-    expect(readme).toMatch(/verbatim central-bank quotes .* each source's own reuse terms/i);
+    expect(readme).toContain("Quotes from central banks stay under each bank's own terms.");
   });
-  test("README: git is a requirement, the rule table covers L1-L12, the network claim names both endpoints", async () => {
-    const readme = await Bun.file(join(ROOT, "README.md")).text();
-    expect(readme).toMatch(/^Requires Bun 1\.4 and git\b/m);
-    for (let i = 1; i <= 12; i++) expect(readme).toMatch(new RegExp(`^\\| L${i} +\\|`, "m"));
-    expect(readme).toContain("https://web.archive.org/web/");
-    expect(readme).toContain("https://archive.org/wayback/available");
+  test("docs: git is a requirement, lint.md covers L1-L13, the network claim names both endpoints", async () => {
+    const running = await Bun.file(join(ROOT, "docs", "running.md")).text();
+    const rules = await Bun.file(join(ROOT, "docs", "lint.md")).text();
+    expect(running).toMatch(/^Bun 1\.4 and git\b/m);
+    for (let i = 1; i <= 13; i++) expect(rules).toMatch(new RegExp(`^### L${i}\n\n\\S`, "m"));
+    expect(running).toContain("https://web.archive.org/web/");
+    expect(running).toContain("https://archive.org/wayback/available");
     // #18: L8 in lint makes no network calls; the link check is `bun run verify`.
-    expect(readme).toMatch(/^\| L8 +\|.*no network calls.*`bun run verify`/m);
-    expect(readme).not.toContain("OBM_NO_NETWORK");
+    expect(rules).toMatch(/^### L8\n\n.*no network calls.*`bun run verify`/m);
+    for (const doc of [running, rules]) expect(doc).not.toContain("OBM_NO_NETWORK");
   });
   test("docs: pace env names, audit exit 3, Ghostarchive 503, who opens unverified captures (N-a, 2a, F-2, m-F)", async () => {
     const read = (p: string) => Bun.file(join(ROOT, p)).text();
-    const docs = await Promise.all(["README.md", "AGENTS.md", "methodology/base_money.md"].map(read));
+    const docs = await Promise.all(["docs/running.md", "AGENTS.md", "methodology/base_money.md"].map(read));
     for (const doc of docs) {
       // N-a: every default pace key's real variable, and the mapping rule's name, not an invented one.
       for (const key of Object.keys(DEFAULT_PACE.intervals)) expect(doc).toContain(`\`${envName(key)}\``);
@@ -209,10 +212,11 @@ describe("repository identity", () => {
       expect(doc).not.toMatch(/503,? \(?its Cloudflare challenge|Ghostarchive also 503/);
       expect(doc).toContain("any other HTTP status");
     }
-    const [readme] = docs;
-    expect(readme).toMatch(/^\| L8 +\|.*for the researcher to open by hand while archiving \(not in PR review\)/m);
-    expect(readme).not.toContain("reviewer to open");
-    expect(readme).toMatch(/audit uses 0, 2 and 3/);
+    const [running] = docs;
+    const rules = await read("docs/lint.md");
+    expect(rules).toMatch(/^### L8\n\n.*for the researcher to open by hand while archiving \(not in PR review\)/m);
+    expect(rules).not.toContain("reviewer to open");
+    expect(running).toMatch(/audit uses 0, 2 and 3/);
   });
   test("LICENSE files are text that lint accepts (L10)", async () => {
     const fs = await skeletonFindings();
@@ -238,12 +242,18 @@ describe("no network in lint or CI", () => {
   test("verify, audit and test are package scripts; nothing names OBM_NO_NETWORK", async () => {
     const pkg = (await Bun.file(join(ROOT, "package.json")).json()) as { scripts: Record<string, string> };
     expect([pkg.scripts.verify, pkg.scripts.audit, pkg.scripts.lint, pkg.scripts.test]).toEqual([
-      "bun scripts/verify.ts",
-      "bun scripts/audit.ts",
-      "bun scripts/lint.ts",
+      "bun tools/scripts/verify.ts",
+      "bun tools/scripts/audit.ts",
+      "bun tools/scripts/lint.ts",
       "bun test", // `bun run test` runs the suite, not /usr/bin/test
     ]);
-    for (const f of ["scripts/lint.ts", "scripts/lib/checks.ts", "scripts/lib/types.ts", "README.md", "AGENTS.md"])
+    for (const f of [
+      "tools/scripts/lint.ts",
+      "tools/scripts/lib/checks.ts",
+      "tools/scripts/lib/types.ts",
+      "README.md",
+      "AGENTS.md",
+    ])
       expect(await Bun.file(join(ROOT, f)).text()).not.toContain("OBM_NO_NETWORK");
   });
   test("lint's import graph never reaches the network code (archive.ts, verify.ts, audit.ts) or fetch", async () => {
@@ -255,10 +265,10 @@ describe("no network in lint or CI", () => {
       expect(src).not.toMatch(/\bfetch\s*\(|globalThis\.fetch|node:(http|https|net|dns)/);
       for (const m of src.matchAll(/^import [^;]*? from "(\.[^"]+)";/gm)) await walk(resolve(p, "..", m[1] ?? ""));
     };
-    await walk(join(ROOT, "scripts", "lint.ts"));
+    await walk(join(ROOT, "tools", "scripts", "lint.ts"));
     const names = [...seen].map((p) => p.slice(ROOT.length + 1)).sort();
-    expect(names).toContain("scripts/lib/checks.ts");
-    for (const n of ["scripts/lib/archive.ts", "scripts/lib/verify.ts", "scripts/lib/audit.ts"])
+    expect(names).toContain("tools/scripts/lib/checks.ts");
+    for (const n of ["tools/scripts/lib/archive.ts", "tools/scripts/lib/verify.ts", "tools/scripts/lib/audit.ts"])
       expect(names).not.toContain(n);
   });
 });
@@ -280,7 +290,7 @@ describe("CLI", () => {
       });
     }
   });
-  /** A repo with a bad CSV header and a new Wayback, archive.today and Ghostarchive URL (no INDEX.md, no catalog). */
+  /** A repo with a bad CSV header and a new Wayback, archive.today and Ghostarchive URL (no docs/evidence-index.md, no catalog). */
   const badRepo = () => {
     const dir = repo({ "base_money.csv": "date,value\n" });
     git(dir, "init", "-q", "--template=");
@@ -311,7 +321,13 @@ describe("CLI", () => {
   // the update and backfill stubs.
   const spawned = (script: string, cwd: string, ...args: string[]) => {
     const p = Bun.spawn(
-      ["bun", "--preload", join(ROOT, "test", "no-network.ts"), join(ROOT, "scripts", script), ...args],
+      [
+        "bun",
+        "--preload",
+        join(ROOT, "tools", "test", "no-network.ts"),
+        join(ROOT, "tools", "scripts", script),
+        ...args,
+      ],
       {
         cwd,
         env: childEnv(),
@@ -344,7 +360,7 @@ describe("CLI", () => {
     const bad = await cli(dir);
     expect(bad.code).toBe(1);
     expect(bad.out).toMatch(/L1 base_money\.csv: header/);
-    // No INDEX.md or catalog.json (L6, L11) and the bad header (L1); nothing else, and no L8 or network line.
+    // No docs/evidence-index.md or catalog.json (L6, L11) and the bad header (L1); nothing else, and no L8 or network line.
     expect(bad.out).not.toMatch(/network|fetch|L8|archive\.today:/i);
     expect([...new Set(bad.out.match(/^L\d+ /gm))]).toEqual(["L1 ", "L6 ", "L11 "]);
     expect(await cli(dir, ["--nope"])).toEqual({ code: 2, stdout: "", out: "usage: bun run lint [--base <ref>]\n" });
@@ -377,7 +393,7 @@ describe("CLI", () => {
       "lint: push to refs/heads/feature: cannot find the merge-base of HEAD and origin/main (fetch origin/main; CI checks out with fetch-depth: 0)",
     ]);
     git(dir, "update-ref", "refs/remotes/origin/main", main);
-    // The bare repo has no INDEX.md or catalog.json (L6, L11 findings); only the base it reports matters here.
+    // The bare repo has no docs/evidence-index.md or catalog.json (L6, L11 findings); only the base it reports matters here.
     const r = await cli(dir, [], { env });
     expect(r.code).toBe(1);
     expect(r.out).toContain(`lint: base ${main} (merge-base of HEAD and origin/main (push to refs/heads/feature))\n`);
@@ -403,7 +419,7 @@ describe("CLI", () => {
       ["usage: bun run audit   (store: $OBM_ARCHIVE_DIR, else ~/open-inflation-archive/)"],
     ]);
     for (const name of ["lint", "verify", "audit"]) {
-      const src = readFileSync(join(ROOT, "scripts", `${name}.ts`), "utf8");
+      const src = readFileSync(join(ROOT, "tools", "scripts", `${name}.ts`), "utf8");
       expect(src).toContain(`\nexitOnCrash("${name}");\n`);
       expect(src).toMatch(new RegExp(`process\\.exit\\(\\s*await ${name}Main\\(`));
     }
@@ -591,8 +607,11 @@ describe("CLI", () => {
     uneditedRun ??= cli(sharedTree(), ["--base", "HEAD"]).then((r) => [r.code, r.stdout] as const);
     return uneditedRun;
   };
+  // A catalog edit also changes the generated README and evidence index (version, baskets); that drift is L13's,
+  // tested in lint.test.ts, so these catalog cases look only at the other checks.
+  const catalogFindings = (out: string) => findings(out).filter((l) => !l.startsWith("L13 "));
   const expectAdded = (want: RegExp, before: Set<string>, [code, out]: readonly [number, string]) => {
-    const added = findings(out).filter((l) => !before.has(l));
+    const added = catalogFindings(out).filter((l) => !before.has(l));
     expect(added.length).toBeGreaterThan(0);
     for (const l of added) expect(l).toMatch(want);
     expect(code).toBe(1);
@@ -608,9 +627,9 @@ describe("CLI", () => {
   });
   test("CLI: appending a basket with a major bump adds no finding (lints clean on a clean tree)", async () => {
     const [code0, out0] = await unedited();
-    const [code, out] = await snapshotCase(major);
-    expect(findings(out)).toEqual(findings(out0));
-    expect(code).toBe(code0);
+    const [, out] = await snapshotCase(major);
+    expect(catalogFindings(out)).toEqual(catalogFindings(out0));
+    expect(code0).toBe(0);
   });
 
   test("smoke: the lint process takes argv, exits 1 with the findings on stdout, and makes no network call", async () => {
