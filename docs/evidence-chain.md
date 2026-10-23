@@ -8,7 +8,7 @@ Every number in [`base_money/base_money.csv`](../base_money/base_money.csv) is b
 | `base_money/quarters/YYYYQn.md` | The quarter: total, per-issuer table (links to the issuer README, the FX table row and the adopted extract), what's left out, checks, overall audit notes, and the machine-readable arithmetic block; no source or archive URLs outside that block (failed archive attempts and rejected sources are lines under each extract) |
 | `base_money/issuers/<ISS>/README.md` | The issuer's static facts and a list of its year files |
 | `base_money/issuers/<ISS>/<YYYY>.md` | Append-only extracts per issuer and year, one `## YYYYQn` heading per quarter; each source's URLs, archive links, capture checks and caveats sit under its extract |
-| `base_money/FX/<YYYY>.md` | FX-rate extracts, one adopted rate per currency per quarter |
+| `base_money/FX/<YYYY>.md` | FX rate tables, one row per currency per quarter |
 | `base_money/README.md` | Every quarter file, with its date and total |
 | `catalog.json` | Series metadata, baskets and file paths |
 | `docs/methodology/` | How the numbers are defined and built |
@@ -27,7 +27,7 @@ Each extract quotes the bank's figure word for word, with `- Retrieved:`, `- Ori
 
 ## Audit trail
 
-Each quarter file's Audit trail records overall notes: the basket version, rejected sources and a short archiving note. Notes about a specific source (capture checks, caveats, link-audit findings) are appended under its extract in the year file.
+Each quarter file's Audit trail records overall notes: the basket version, any rejected source that belongs to no issuer, and a short archiving note. Notes about a specific source (capture checks, caveats, rejected sources, link-audit findings) are appended under its extract in the year file.
 
 ## Append-only and revisions
 

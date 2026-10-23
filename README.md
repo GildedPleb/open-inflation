@@ -1,4 +1,4 @@
-# open-inflation
+# Open Inflation
 
 Quarterly base money of the world's largest central banks, summed in US dollars, with every figure traceable to the bank's own published page.
 
@@ -34,7 +34,7 @@ The CSV has three columns: `date` (the quarter's last day), `value` (whole US do
 
 ## Quarterly base money
 
-US dollars, trillions (T), converted at each quarter-end exchange rate. The exact whole-dollar values are in the CSV. YoY is the change from the same quarter a year earlier.
+US dollars, trillions (T), converted at the market close on each report's count date. The exact whole-dollar values are in the CSV. YoY is the change from the same quarter a year earlier.
 
 <!-- BEGIN GENERATED table -->
 
@@ -56,7 +56,7 @@ Earlier quarters are added one at a time, newest first. We never estimate or fil
 ## How to check a number
 
 1. Click **Sources** on a quarter. You'll see each central bank's figure, the exchange rate used and the total, which matches the CSV.
-2. Under **Components**, click a central bank. You'll see the figure quoted word for word from the bank's release, and when it was retrieved.
+2. Click the USD amount in a bank's row. You'll see the figure quoted word for word from the bank's release, and when it was retrieved.
 3. Open the **Original URL** (the bank's own page) or one of its archived copies (archive.org, archive.today, Ghostarchive) and find the same figure.
 
 ## What "base money" means here
@@ -75,7 +75,7 @@ The basket is nine of the largest central banks. Together they cover most of the
 - **SNB**: Swiss National Bank
 - **RBI**: Reserve Bank of India
 - **CBR**: Bank of Russia
-- **BCB**: Banco Central do Brasil. It is left out of every quarter so far, because we haven't confirmed from Brazil's own pages how its figure is measured. Each quarter shows how much of the basket it covers (98.79% for 2026 Q2).
+- **BCB**: Banco Central do Brasil. It is left out of every quarter so far, because we haven't confirmed from Brazil's own pages how its figure is measured. Each quarter shows how much of the basket it covers.
 
 More banks will be added over time. Each row keeps the basket it was first published with.
 
@@ -92,12 +92,10 @@ More banks will be added over time. Each row keeps the basket it was first publi
 - **Code:** [MIT](LICENSE).
 - Quotes from central banks stay under each bank's own terms.
 
-Suggested citation: *open-inflation, base_money dataset, version [as shown above]. https://github.com/GildedPleb/open-inflation (accessed [date]). CC BY 4.0.*
+Suggested citation: *open-inflation, base_money dataset, version [the `version` in catalog.json]. https://github.com/GildedPleb/open-inflation (accessed [date]). CC BY 4.0.*
 
 ## More
 
+- [Docs](docs/README.md): every guide, for readers and contributors
 - [Full methodology](docs/methodology/base_money.md): definitions, exchange-rate rule, rounding, revisions and gaps
 - [Quarters](base_money/): every quarter, with its date and total
-- [How the evidence is organised](docs/evidence-chain.md)
-- [Versions and releases](docs/releases.md)
-- For contributors: [running the checks](docs/running.md) and [what the checks enforce](docs/lint.md)

@@ -22,7 +22,7 @@ Bun 1.4 and git ([Bun](https://bun.sh)). Lint reads the tree and its base commit
 ## Install
 
 ```sh
-bun install
+bun install --frozen-lockfile
 ```
 
 `bun install` may use the network. Nothing else in the merge gate does.
@@ -62,7 +62,7 @@ Offline unit tests of the software, with fixtures.
 bun test
 ```
 
-- It runs `tools/test/*.test.ts` and takes well under a second.
+- It runs `tools/test/*.test.ts` and takes about a second.
 - No test touches the network. Each test file imports `tools/test/no-network.ts` on its first line, which makes `fetch` throw.
 - A test fails if any test file leaves that import out. There is no `bunfig.toml`.
 - Tests that lint this repository lint a copy of its committed tree, never your working tree.
@@ -310,4 +310,4 @@ Code lives in `tools/` (`tools/scripts/`, `tools/test/`, `tools/tsconfig.json`).
 - `catalog.json`: the data catalog.
 - `base_money/`: the series CSV, the quarter list, one file per quarter, the quoted sources per central bank, and the exchange-rate sources.
 
-The `base_money/` paths are `base_money/base_money.csv`, `base_money/README.md`, `base_money/quarters/YYYYQn.md`, `base_money/issuers/<ISS>/<YYYY>.md` and `base_money/FX/<YYYY>.md`.
+The `base_money/` paths are `base_money/base_money.csv`, `base_money/README.md`, `base_money/quarters/YYYYQn.md`, `base_money/issuers/<ISS>/README.md`, `base_money/issuers/<ISS>/<YYYY>.md`, `base_money/FX/README.md` and `base_money/FX/<YYYY>.md`.

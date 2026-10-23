@@ -9,7 +9,7 @@
 
 ## What we measure
 
-SGS 20306 "Reserve Money - Monetary Authority" / "Passivo Monetário - Autoridade Monetária". Its convention is unconfirmed, so BCB is excluded from the total and counted only as a reference value for coverage; SGS 1788 is an alternative definition, never used. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
+SGS 20306 "Reserve Money - Monetary Authority" / "Passivo Monetário - Autoridade Monetária". Its convention is unconfirmed, so BCB is excluded from the total and counted only as a reference value for coverage; SGS 1788 is an alternative definition, never adopted. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
 ## Years
 
