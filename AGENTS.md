@@ -20,9 +20,11 @@ A quarterly time series, in U.S. dollars, of base money summed over a fixed bask
 
 | Path                            | Holds                                                                     |
 | ------------------------------- | ------------------------------------------------------------------------- |
-| `base_money/issuers/<ID>/<YYYY>.md` | One issuer's extracts for a year, one `## YYYYQn` heading per quarter     |
+| `base_money/issuers/<ID>/README.md` | The issuer's static facts (name, currency, website, adopted series) and a `## Years` list linking every year file |
+| `base_money/issuers/<ID>/<YYYY>.md` | One issuer's extracts for a year, one `## YYYYQn` heading per quarter; everything about a specific source (URLs, archive links, capture checks, caveats) sits under its extract |
+| `base_money/FX/README.md` | The FX sources and a `## Years` list linking every FX year file |
 | `base_money/FX/<YYYY>.md` | FX-rate extracts, one adopted rate per currency per quarter               |
-| `base_money/quarters/YYYYQn.md` | The quarter: summary, sources table, checks, audit trail and the fenced `yaml` machine block |
+| `base_money/quarters/YYYYQn.md` | The quarter: one-sentence total, three-link table, what's left out, checks, overall audit notes, the fenced `yaml` machine block and the failed-attempts block; no source or archive URLs outside those blocks |
 | `docs/methodology/`                  | The rules ([base_money.md](docs/methodology/base_money.md))                    |
 | `catalog.json`                  | Series, baskets (issuers and coverage floor) and dataset version          |
 | `base_money/README.md`            | Every quarter file, with its date and total                               |
@@ -32,11 +34,11 @@ A quarterly time series, in U.S. dollars, of base money summed over a fixed bask
 
 1. Read the [methodology](docs/methodology/base_money.md) and the [update cadence](docs/methodology/base_money.md#update-cadence).
 2. Work on a new branch from `main`.
-3. For each basket issuer, find the primary source for the quarter-end stock and add an extract under `## YYYYQn` in `base_money/issuers/<ID>/<YYYY>.md`, following the [Extract template](docs/methodology/base_money.md#extract-template), with the `- Original URL:`, the Wayback `- Archive URL:` the `- Archive URL 2:` line (archive.today) and the `- Archive URL 3:` line (Ghostarchive), each a capture or the recorded attempt.
+3. For each basket issuer, find the primary source for the quarter-end stock and add an extract under `## YYYYQn` in `base_money/issuers/<ID>/<YYYY>.md`, following the [Extract template](docs/methodology/base_money.md#extract-template), with the `- Original URL:`, the Wayback `- Archive URL:` the `- Archive URL 2:` line (archive.today) and the `- Archive URL 3:` line (Ghostarchive), each a capture or the recorded attempt. When you create a new year file, add it to the `## Years` list of that issuer's `README.md` (and of `base_money/FX/README.md` for a new FX year file); a new issuer gets its README from the issuer README template in the [roll-up template](docs/methodology/base_money.md#roll-up-template) section.
 4. Add the adopted FX extract for each non-USD currency in `base_money/FX/<YYYY>.md`, per the [FX rule](docs/methodology/base_money.md#fx-rule).
 5. Exclude any issuer you cannot source, with a reason and a reference-only extract, per [Coverage](docs/methodology/base_money.md#coverage).
 6. Write `base_money/quarters/YYYYQn.md` from the [roll-up template](docs/methodology/base_money.md#roll-up-template), apply the $1 rule, and append the CSV row.
-7. Fill the quarter file's Audit trail: sources considered and rejected, and a "Global 80% basis" section that links the reference global releases (links only, no global figure or share), for the [80%-of-global review gate](docs/methodology/base_money.md#coverage).
+7. Fill the quarter file's Audit trail with overall notes only: one sentence naming the basket version and linking [Global 80% basis](docs/methodology/base_money.md#global-80-basis) (where the reference global releases are linked, for the 80%-of-global review gate), the sources considered and rejected, and a short archiving note. The quarter file carries no source or archive URLs outside its machine and failed-attempts blocks: per-source notes (capture checks, caveats, link-audit findings) go under the extract in the year file.
 8. Run `bun run readme`: it regenerates the README table from the CSV, the roll-ups and the catalog (lint L13 fails if you skip it). Add the new quarter, with its date and total, to `base_money/README.md`.
 9. Bump the `catalog.json` `version` per [Versioning](docs/methodology/base_money.md#versioning): `0.1.0` becomes `1.0.0` with the first published row; a basket change appends a new `baskets` entry (never edits one) with a major bump and a git tag.
 10. Go through the [Checklist before a commit](docs/methodology/base_money.md#checklist-before-a-commit).

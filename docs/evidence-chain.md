@@ -5,8 +5,9 @@ Every number in `base_money.csv` is backed by an append-only chain of Markdown f
 | Path | What it is |
 | --- | --- |
 | `base_money.csv` | `date,value,evidence_id`: quarter-end date, integer USD, path to the quarterly roll-up |
-| `base_money/quarters/YYYYQn.md` | The quarter: total, per-issuer table with sources, checks, audit trail and the machine-readable arithmetic block |
-| `base_money/issuers/<ISS>/<YYYY>.md` | Append-only extracts per issuer and year, one `## YYYYQn` heading per quarter |
+| `base_money/quarters/YYYYQn.md` | The quarter: total, per-issuer table (links to the issuer README, the FX extract and the adopted extract), what's left out, checks, overall audit notes, the machine-readable arithmetic block and the failed-attempts block; no source or archive URLs outside those blocks |
+| `base_money/issuers/<ISS>/README.md` | The issuer's static facts and a list of its year files |
+| `base_money/issuers/<ISS>/<YYYY>.md` | Append-only extracts per issuer and year, one `## YYYYQn` heading per quarter; each source's URLs, archive links, capture checks and caveats sit under its extract |
 | `base_money/FX/<YYYY>.md` | FX-rate extracts, one adopted rate per currency per quarter |
 | `base_money/README.md` | Every quarter file, with its date and total |
 | `catalog.json` | Series metadata, baskets and file paths |
@@ -26,7 +27,7 @@ Each non-USD currency has one adopted quarter-end rate in `base_money/FX/<YYYY>.
 
 ## Audit trail
 
-Each quarter file's Audit trail records what was tried, including rejected sources and link audits.
+Each quarter file's Audit trail records overall notes: the basket version, rejected sources and a short archiving note. Notes about a specific source (capture checks, caveats, link-audit findings) are appended under its extract in the year file.
 
 ## Append-only and revisions
 

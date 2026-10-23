@@ -65,6 +65,10 @@ Basket v1 is nine issuers chosen 80/20: the smallest set of issuers that covers 
 
 **Rank 9.** BCB and the Hong Kong Monetary Authority are roughly tied at rank 9 in the selection research. BCB stays in basket v1 by user decision. HKMA is the first entry in [Candidate issuers](#candidate-issuers).
 
+### Global 80% basis
+
+Basket v1 was chosen to cover at least 80% of global base money, checked against these Porkopolis releases (cited as links only; none of their figures are used or recorded here): [Global Base Money Update #32, 2026 Q1](https://x.com/1basemoney/status/2085350744484454404) and [Global Base Money Update #31, 2025 Q4](https://x.com/1basemoney/status/2049034470582358193). Follow those links to reproduce the basket's share of the global total. The 2026Q1 and 2026Q2 quarter files were reviewed against these two releases. When the basket is changed or reviewed, the releases it was checked against are added here as labelled links; each quarter file names its basket version in one sentence that links this section.
+
 ### Coverage
 
 - **Coverage share** of a quarter = evidenced components USD ÷ (evidenced components USD + reference USD of each excluded issuer). Every term is computed from that quarter's own figures, each entry's USD (`local_value` × `fx_rate`, exact) rounded half-to-even to a whole dollar, and the ratio of those whole dollars is rounded **once**, half-to-even, to two decimals of a percent. With nothing excluded it is 100%. Every roll-up states it with the inputs that produce it, and its machine block records it as `coverage_pct`, with each excluded issuer's reference in `reference_values` (L9 requires both in every block and recomputes the coverage; see [Roll-up machine block](#roll-up-template)). Because the displayed shares are rounded, the coverage can differ by 0.01 from the sum of the displayed shares of the evidenced issuers. For 2026Q2 with BCB excluded, the coverage is 98.79% (98.786…), while the eight displayed shares sum to 98.78.
@@ -91,7 +95,7 @@ Basket v1 is nine issuers chosen 80/20: the smallest set of issuers that covers 
 - **Each roll-up records its basket version.** A machine block records the basket version it was computed under as `basket_version`, a plain YAML integer such as `1`. One rule covers when it is required (L9): `basket_version` is optional while the catalog lists exactly one basket, and an absent `basket_version` means basket 1; once the catalog lists more than one basket, every newly appended block must carry it, while blocks already committed on the lint base keep their implied version 1. Blocks appended earlier are never edited to add it (L4), so for them absent still means basket 1. The **last** machine block's `basket_version` is authoritative. The first line of the roll-up names the basket version too, for example "Basket v1 (dataset 1.0.0): …" (see [Roll-up template](#roll-up-template)), but it is descriptive: it is never edited in place. A Revision that moves the row to a newer basket states the new version in its prose.
 - **Real-time vintage, intended.** A quarter's basket is the one in force when that quarter was first published (a real-time vintage, ALFRED-style). So two quarters with the same evidence can end up on different baskets because one was first published before a basket change and one after; this is intended. A later basket change never retroactively blocks or alters an existing row, except through an appended `## Revision`.
 - **Which basket a Revision uses.** A Revision for any other reason (for example a revised BOJ figure) keeps the block's existing `basket_version` and is checked against that basket. Only a Revision that adds a newly evidenced issuer moves the row to the newer basket.
-- **Each quarter file names its basket version** (for example "basket v1", in its Global 80% basis section). When a row's basket version differs from the previous row's, the quarter file says so with this warning: "Rows on different basket versions are not strictly comparable; growth rates across a basket change are distorted."
+- **Each quarter file names its basket version** (for example "basket v1", in one sentence of its Audit trail that links [Global 80% basis](#global-80-basis)). When a row's basket version differs from the previous row's, the quarter file says so with this warning: "Rows on different basket versions are not strictly comparable; growth rates across a basket change are distorted."
 - **Existing rows stay.** On a basket major version, every row already in `base_money.csv` stays, with its value and its roll-up, as computed under its own basket version.
 - **A new issuer enters an existing quarter only through an appended `## Revision`**, once its figure for that quarter is evidenced (extract, new complete machine block, CSV value changed in the same commit; see [Revisions](#revisions)).
 - **Until then**, the quarter's roll-up gets an appended `## Note <YYYY-MM-DD>` section that reads "<ISS> not yet sourced; row remains basket v<N>." The note changes no value and adds no machine block.
@@ -259,7 +263,7 @@ Every link must be checked while keeping under each host's rate limit, so verify
 - **unconfirmed** (no verdict): web.archive.org was unreachable and the availability API did not list the exact timestamp in any form, or a Ghostarchive HTTP 200 page is neither a capture nor its error page (loading or in progress). It is logged `unconfirmed (…; no verdict)`.
 - **offline** (no verdict): archive.today or Ghostarchive gave no answer at all while no canary host answered either, so the network itself is down. It is logged `offline (<host> unreachable (…) and no canary host answered; no verdict)`.
 
-When any new archive.today URL was verified or left without a verdict, verify prints `archive.today (distinct URLs): N verified, M unverified (R rate-limited, B blocked)` and then each unverified URL, one per line, sorted; Ghostarchive gets the same shape, `ghostarchive (distinct URLs): N verified, M unverified (R rate-limited, B blocked)`. M counts every no-verdict URL of that archive; when some are unconfirmed or offline, the bracket ends `, U unconfirmed` or `, O offline` (both, in that order, when both occur). Both lines, and the `L8 checking N distinct new archive URLs` line verify starts with, count distinct URLs: a URL cited by several extracts is checked, and counted, once. Findings are not counted in either line. When any link has no verdict, verify prints a `verify: INCOMPLETE:` line with the counts. It exits `0` when clean, `1` with findings (whether or not other links have no verdict), `2` on a usage or other error, and `3` when incomplete: no findings, but some links have no verdict. The researcher opens each rate-limited, blocked, unconfirmed or offline link in a browser, where possible, and confirms it shows the source's content, as part of archiving, and records each confirmation (archive, capture id, date, what it shows) in the quarter file's Audit trail, `base_money/quarters/<YYYY>Q<n>.md`. Every Ghostarchive capture is made by hand, and is confirmed in that log when it is made. When the network itself blocks the links (archive.today serves a CAPTCHA to some datacenter IP addresses, which no pacing clears), verify is re-run from another network. A made-up capture id is caught only by this browser check; it is not repeated in PR review.
+When any new archive.today URL was verified or left without a verdict, verify prints `archive.today (distinct URLs): N verified, M unverified (R rate-limited, B blocked)` and then each unverified URL, one per line, sorted; Ghostarchive gets the same shape, `ghostarchive (distinct URLs): N verified, M unverified (R rate-limited, B blocked)`. M counts every no-verdict URL of that archive; when some are unconfirmed or offline, the bracket ends `, U unconfirmed` or `, O offline` (both, in that order, when both occur). Both lines, and the `L8 checking N distinct new archive URLs` line verify starts with, count distinct URLs: a URL cited by several extracts is checked, and counted, once. Findings are not counted in either line. When any link has no verdict, verify prints a `verify: INCOMPLETE:` line with the counts. It exits `0` when clean, `1` with findings (whether or not other links have no verdict), `2` on a usage or other error, and `3` when incomplete: no findings, but some links have no verdict. The researcher opens each rate-limited, blocked, unconfirmed or offline link in a browser, where possible, and confirms it shows the source's content, as part of archiving, and records each confirmation (archive, capture id, date, what it shows) under its extract in the issuer year file (or `base_money/FX/<YYYY>.md`), as an appended `- Capture check:` line next to the extract's archive links. Every Ghostarchive capture is made by hand, and is confirmed there when it is made. When the network itself blocks the links (archive.today serves a CAPTCHA to some datacenter IP addresses, which no pacing clears), verify is re-run from another network. A made-up capture id is caught only by this browser check; it is not repeated in PR review.
 
 The other bullets below are not parsed by lint but are required by this methodology. Do not start any other bullet with the words "Retrieved", "Original URL" or "Archive URL". Every `###` title in a file must be unique (include the release or vintage date), so its anchor can be cited in `adopted_conflicts`. Lines outside a `###` block are allowed only for the `#` title and the `##` quarter headings.
 
@@ -277,7 +281,7 @@ Sources degrade: pages move, files are replaced, archives lose captures. A link 
 - **What the script checks.** It re-checks every Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the repository by HTTP status and content, paced per host as verify is (see [Extract template](#extract-template)), and classifies each as ok (resolves, same content as the last saved copy), changed (resolves, but its content differs from the last saved copy, or it redirects to a different URL), lost, or no verdict. A link is lost only on HTTP 404 or 410, or when its host name does not exist (DNS ENOTFOUND) while a canary host still answers. Everything else that does not resolve is no verdict: rate-limited (a 429 or 503 still there when pacing gives up; a 429 is never a verdict), blocked (a challenge or CAPTCHA, or a 403), a Ghostarchive page that is its `Archiving error` page or not yet a capture (loading or in progress), any other HTTP status, a timeout or any other network error. Each no-verdict link is reported with its HTTP status or error code. With no network, however the requests fail (a resolver timeout, a hanging resolver, a name not found), no canary answers and every link is offline, no verdict, so an offline run loses nothing; once no canary answers, requests go out without pacing waits until a link answers again, so an offline run ends at once instead of waiting out each host's interval. A no-verdict link is retried at the next audit. The script does not judge whether a figure is still shown. It exits `3` (incomplete) when any link has no verdict, and prints an `audit: INCOMPLETE:` line counting them by reason (rate-limited, blocked, unconfirmed, Ghostarchive error page, offline, other); `0` when every link got a verdict, whatever it found; and `2` on a usage, repository or store error.
 - **What the researcher checks.** For every changed link, the researcher opens it and records whether it still shows the figure used: if it does, the link is ok; if not, it is degraded.
 - **Remains.** The script saves whatever still resolves with a verdict (a no-verdict page, such as a Ghostarchive error page, is not saved) to a local store outside the repository, on Assay's computer (default `~/open-inflation-archive/`). Those copies are private, never committed or published; how to persist them more durably is the user's decision, made when it is needed.
-- **Findings.** Assay appends the findings, never editing in place, to the quarter file's Audit trail (`base_money/quarters/<YYYY>Q<n>.md`) under `### Link audit <YYYY-MM-DD>`: for each degraded or lost link, the extract it belongs to, its status, and what still remains (for example, "Original 404; Wayback capture intact; archive.today capture intact; Ghostarchive capture intact"). A lost link is recorded only from a run in which the network was up. A link that cannot be found again is recorded as lost, and that is the end of it: nothing is reconstructed or filled in.
+- **Findings.** Assay appends the findings, never editing in place, under the extract each link belongs to (in the issuer year file, or `base_money/FX/<YYYY>.md`), as a `- Link audit <YYYY-MM-DD>:` line: for each degraded or lost link, its status and what still remains (for example, "Original 404; Wayback capture intact; archive.today capture intact; Ghostarchive capture intact"). A lost link is recorded only from a run in which the network was up. A link that cannot be found again is recorded as lost, and that is the end of it: nothing is reconstructed or filled in.
 - **Report.** After each audit, Assay tells the user in its Grok Bot chat: the counts (ok, degraded, lost, no verdict), each degraded or lost source with what remains, and each link that has stayed no verdict, which is retried at the next audit.
 - An audit never changes a value. If the remains no longer support a figure, that is handled as a [revision](#revisions) or a [gap](#gaps-policy), never by editing the extract.
 
@@ -358,9 +362,34 @@ One roll-up per quarter, only at `base_money/quarters/<YYYY>Q<n>.md`. It has no 
 
 Each basket issuer appears exactly once across `components` and `exclusions`, never in both. Exactly-once is checked against the basket of the version recorded in the block's `basket_version` (absent means 1), its entry in the catalog's `baskets`, not the newest catalog basket; see [Rows across basket versions](#rows-across-basket-versions). L9 enforces, in every machine block: the exclusions shape (`issuer` and `reason` both required); `components` ∪ `exclusions` equal to that basket, each issuer exactly once, never in both, none outside the basket; `reference_values` naming exactly the excluded issuers, once each; an FX extract for every non-USD currency in `components` and `reference_values`; `coverage_pct` equal to the recomputed coverage; and the coverage floor, comparing the exact ratio of the whole-dollar figures (before display rounding) with the basket's `floor_pct`. L7 compares the Original URL with the archived URL percent-decoded (a Wayback `%2F` matches `/`). The 80%-of-global check stays a review gate, and the warning stays prose.
 
-Anchors are GitHub's lowercase slugs: `## 2026Q2` is `#2026q2`, and a `###` extract title gives its own slug. Machine-block anchors are root-relative and point at the quarter heading; they keep the `issuers/<ISS>/<YYYY>.md#<yyyy>q<n>` form, which names the file now at `base_money/issuers/<ISS>/<YYYY>.md`, until lint is updated (committed machine blocks never change). FX anchors likewise name the file now at `base_money/FX/<YYYY>.md`. The Markdown links in the body are relative to the quarter file (`../issuers/<ISS>/<YYYY>.md#...`, `../FX/<YYYY>.md#...`) and point at the **exact `###` extract adopted** (its title slug). Every link must resolve (lint L5), and `base_money/README.md` must link every quarter file with its date and total (lint L6). Quote `local_value`, `fx_rate` and `total_usd` as strings so YAML does not turn them into floats.
+Anchors are GitHub's lowercase slugs: `## 2026Q2` is `#2026q2`, and a `###` extract title gives its own slug. Machine-block anchors are root-relative and point at the quarter heading; they keep the `issuers/<ISS>/<YYYY>.md#<yyyy>q<n>` form, which names the file now at `base_money/issuers/<ISS>/<YYYY>.md`, until lint is updated (committed machine blocks never change). FX anchors likewise name the file now at `base_money/FX/<YYYY>.md`. The Markdown links in the body are relative to the quarter file. Each table row has **three links**: the Issuer cell links the issuer's README (`../issuers/<ISS>/README.md`), with the issuer's full name as its text; the FX rate cell links the adopted FX extract (`../FX/<YYYY>.md#<extract-title-slug>`; the Fed row has no FX link); and the USD cell links the **exact `###` extract adopted** (`../issuers/<ISS>/<YYYY>.md#<extract-title-slug>`). The local amount is not linked. Notes elsewhere in the file link year-file extract anchors the same way. Every link must resolve (lint L5), and `base_money/README.md` must link every quarter file with its date and total (lint L6). Quote `local_value`, `fx_rate` and `total_usd` as strings so YAML does not turn them into floats.
 
 The template below shows a quarter with BCB excluded, as it stands in basket v1. When BCB is evidenced, it gets its table row (SGS 20306 Reserve Money - Monetary Authority, BRL, BRL per USD), its Components link and its machine-block component, and the coverage line reads 100% with no exclusions.
+
+**What a quarter file holds.** Only overall research notes: the one-sentence total, the three-link table, short notes on what's left out and why, cross-issuer conflicts and checks, quarter-level judgement calls (rejected sources, the basket sentence), one short archiving note, and the machine and failed-attempts blocks. Outside those two blocks it contains **no source or archive URLs**: it reaches every source through the USD and FX links. There is no Sources table and no supporting-sources table. Anything about a specific source (its URLs, archive links, capture checks, per-source caveats such as encoding issues or failed loads, link-audit findings) lives under that source's extract in the issuer year file (FX in `base_money/FX/<YYYY>.md`). A confirming, alternative-definition or reference-only source is an extract there too, and a note in the quarter file links its anchor.
+
+**Issuer README.** Each issuer folder has `base_money/issuers/<ISS>/README.md` with only static facts that are not expected to change: the official name (and native-language name where relevant), the country or currency area, the currency and its ISO code, a one-line description, labelled links to the official website and to the stable data pages the extracts use, the adopted series with a link to [Per-issuer definitions](#per-issuer-definitions), and a final `## Years` list linking every year file. No officials' names, figures or balances. The only part that changes is the Years list: adding a year file adds it there. `base_money/FX/README.md` is the same, minimal: the FX sources and the Years list.
+
+<!-- template: issuer README -->
+
+```markdown
+# <Common name> (<ISS>)
+
+- **Official name:** <full name> (<native-language name, where relevant>)
+- **Country or currency area:** <country or area>
+- **Currency:** <currency name>, <ISO 4217 code>
+- **What it is:** <one line, from the bank's own site or its founding law>
+- **Official website:** [<label>](<homepage URL>)
+- **Data pages used here:** [<label>](<stable data page URL>), …
+
+## What we measure
+
+<Adopted series name>, per [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
+
+## Years
+
+- [<YYYY>](<YYYY>.md)
+```
 
 <!-- template: roll-up -->
 
@@ -371,18 +400,12 @@ On <D Month YYYY>, base money across the <eight> central banks we could fully so
 
 | Issuer | What was measured | Local amount | FX rate, <D Mon YYYY> | USD |
 | :----- | :---------------- | -----------: | -------------------: | --: |
-| [People's Bank of China](../issuers/PBOC/<YYYY>.md#<extract-title-slug>) | Reserve money, end of <month> | CNY <local_value, separated> | [<quote> CNY per USD](../FX/<YYYY>.md#<extract-title-slug>) | $<USD, separated> |
-| [Federal Reserve](../issuers/FED/<YYYY>.md#<extract-title-slug>) | Monetary base, <month> average (not seasonally adjusted) | USD <local_value> | none (already USD) | $<USD> |
+| [People's Bank of China](../issuers/PBOC/README.md) | Reserve money, end of <month> | CNY <local_value, separated> | [<quote> CNY per USD](../FX/<YYYY>.md#<extract-title-slug>) | [$<USD, separated>](../issuers/PBOC/<YYYY>.md#<extract-title-slug>) |
+| [Federal Reserve](../issuers/FED/README.md) | Monetary base, <month> average (not seasonally adjusted) | USD <local_value> | none (already USD) | [$<USD>](../issuers/FED/<YYYY>.md#<extract-title-slug>) |
 | <one row per evidenced issuer, in basket order: ECB, BOJ, BOE, SNB, RBI, CBR> | | | | |
 | **Total** | | | | **$<total_usd>** |
 
-<One short paragraph: each USD figure is the local amount × the FX rate, rounded half-to-even to the dollar; the total is their sum; which FX sources were used.>
-
-## Sources
-
-| Issuer | Figure it backs | Original | Wayback | archive.today | Ghostarchive |
-| :----- | :-------------- | :------- | :------ | :------------ | :----------- |
-| <issuer> | <the figure as printed, with its unit> | [<publisher and document, date>](<Original URL>) | [<capture date>](<Archive URL>) | [capture](<Archive URL 2>) or "not captured (<reason>)" | [capture](<Archive URL 3>) or "not captured (<reason>)" |
+<One short paragraph: each USD figure is the local amount × the FX rate, rounded half-to-even to the dollar; the total is their sum; click an issuer for the bank's basic facts, a USD figure for the exact quote it comes from, and a rate for the exchange-rate source; which FX sources were used.>
 
 ## What's left out
 
@@ -394,27 +417,15 @@ On <D Month YYYY>, base money across the <eight> central banks we could fully so
 
 ## Audit trail
 
-### Supporting sources (read, not summed)
-
-<The same table as Sources, for confirming, alternative-definition and reference-only extracts.>
+Basket v<N>; see [basket coverage](../../docs/methodology/base_money.md#global-80-basis).
 
 ### Sources considered and rejected
 
-<One bullet per rejected source and why; open items.>
-
-### Global 80% basis
-
-<Labelled links to the reference global releases; links only, no figure or share.>
-
-### What each Ghostarchive capture shows
-
-<One bullet per capture: a labelled link and the figure it was checked to show.>
+<One bullet per rejected source and why: quarter-level judgement calls, no URLs (each is also in the failed-attempts block).>
 
 ### Archiving note
 
-<One short paragraph: when sources were archived, what failed and was recorded as attempted, and reuse of earlier captures. No tooling or CI narrative.>
-
-<Appended later, never edited: ### Link audit <YYYY-MM-DD> sections.>
+<One short paragraph on the quarter as a whole: when sources were archived and when the archive links were last checked. Per-source details (archive links, capture checks, caveats, failed attempts, link-audit findings) go under the extract in the year file, never here.>
 
 ## Machine block
 
@@ -555,7 +566,8 @@ An example FED extract under `## 2026Q2` of `base_money/issuers/FED/2026.md`. Th
 - Each excluded issuer's reference value follows the [Coverage](#coverage) rules: the adopted series (or the named closest headline series, unless an issuer-specific rule in [Coverage](#coverage) names the series), a period inside the quarter, the latest by period from the vintage visible at retrieval, and the quarter-end FX rate.
 - The roll-up follows the [Roll-up template](#roll-up-template). Every basket issuer appears exactly once, in `components` or in `exclusions` as `{issuer, reason}`, never in both. Each excluded issuer has a reference-only extract. Every USD value is a whole dollar (the [$1 rule](#rounding)), and the coverage is computed from those whole-dollar values. The coverage share is at or above the floor and stated, with the warning when anything is excluded. Every `yaml` block in the roll-up is valid on its own, nothing committed was edited, and the last block's `total_usd` equals the CSV value.
 - Each of the quarter's allowed exclusions is re-checked against the floor on that quarter's own figures: the quarter's coverage share, with all its exclusions together, is computed from its own extracts and must clear the floor, whatever an earlier quarter's figures showed.
-- The 80%-of-global review gate passes: the quarter file's Audit trail (`base_money/quarters/<YYYY>Q<n>.md`) has a "Global 80% basis" section that links the reference global releases (links only, no figure or share recorded), and the reviewer judges from those links that the evidenced issuers cover at least 80% of global base money. Passing the lint floor (`floor_pct`, 94% of the basket) does not replace this check.
+- The 80%-of-global review gate passes: the quarter file names its basket version and links [Global 80% basis](#global-80-basis), which links the reference global releases the basket was checked against (links only, no figure or share recorded), and the reviewer judges from those links that the evidenced issuers cover at least 80% of global base money. Passing the lint floor (`floor_pct`, 94% of the basket) does not replace this check.
 - `base_money/README.md` lists the quarter with its date and total and records any gap; the quarter file names its basket version and carries any coverage note.
 - The four CI steps are clean: `bun run check`, `bun run typecheck`, `bun test` and `bun run lint --base origin/main`.
-- Sources considered and rejected are logged in the quarter file's Checks section or its Audit trail (research standard 8). There is no separate research log; everything about a quarter is in `base_money/quarters/<YYYY>Q<n>.md`.
+- Sources considered and rejected are logged in the quarter file's Checks section or its Audit trail (research standard 8). There is no separate research log: overall notes about a quarter are in `base_money/quarters/<YYYY>Q<n>.md`, and everything about a specific source is under its extract in the year file.
+- The quarter file has no source or archive URLs outside its machine and failed-attempts blocks; its table has the three links (issuer README, FX extract, USD extract). Every issuer in the quarter has `base_money/issuers/<ISS>/README.md`, and its Years list links every year file, the new one included.
