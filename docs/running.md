@@ -8,9 +8,9 @@ For contributors. Run every command from the repository root.
 |---|---|---|---|---|
 | `bun test` | Unit tests of the tools | Before every push | Yes | Never |
 | `bun run typecheck` and `bun run check` | TypeScript types; Biome format and code lint | Before every push | Yes | Never |
-| `bun run lint --base origin/main` | Checks the data files against a base commit | Before every push | Yes | Never |
+| `bun run lint` | Checks the data files against a base commit | Before every push | Yes | Never |
 | `bun run readme` | Rewrites the generated README parts | After adding a quarter | Through lint L13 | Never |
-| `bun run verify --base origin/main` | Checks each archive URL your change adds | While archiving new sources | No | Yes |
+| `bun run verify` | Checks each archive URL your change adds | While archiving new sources | No | Yes |
 | `bun run audit` | Re-checks every link and keeps private copies | When re-checking links | No | Yes |
 
 CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check` and `bun run lint` on every push and pull request. CI never runs `verify` or `audit`.
@@ -76,7 +76,7 @@ Checks the working tree against a base commit. What each check enforces is in [W
 
 ```sh
 git fetch origin main
-bun run lint --base origin/main
+bun run lint
 ```
 
 - Lint makes no network calls, ever.
@@ -91,9 +91,9 @@ The base is the first of these that applies:
 | `--base <ref>` given | That ref. A ref of all zeros means no base. |
 | A GitHub push to any branch but `main` | The merge-base of `HEAD` and `origin/main`, so a branch is linted against what it diverged from. Exit 2 if it cannot be found. |
 | `$LINT_BASE` set | That commit. All zeros means no base. CI passes the PR base on a pull request, and `github.event.before` on a push to `main`. |
-| Otherwise | `HEAD`, or no base in a repository with no commits. |
+| Otherwise (locally) | The merge-base of `HEAD` and `origin/main`, so a branch is checked against what it diverged from. When that is `HEAD` itself (you are on `main`) or there is no `origin/main`, `HEAD~1`, so the last commit is checked. `HEAD` for a lone root commit, and no base in a repository with no commits. |
 
-A GitHub push means `GITHUB_EVENT_NAME=push`, and `GITHUB_REF` is not `refs/heads/main`.
+A GitHub push means `GITHUB_EVENT_NAME=push`, and `GITHUB_REF` is not `refs/heads/main`. Lint prints the base it chose and why on stderr. An explicit `--base` that resolves to `HEAD` compares the tree with its own commit, so only uncommitted changes count; lint says so on stderr.
 
 | Exit | Meaning |
 |---|---|
@@ -126,7 +126,8 @@ bun run readme
 Checks that each archive URL your change adds really holds a capture.
 
 ```sh
-bun run verify --base origin/main
+git fetch origin main
+bun run verify
 ```
 
 - It is a local research script. It is not a merge gate and never runs in CI.
