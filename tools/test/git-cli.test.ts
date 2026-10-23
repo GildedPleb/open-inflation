@@ -212,11 +212,11 @@ describe("repository identity", () => {
     expect(readme).toContain("[CC BY 4.0](LICENSE-DATA)");
     expect(readme).toContain("Quotes from central banks stay under each bank's own terms.");
   });
-  test("docs: git is a requirement, lint.md covers L1-L13, the network claim names both endpoints", async () => {
+  test("docs: git is a requirement, lint.md covers L1-L15, the network claim names both endpoints", async () => {
     const running = await Bun.file(join(ROOT, "docs", "running.md")).text();
     const rules = await Bun.file(join(ROOT, "docs", "lint.md")).text();
     expect(running).toMatch(/^Bun 1\.4 and git\b/m);
-    for (let i = 1; i <= 13; i++) expect(rules).toMatch(new RegExp(`^### L${i}\n\n\\S`, "m"));
+    for (let i = 1; i <= 15; i++) expect(rules).toMatch(new RegExp(`^### L${i}\n\n\\S`, "m"));
     expect(running).toContain("https://web.archive.org/web/");
     expect(running).toContain("https://archive.org/wayback/available");
     // #18: L8 in lint makes no network calls; the link check is `bun run verify`.
@@ -431,6 +431,23 @@ describe("CLI", () => {
       stdout: "lint: clean (base HEAD)\n",
       out: "lint: clean (base HEAD)\n",
     });
+  });
+  test("locally on origin/main the default base is HEAD~1, and an explicit base equal to HEAD gets a note", async () => {
+    const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });
+    git(dir, "init", "-q", "--template=");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "first");
+    const first = git(dir, "rev-parse", "HEAD");
+    git(dir, "commit", "-q", "--allow-empty", "-m", "second");
+    const head = git(dir, "rev-parse", "HEAD");
+    git(dir, "update-ref", "refs/remotes/origin/main", head);
+    // The bare repo has L6/L11 findings; only the base lines matter here.
+    expect((await cli(dir)).out).toContain(`lint: base ${first} (HEAD~1 (HEAD is on origin/main))\n`);
+    const explicit = await cli(dir, ["--base", "origin/main"]);
+    expect(explicit.out).toContain(
+      "lint: note: base origin/main is HEAD itself, so only uncommitted changes count as new",
+    );
+    expect((await cli(dir, ["--base", first])).out).not.toContain("lint: note:");
   });
   test("a push to a branch lints against merge-base(HEAD, origin/main), not event.before", async () => {
     const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });

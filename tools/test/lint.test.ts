@@ -3781,18 +3781,10 @@ describe("L7 defined line types and superseded conversions", () => {
     ));
   test("an undefined `- <Label>:` line fails", () =>
     fails(good(withLines("- Archive check: fine.")), ["L7"], /"- Archive check:" is not a defined line type/));
-  test("in an append-only extract file only added lines are checked (committed lines cannot be reworded)", async () => {
+  test("committed lines are checked too (committed text is freely editable)", () => {
     const old = (goodText()[FED] as string).replace("- Adopted: yes", "- Archive check: committed.\n- Adopted: yes");
     const base = files(goodText(), { [FED]: old });
-    await passes({ files: base, base });
-    await fails(
-      {
-        files: files(goodText(), { [FED]: old.replace("- Adopted: yes", "- Archive check: new.\n- Adopted: yes") }),
-        base,
-      },
-      ["L7"],
-      /line \d+: "- Archive check:"/,
-    );
+    return fails({ files: base, base }, ["L7"], /line \d+: "- Archive check:"/);
   });
   const oldRate = (note?: string) =>
     good({
@@ -3805,6 +3797,8 @@ describe("L7 defined line types and superseded conversions", () => {
     fails(oldRate(), ["L7"], /convert at an older rate/));
   test("with a dated superseded note they pass", () =>
     passes(oldRate("- Note 2026-10-23: the USD conversion above is superseded; see the FX table.")));
+  test("a dated note that the conversion above is not used also passes", () =>
+    passes(oldRate("- Note 2026-10-23: the USD conversion above is not used; it is for reading only.")));
 });
 
 describe("L9 an FX year file is a table with at most a one-line preamble", () => {
@@ -3833,21 +3827,20 @@ describe("L15 evidence wording", () => {
         ["L15"],
         /is process narrative/,
       ));
-  test("in an append-only extract file only added lines count", async () => {
+  test("committed lines count too (committed text is freely editable)", () => {
     const old = (goodText()[FED] as string).replace("synthetic fixture", "synthetic fixture (PR #2)");
     const base = files(goodText(), { [FED]: old });
-    await passes({ files: base, base });
-    await fails(
-      {
-        files: files(goodText(), {
-          [FED]: old.replace("- Adopted: yes", "- Note 2026-10-23: Probe said so.\n- Adopted: yes"),
-        }),
-        base,
-      },
-      ["L15"],
-      /"Probe" is process narrative/,
-    );
+    return fails({ files: base, base }, ["L15"], /"PR #2" is process narrative/);
   });
+  test("verbatim source quotes are exempt: > quote lines and text blocks", () =>
+    passes(
+      good({
+        [ROLLUP]: (goodText()[ROLLUP] as string).replace(
+          "## Machine block",
+          "> Quoted: see PR #12.\n\n```text\nProbe checked this.\n```\n\n## Machine block",
+        ),
+      }),
+    ));
   const rejected = (bullet: string, extra: string[] = []) =>
     good({
       [ROLLUP]: (goodText()[ROLLUP] as string).replace(

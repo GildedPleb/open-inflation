@@ -1,4 +1,4 @@
-// All integrity checks (L1-L12 in WP1_REQUIREMENTS, L13 in WP_FRONTPAGE_REQUIREMENTS). Pure over a Snapshot: no network, no I/O. L8's link check
+// All integrity checks, L1-L15 (docs/lint.md). Pure over a Snapshot: no network, no I/O. L8's link check
 // (HEAD on each new archive URL) is not here; it is `bun run verify` (lib/verify.ts), run locally, never in CI.
 import { posix } from "node:path";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
@@ -2441,25 +2441,6 @@ export const DOCS_INDEX = "docs/README.md";
 export const AGENTS = "AGENTS.md";
 const isDoc = (p: string) => p === AGENTS || (p.startsWith("docs/") && p.endsWith(".md"));
 
-/**
- * The 1-based line numbers of `body` that L7's line-type rule and L15 read: every line, except in an append-only
- * issuer extract file, where only the lines the diff adds count (committed lines can never be reworded; L4).
- */
-function newLines(ctx: Ctx, p: string, body: string): Set<number> {
-  const all = body.split("\n");
-  const old = isExtract(p) ? baseOf(ctx, p) : undefined;
-  if (old === undefined) return new Set(all.map((_, i) => i + 1));
-  const left = new Map<string, number>();
-  for (const l of old.split("\n")) left.set(l, (left.get(l) ?? 0) + 1);
-  const out = new Set<number>();
-  all.forEach((l, i) => {
-    const n = left.get(l) ?? 0;
-    if (n > 0) left.set(l, n - 1);
-    else out.add(i + 1);
-  });
-  return out;
-}
-
 // ---------- L14 docs agree with the rules ----------
 
 /** Phrases for retired concepts: none may appear in README.md, AGENTS.md or docs/** (docs/lint.md names them). */
@@ -2602,12 +2583,12 @@ export const NARRATIVE = [
 function evidenceWording(ctx: Ctx, emit: Emit) {
   for (const [p, body] of [...ctx.text].sort(([a], [b]) => a.localeCompare(b))) {
     if (!p.startsWith(EVIDENCE_ROOT) || !p.endsWith(".md")) continue;
-    const fresh = newLines(ctx, p, body);
-    let yaml = false;
+    // Verbatim source quotes are exempt: `>` quote lines and ```text blocks. Every other line counts, committed or not.
+    let quote = false;
     for (const l of lines(body)) {
-      if (l.fence === "open") yaml = l.info === "yaml" || l.info === "yml";
-      if (l.fence === "close") yaml = false;
-      if (yaml || !fresh.has(l.line)) continue;
+      if (l.fence === "open") quote = l.info === "text";
+      if (l.fence === "close") quote = false;
+      if (l.fence === "open" || l.fence === "close" || quote || /^\s*>/.test(l.text)) continue;
       const hit = NARRATIVE.map((r) => r.exec(l.text)?.[0]).find((x) => x !== undefined);
       if (hit)
         emit(
@@ -2652,18 +2633,18 @@ const LINE_LABEL =
   /^(?:Retrieved|Original URL|Archive URL(?: [23])?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Notes|Rejected source|Re-archive|Archive attempt\b.*|Link audit\b.*|Note \d{4}-\d{2}-\d{2}|Capture check(?: \(.*)?)$/;
 /** A Notes line that converts at a rate other than the quarter's FX table row. */
 const OLD_CONVERSION = /H\.10|official rate|quarter-end rate/i;
-const SUPERSEDED_NOTE = /^- Note \d{4}-\d{2}-\d{2}:.*\bsuperseded\b/i;
+/** A dated Note retiring the older conversion: it says the conversion is superseded, or that it is not used. */
+const SUPERSEDED_NOTE = /^- Note \d{4}-\d{2}-\d{2}:.*(\bsuperseded\b|\bconversion above is not used\b)/i;
 
 function extractLines(ctx: Ctx, emit: Emit) {
   for (const [p, body] of issuerTexts(ctx.text)) {
-    const fresh = newLines(ctx, p, body);
     let block: { title: string; line: number; notes: number | null; superseded: boolean } | null = null;
     const close = () => {
       if (block?.notes != null && !block.superseded)
         emit(
           "L7",
           p,
-          `extract "${block.title}" (line ${block.line}): its Notes (line ${block.notes}) convert at an older rate (H.10, official or quarter-end rate); append a "- Note <YYYY-MM-DD>: … superseded …" line pointing at the FX table`,
+          `extract "${block.title}" (line ${block.line}): its Notes (line ${block.notes}) convert at an older rate (H.10, official or quarter-end rate); append a "- Note <YYYY-MM-DD>: … superseded …" (or "… conversion above is not used …") line pointing at the FX table`,
         );
     };
     for (const l of lines(body)) {
@@ -2678,7 +2659,7 @@ function extractLines(ctx: Ctx, emit: Emit) {
       if (/^- Notes:/.test(l.text) && OLD_CONVERSION.test(l.text)) block.notes = l.line;
       if (SUPERSEDED_NOTE.test(l.text)) block.superseded = true;
       const lab = /^[-*]\s+([^:]+):/.exec(l.text);
-      if (lab && fresh.has(l.line) && !LINE_LABEL.test((lab[1] as string).trim()))
+      if (lab && !LINE_LABEL.test((lab[1] as string).trim()))
         emit(
           "L7",
           p,
