@@ -1,10 +1,10 @@
 # How the evidence is organised
 
-Every number in `base_money.csv` is backed by an append-only chain of Markdown files. Heavy artifacts stay external (archive.org, archive.today and Ghostarchive); this repository holds only text, and no source is ever self-hosted.
+Every number in [`base_money/base_money.csv`](../base_money/base_money.csv) is backed by an append-only chain of Markdown files. Heavy artifacts stay external (archive.org, archive.today and Ghostarchive); this repository holds only text, and no source is ever self-hosted.
 
 | Path | What it is |
 | --- | --- |
-| `base_money.csv` | `date,value,evidence_id`: quarter-end date, integer USD, path to the quarterly roll-up |
+| `base_money/base_money.csv` | `date,value,evidence_id`: quarter-end date, integer USD, repo-root path to the quarterly roll-up |
 | `base_money/quarters/YYYYQn.md` | The quarter: total, per-issuer table (links to the issuer README, the FX extract and the adopted extract), what's left out, checks, overall audit notes, the machine-readable arithmetic block and the failed-attempts block; no source or archive URLs outside those blocks |
 | `base_money/issuers/<ISS>/README.md` | The issuer's static facts and a list of its year files |
 | `base_money/issuers/<ISS>/<YYYY>.md` | Append-only extracts per issuer and year, one `## YYYYQn` heading per quarter; each source's URLs, archive links, capture checks and caveats sit under its extract |

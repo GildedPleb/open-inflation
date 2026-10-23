@@ -2,7 +2,7 @@
   "series": [
     {
       "id": "base_money",
-      "path": "base_money.csv",
+      "path": "base_money/base_money.csv",
       "unit": "USD",
       "frequency": "quarterly",
       "methodology": "docs/methodology/base_money.md",

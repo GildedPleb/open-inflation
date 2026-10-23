@@ -1,9 +1,9 @@
-// The README's generated blocks (latest, table, yoy-notes) and the quarter list (paths.ts QUARTER_LIST), built from base_money.csv,
+// The README's generated blocks (latest, table, yoy-notes) and the quarter list (paths.ts QUARTER_LIST), built from base_money/base_money.csv,
 // each roll-up's current machine block and catalog.json. Pure over the repo's text: no I/O. `bun run readme` writes
 // them (scripts/readme.ts); lint (L13) fails when the committed files differ from what this would produce.
 import { machines } from "./checks.ts";
 import { type Decimal, ratioHalfEven, roundHalfEven } from "./decimal.ts";
-import { extractOf, folderReadmeOf, QUARTER_LIST, relLink } from "./paths.ts";
+import { CSV_PATH, extractOf, folderReadmeOf, QUARTER_LIST, relLink } from "./paths.ts";
 
 export const README = "README.md";
 export { QUARTER_LIST as EVIDENCE_INDEX } from "./paths.ts";
@@ -114,7 +114,7 @@ function catalogOf(text: Texts): Catalog | null {
 
 /** The CSV rows, oldest first, with their roll-ups' current blocks; null when any input cannot be read (L1/L2/L9). */
 export function quarters(text: Texts): Quarter[] | null {
-  const csv = text.get("base_money.csv");
+  const csv = text.get(CSV_PATH);
   if (csv === undefined) return null;
   const out: Quarter[] = [];
   for (const line of csv.split("\n").slice(1)) {

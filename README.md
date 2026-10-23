@@ -10,14 +10,14 @@ Updated 23 Oct 2026 · dataset version 1.1.0 · next quarter: 2026 Q3
 
 <!-- END GENERATED latest -->
 
-**Download:** [base_money.csv](base_money.csv) · raw file for Excel, Sheets or Python: `https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money.csv`
+**Download:** [base_money/base_money.csv](base_money/base_money.csv) · [Raw CSV (for loaders)](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/base_money.csv): `https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/base_money.csv`
 
 <details>
 <summary>Load it in a spreadsheet or Python</summary>
 
-- Google Sheets: `=IMPORTDATA("https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money.csv")`
+- Google Sheets: `=IMPORTDATA("https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/base_money.csv")`
 - Excel: Data → From Web, then paste the raw URL.
-- Python: `pandas.read_csv("https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money.csv")`
+- Python: `pandas.read_csv("https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/base_money.csv")`
 
 The CSV has three columns: `date` (the quarter's last day), `value` (whole US dollars) and `evidence_id` (the path to that quarter's sources).
 
@@ -26,7 +26,7 @@ The CSV has three columns: `date` (the quarter's last day), `value` (whole US do
 ## What do you want to do?
 
 - **Get the latest number:** see above, or the [table](#quarterly-base-money).
-- **Load the data:** [base_money.csv](base_money.csv).
+- **Load the data:** [base_money/base_money.csv](base_money/base_money.csv) ([raw CSV for loaders](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/base_money.csv)).
 - **Check a number:** [How to check a number](#how-to-check-a-number).
 - **Understand the method:** [In plain words](#what-base-money-means-here), then the [full methodology](docs/methodology/base_money.md).
 - **See every quarter:** [Quarters](base_money/); each quarter file links to its sources.

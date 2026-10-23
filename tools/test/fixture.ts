@@ -352,7 +352,7 @@ export const catalog = (series?: unknown): string =>
       series: series ?? [
         {
           id: "base_money",
-          path: "base_money.csv",
+          path: "base_money/base_money.csv",
           unit: "USD",
           frequency: "quarterly",
           methodology: "methodology/base_money.md",
@@ -380,7 +380,7 @@ let GOOD_TEXT: Readonly<Record<string, string>> | undefined;
 const buildGoodText = (): Record<string, string> => ({
   "README.md": "# fixture\n",
   "catalog.json": catalog(),
-  "base_money.csv": `${CSV_HEADER}2026-09-30,1221,${Q3}\n`,
+  "base_money/base_money.csv": `${CSV_HEADER}2026-09-30,1221,${Q3}\n`,
   [INDEX]: index(),
   "methodology/base_money.md": "# Methodology\n",
   [Q3]: rollup(),
@@ -401,7 +401,7 @@ export const skeletonText = (): Record<string, string> => ({
   "catalog.json": catalog([
     {
       id: "base_money",
-      path: "base_money.csv",
+      path: "base_money/base_money.csv",
       unit: "USD",
       frequency: "quarterly",
       methodology: "methodology/base_money.md",
@@ -411,7 +411,7 @@ export const skeletonText = (): Record<string, string> => ({
       baskets: BASKETS,
     },
   ]),
-  "base_money.csv": CSV_HEADER,
+  "base_money/base_money.csv": CSV_HEADER,
   [INDEX]: "# Quarters\n\n## Quarters\n\nNo quarters yet.\n",
   "methodology/base_money.md": "# Methodology (stub)\n",
 });

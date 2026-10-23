@@ -5,6 +5,7 @@ import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from 
 import { fencedBlocks, headingSlugs, headings, lines, links, memoText, slugs } from "./markdown.ts";
 import {
   anyQuarterOfPath,
+  CSV_PATH,
   EVIDENCE_ROOT,
   extractOf,
   extractPath,
@@ -16,6 +17,7 @@ import {
   fxPath,
   ISSUER_TEXT,
   isExtractPath,
+  LEGACY_CSV,
   QUARTER_LIST,
   QUARTER_TEXT,
   quarterOfPath,
@@ -28,7 +30,7 @@ import type { CheckId, Files, Finding, LintOptions, Snapshot } from "./types.ts"
 
 /** The series with a CSV and a roll-up schema today. A series id names its CSV and its evidence folder. */
 export const SERIES = "base_money";
-export const CSV = `${SERIES}.csv`;
+export const CSV = CSV_PATH;
 export const CSV_HEADER = "date,value,evidence_id";
 export const MAX_BYTES = 1024 * 1024;
 /** md() filters for the evidence file kinds (paths.ts owns the layout). */
@@ -408,11 +410,11 @@ function quarterLock(ctx: Ctx, p: string, old: string, emit: Emit) {
 }
 
 /**
- * base_money.csv under L4: committed rows are never deleted and keep their evidence_id. A value may change
+ * The CSV under L4: committed rows are never deleted and keep their evidence_id. A value may change
  * only when the same diff appends a revision block to that roll-up and its total_usd is the new value.
  */
 function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
-  const old = ctx.base?.get(CSV);
+  const old = ctx.base?.get(CSV) ?? ctx.base?.get(LEGACY_CSV); // the base may predate the move
   if (old === undefined || (ctx.files.has(CSV) && !ctx.text.has(CSV))) return;
   const e = (m: string) => emit("L4", CSV, m);
   const now = new Map(rows.map((r) => [r.date, r]));
@@ -574,7 +576,7 @@ function generated(ctx: Ctx, emit: Emit) {
   if (!hasMarkers(readme) && !hasMarkers(ctx.base?.get(README))) return;
   const g = generate(ctx.text, [...ctx.files.keys()].sort());
   if (!g) return;
-  const fix = "run `bun run readme` (it is generated from base_money.csv, the roll-ups and catalog.json)";
+  const fix = `run \`bun run readme\` (it is generated from ${CSV}, the roll-ups and catalog.json)`;
   const filled = fillReadme(readme ?? "", g.blocks);
   if (Array.isArray(filled)) for (const p of filled) emit("L13", README, p);
   else if (filled !== readme) {
@@ -2148,14 +2150,15 @@ function placement(ctx: Ctx, emit: Emit) {
         p,
         `${retired} is retired; quarters live at ${QUARTER_TEXT}, extracts at ${ISSUER_TEXT} and ${FX_TEXT}`,
       );
+    else if (p === LEGACY_CSV) emit("L12", p, `the CSV lives at ${CSV}; move it there (git mv)`);
     else if (p.startsWith(EVIDENCE_ROOT)) {
-      if (p === QUARTER_LIST || QUARTER_FILE.test(p)) continue;
+      if (p === CSV || p === QUARTER_LIST || QUARTER_FILE.test(p)) continue;
       const iss = (extractOf(p) ?? folderReadmeOf(p))?.issuer; // upper-case issuer ids; FX in its own folder
       if (iss === undefined)
         emit(
           "L12",
           p,
-          `${EVIDENCE_ROOT} holds only the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX extracts ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
+          `${EVIDENCE_ROOT} holds only the CSV ${CSV}, the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX extracts ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
         );
       else if (iss !== FX_ID && basket.size > 0 && !basket.has(iss))
         emit(

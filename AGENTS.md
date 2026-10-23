@@ -4,7 +4,7 @@ A short guide for any contributor, AI or human. The rules live in [methodology/b
 
 ## What this repository is
 
-A quarterly time series, in U.S. dollars, of base money summed over a fixed basket of the largest central banks ([base_money.csv](base_money.csv); the basket is listed in [catalog.json](catalog.json) and defined in the [methodology](docs/methodology/base_money.md#basket)). It is not all global base money: each quarterly roll-up states the share of the basket it covers. Every value is backed by an append-only Markdown evidence chain that a person can follow from the CSV row to the central bank's own published page. The repository holds only text.
+A quarterly time series, in U.S. dollars, of base money summed over a fixed basket of the largest central banks ([base_money/base_money.csv](base_money/base_money.csv); the basket is listed in [catalog.json](catalog.json) and defined in the [methodology](docs/methodology/base_money.md#basket)). It is not all global base money: each quarterly roll-up states the share of the basket it covers. Every value is backed by an append-only Markdown evidence chain that a person can follow from the CSV row to the central bank's own published page. The repository holds only text.
 
 ## Charter rules, in brief
 
@@ -20,6 +20,7 @@ A quarterly time series, in U.S. dollars, of base money summed over a fixed bask
 
 | Path                            | Holds                                                                     |
 | ------------------------------- | ------------------------------------------------------------------------- |
+| `base_money/base_money.csv` | The series: `date,value,evidence_id` (quarter-end date, whole USD, repo-root path of the quarter file) |
 | `base_money/issuers/<ID>/README.md` | The issuer's static facts (name, currency, website, adopted series) and a `## Years` list linking every year file |
 | `base_money/issuers/<ID>/<YYYY>.md` | One issuer's extracts for a year, one `## YYYYQn` heading per quarter; everything about a specific source (URLs, archive links, capture checks, caveats) sits under its extract |
 | `base_money/FX/README.md` | The FX sources and a `## Years` list linking every FX year file |

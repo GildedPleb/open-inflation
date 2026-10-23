@@ -83,6 +83,6 @@ Code lives in `tools/` (`tools/scripts/`, `tools/test/`, `tools/tsconfig.json`) 
 - `.github/`: GitHub Actions reads workflows only from `.github/workflows` at the root.
 - `.gitignore`: it covers the whole tree.
 - `package.json` and `bun.lock`: CI runs `bun install --frozen-lockfile` and the `bun run` scripts from the root, and the workflow is not changed here. `package.json` also holds Biome's options and the TypeScript project path, so there is no `biome.json`, `bunfig.toml` or root `tsconfig.json`.
-- `base_money.csv` and `catalog.json`: the data and its catalog.
-- `base_money/`: the quarter list (`base_money/README.md`), one file per quarter (`base_money/quarters/YYYYQn.md`), the quoted sources per central bank (`base_money/issuers/<ISS>/<YYYY>.md`) and the exchange-rate sources (`base_money/FX/<YYYY>.md`).
+- `catalog.json`: the data catalog.
+- `base_money/`: the series CSV (`base_money/base_money.csv`), the quarter list (`base_money/README.md`), one file per quarter (`base_money/quarters/YYYYQn.md`), the quoted sources per central bank (`base_money/issuers/<ISS>/<YYYY>.md`) and the exchange-rate sources (`base_money/FX/<YYYY>.md`).
 - `docs/` and `tools/`: the two folders everything else moved into.

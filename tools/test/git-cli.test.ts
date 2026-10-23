@@ -103,7 +103,7 @@ describe("git snapshot loader", () => {
   test("working tree vs base; deleted and ignored files excluded; untracked included", () => {
     const dir = repo({
       "base_money/issuers/A/2026.md": "one\n",
-      "base_money.csv": "date,value,evidence_id\n",
+      "base_money/base_money.csv": "date,value,evidence_id\n",
       "catalog.json": "{}\n",
       "methodology/x.md": "m\n",
       "gone.txt": "x\n",
@@ -119,7 +119,7 @@ describe("git snapshot loader", () => {
     const s = loadSnapshot(dir, "HEAD");
     expect([...s.files.keys()].sort()).toEqual([
       ".gitignore",
-      "base_money.csv",
+      "base_money/base_money.csv",
       "base_money/issuers/A/2026.md",
       "catalog.json",
       "methodology/x.md",
@@ -127,7 +127,7 @@ describe("git snapshot loader", () => {
     ]);
     // P6-M1: the base catalog is loaded, so basket history (L4/L11) has something to compare against.
     expect([...(s.base?.keys() ?? [])].sort()).toEqual([
-      "base_money.csv",
+      "base_money/base_money.csv",
       "base_money/issuers/A/2026.md",
       "catalog.json",
     ]);
@@ -160,7 +160,7 @@ describe("git snapshot loader", () => {
     expect(() => loadSnapshot(dir, "no-such-ref")).toThrow(/no-such-ref/);
   });
   test("outside a git checkout: a dedicated error, not a git stack trace", () => {
-    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
+    const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });
     expect(() => loadSnapshot(dir, null)).toThrow(NotGitCheckout);
   });
   test("the committed tree holds only committed files (uncommitted and untracked edits stay out)", () => {
@@ -193,7 +193,7 @@ describe("repository identity", () => {
     const data = await read("LICENSE-DATA");
     expect(data).toContain("https://creativecommons.org/licenses/by/4.0/legalcode");
     expect(data).toContain("Attribution 4.0 International");
-    for (const scope of ["base_money.csv", "catalog.json", "base_money/", "docs/methodology/"])
+    for (const scope of ["base_money/base_money.csv", "catalog.json", "base_money/", "docs/methodology/"])
       expect(data).toContain(scope);
     const readme = await read("README.md");
     expect(readme).toMatch(/^## Reuse and citation$/m);
@@ -336,7 +336,7 @@ describe("CLI", () => {
   });
   /** A repo with a bad CSV header and a new Wayback, archive.today and Ghostarchive URL (no base_money/README.md, no catalog). */
   const badRepo = () => {
-    const dir = repo({ "base_money.csv": "date,value\n" });
+    const dir = repo({ "base_money/base_money.csv": "date,value\n" });
     git(dir, "init", "-q", "--template=");
     const original = "https://www.federalreserve.gov/releases/h6/20260723/";
     mkdirSync(join(dir, "base_money/issuers/FED"), { recursive: true });
@@ -403,7 +403,7 @@ describe("CLI", () => {
     const dir = badRepo();
     const bad = await cli(dir);
     expect(bad.code).toBe(1);
-    expect(bad.out).toMatch(/L1 base_money\.csv: header/);
+    expect(bad.out).toMatch(/L1 base_money\/base_money\.csv: header/);
     // No base_money/README.md or catalog.json (L6, L11) and the bad header (L1); nothing else, and no L8 or network line.
     expect(bad.out).not.toMatch(/network|fetch|L8|archive\.today:/i);
     expect([...new Set(bad.out.match(/^L\d+ /gm))]).toEqual(["L1 ", "L6 ", "L11 "]);
@@ -422,7 +422,7 @@ describe("CLI", () => {
     });
   });
   test("a push to a branch lints against merge-base(HEAD, origin/main), not event.before", async () => {
-    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
+    const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });
     git(dir, "init", "-q", "--template=");
     git(dir, "add", ".");
     git(dir, "commit", "-qm", "main");
@@ -536,7 +536,7 @@ describe("CLI", () => {
     });
   });
   test("lint outside a git checkout prints one line and exits 2", async () => {
-    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
+    const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });
     const r = await cli(dir);
     expect([r.code, r.out.trim()]).toEqual([2, "lint: not a git checkout; clone the repo (git is required)"]);
   });
