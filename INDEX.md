@@ -4,6 +4,7 @@ Entry point to the evidence chain. Every quarterly roll-up in `evidence/<series>
 
 ## Quarterly roll-ups
 
+- [2026Q1 base money](evidence/base_money/2026Q1.md)
 - [2026Q2 base money](evidence/base_money/2026Q2.md)
 
 ## Issuer-year files
@@ -22,8 +23,10 @@ Entry point to the evidence chain. Every quarterly roll-up in `evidence/<series>
 ## Baskets
 
 Rows on different basket versions are not strictly comparable; growth rates across a basket change are distorted.
+- 2026Q1: basket v1
 - 2026Q2: basket v1
 
 ## Coverage
 
+- 2026Q1: 98.83% of the basket; BCB excluded (SGS 20306 convention unconfirmed). The CSV value is lower by BCB's amount; growth rates across this quarter are distorted.
 - 2026Q2: 98.79% of the basket; BCB excluded (SGS 20306 convention unconfirmed). The CSV value is lower by BCB's amount; growth rates across this quarter are distorted.
