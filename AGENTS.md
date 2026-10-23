@@ -48,13 +48,13 @@ A quarterly time series, in U.S. dollars, of base money summed over a fixed bask
 ## Definition of done
 
 1. Every CI step is green: `bun test`, `bun run typecheck`, `bun run check` and the evidence lint (`bun run lint`, against the PR base; it makes no network calls).
-2. Then it is merged. A QA review against the methodology is optional.
+2. Then it is merged. QA then reviews the result on main against the methodology; its findings come back as fixes.
 
 ## Who owns what
 
 - **Product and research:** the methodology, sourcing, extracts, roll-ups and the CSV.
 - **Engineering:** the lint, scripts, tests and CI.
-- **QA:** optional review against the methodology.
+- **QA:** reviews the merged result on main against the methodology.
 
 Fix a failing check at its cause. Never edit a test to make it pass; raise it with engineering.
 
