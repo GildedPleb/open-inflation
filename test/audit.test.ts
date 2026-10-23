@@ -667,9 +667,9 @@ describe("audit: no network is offline, with no pacing waits", () => {
       new Promise((_, reject) => {
         init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
       })) as unknown as typeof fetch;
-    const { r, waits, elapsed } = await audit(f, { timeoutMs: 5 });
+    const { r, waits, elapsed } = await audit(f, { timeoutMs: 1 });
     expect(reasons(r)).toEqual(Array(5).fill("offline"));
-    expect(r.report.links[0]?.detail).toStartWith("ETIMEDOUT: timed out after 5 ms");
+    expect(r.report.links[0]?.detail).toStartWith("ETIMEDOUT: timed out after 1 ms");
     expect(waits).toEqual([]);
     expect(elapsed).toBe(0);
   });
