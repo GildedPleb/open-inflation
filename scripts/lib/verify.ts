@@ -1,8 +1,9 @@
 // L8's link check, run locally by `bun run verify`: HEAD each archive URL added since the base, once.
 // Never part of lint or CI: those make no network call. The only I/O is the injected Net.
-import { MAX_HOPS } from "./archive.ts";
-import { type ArchiveRef, archiveRefs, decodeAll } from "./checks.ts";
-import type { CheckId, Finding, Net, Snapshot, VerifyOptions } from "./types.ts";
+import { AVAILABILITY_FORMS, MAX_HOPS, pacedNet } from "./archive.ts";
+import { type ArchiveRef, archiveRefs, blockKey, decodeAll } from "./checks.ts";
+import { duration, hostKey, realClock } from "./pacer.ts";
+import type { CheckId, Finding, HeadResult, Net, NoVerdict, Snapshot, VerifyOptions } from "./types.ts";
 
 /** HTTP statuses that confirm a dead snapshot. Only these can be excused by a Re-archive note. */
 const DEAD = [404, 410];
@@ -10,7 +11,21 @@ const CONCURRENCY = 4;
 
 type Problem = { readonly dead: boolean; readonly message: string; readonly status?: number } | null;
 /** Why a URL passed, for the progress line: "HTTP 200, <timestamp>" or "archive.org availability, <timestamp>". */
-type Verdict = { readonly problem: Problem; readonly ok?: string; readonly limited?: string };
+type Verdict = {
+  readonly problem: Problem;
+  readonly ok?: string;
+  readonly limited?: string;
+  /**
+   * For a limited verdict: still rate-limited (one try, or the cap), blocked by a challenge/CAPTCHA, or unconfirmed
+   * (web.archive.org unreachable and archive.org availability did not list the exact capture).
+   */
+  readonly why?: NoVerdict;
+};
+type HttpResult = Extract<HeadResult, { kind: "http" }>;
+const gaveUp = (r: HttpResult) =>
+  r.gaveUp ? `gave up after ${r.gaveUp.tries} tries over ${duration(r.gaveUp.elapsedMs)}; ` : "";
+/** Assay (#19): each no-verdict line names the host asked and its HTTP status, e.g. "archive.ph HTTP 429". */
+const hostOf = (url: string) => new URL(url).host;
 
 const RATE_LIMITED = 429;
 
@@ -38,36 +53,43 @@ async function snapshotVerdict(net: Net, url: string, ref: ArchiveRef): Promise<
               : `HEAD redirected more than ${MAX_HOPS} times (last to ${r.location})`,
       },
     };
-  if (r.kind === "http")
+  if (r.kind === "http") {
+    // A 429 still there after pacing's retries is no verdict (rate-limited), as on archive.today; never a finding.
+    if (r.status === RATE_LIMITED)
+      return { problem: null, limited: `${gaveUp(r)}${hostOf(url)} HTTP 429; no verdict`, why: "rate-limited" };
     return {
-      problem: {
-        dead: DEAD.includes(r.status),
-        status: r.status,
-        message: `failed HEAD: HTTP ${r.status}${r.status === RATE_LIMITED ? " (rate-limited; retry later)" : ""}`,
-      },
-    };
-  const a = await net.available(ref.original, ref.ts);
-  if (a.kind === "http") {
-    const why = a.status === RATE_LIMITED ? "rate-limited; " : "";
-    return {
-      problem: {
-        dead: false,
-        message: `could not be checked: web.archive.org: ${r.message}; archive.org availability: HTTP ${a.status} (${why}no verdict on the snapshot; retry later)`,
-      },
+      problem: { dead: DEAD.includes(r.status), status: r.status, message: `failed HEAD: HTTP ${r.status}` },
     };
   }
-  if (a.kind === "network")
-    return {
-      problem: {
-        dead: false,
-        message: `could not be checked: network error: web.archive.org: ${r.message}; archive.org availability: ${a.message} (no verdict on the snapshot; retry online)`,
-      },
-    };
-  if (a.timestamp === ref.ts) return { problem: null, ok: `archive.org availability, ${a.timestamp}` };
-  const why =
-    a.timestamp === null ? "has no snapshot" : `returns closest snapshot ${a.timestamp}, not the recorded ${ref.ts}`;
+  // m-C: web.archive.org did not answer, so the capture itself was never seen. archive.org's availability API is an
+  // index lookup that can answer empty (or with another capture) while the capture exists (Probe: UK 20261022172221,
+  // BZ 20261022172522). Only its exact timestamp confirms the snapshot; anything else is no verdict, never a finding.
+  // R5-m1: the API caches each exact query string for hours, so an index answer without the capture is asked again
+  // under each equivalent query form (AVAILABILITY_FORMS); an HTTP or network error is not (another form won't help).
+  const said: string[] = [];
+  for (let form = 0; form < AVAILABILITY_FORMS.length; form++) {
+    const a = await net.available(ref.original, ref.ts, form);
+    if (a.kind === "ok" && a.timestamp === ref.ts)
+      return {
+        problem: null,
+        ok: `archive.org availability, ${a.timestamp}${form > 0 ? `, query form ${form + 1}` : ""}`,
+      };
+    said.push(
+      a.kind === "http"
+        ? `HTTP ${a.status}${a.status === RATE_LIMITED ? " (rate-limited)" : ""}`
+        : a.kind === "network"
+          ? a.message
+          : a.timestamp === null
+            ? "no snapshot listed"
+            : `closest snapshot ${a.timestamp}, not the recorded ${ref.ts}`,
+    );
+    if (a.kind !== "ok") break;
+  }
+  const answers = [...new Set(said)].join(" / ");
   return {
-    problem: { dead: false, message: `web.archive.org unreachable (${r.message}) and archive.org availability ${why}` },
+    problem: null,
+    limited: `web.archive.org unreachable (${r.message}); archive.org availability: ${answers}${said.length > 1 ? ` (asked ${said.length} ways)` : ""}; no verdict`,
+    why: "unconfirmed",
   };
 }
 
@@ -87,7 +109,11 @@ async function todayVerdict(net: Net, url: string): Promise<Verdict> {
     };
   if (r.kind === "http") {
     if (TODAY_BLOCKED.includes(r.status))
-      return { problem: null, limited: `HTTP ${r.status}, archive.today; no verdict` };
+      return {
+        problem: null,
+        limited: `${gaveUp(r)}${hostOf(url)} HTTP ${r.status}; no verdict`,
+        why: r.challenge || r.status === 403 ? "blocked" : "rate-limited",
+      };
     return {
       problem: {
         dead: DEAD.includes(r.status),
@@ -111,9 +137,27 @@ async function todayVerdict(net: Net, url: string): Promise<Verdict> {
  */
 const GHOST_BLOCKED = [403, RATE_LIMITED, 503];
 
-/** HEAD a Ghostarchive capture (Archive URL 3). No availability fallback. */
+/**
+ * Read a Ghostarchive capture (Archive URL 3; a bounded GET, see httpHead). No availability fallback. R5-n1: its
+ * "Archiving error" page (HTTP 200) is a finding: the URL holds no capture and never will (the attempt failed), so
+ * it belongs in an `attempted <date>: <reason>` record. Any other 200 without the capture wrapper (a loading or
+ * in-progress page) is unconfirmed: no verdict, the capture may still appear.
+ */
 async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
   const r = await net.head(url);
+  if (r.kind === "ok" && r.page === "error")
+    return {
+      problem: {
+        dead: false,
+        message: `is Ghostarchive's "Archiving error" page (HTTP ${r.status}), not a capture; record the attempt as "attempted <YYYY-MM-DD>: <reason>" instead`,
+      },
+    };
+  if (r.kind === "ok" && r.page === "other")
+    return {
+      problem: null,
+      limited: `${hostOf(url)} HTTP ${r.status}, no capture on the page (loading, in progress or unrecognised); no verdict`,
+      why: "unconfirmed",
+    };
   if (r.kind === "ok") return { problem: null, ok: `HTTP ${r.status}, Ghostarchive` };
   if (r.kind === "redirect")
     return {
@@ -126,11 +170,15 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
       },
     };
   if (r.kind === "http") {
-    if (GHOST_BLOCKED.includes(r.status))
+    if (GHOST_BLOCKED.includes(r.status)) {
+      // A 503 is its Cloudflare challenge unless pacing retried it to the cap (then it was a rate limit).
+      const limit = r.status === RATE_LIMITED || r.gaveUp !== undefined;
       return {
         problem: null,
-        limited: `HTTP ${r.status}, Ghostarchive ${r.status === RATE_LIMITED ? "rate limit" : "challenge"}; no verdict`,
+        limited: `${gaveUp(r)}${hostOf(url)} HTTP ${r.status}, ${limit ? "rate limit" : "Cloudflare challenge"}; no verdict`,
+        why: r.challenge || !limit ? "blocked" : "rate-limited",
       };
+    }
     return {
       problem: {
         dead: DEAD.includes(r.status),
@@ -155,59 +203,95 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
 export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Finding[]> {
   const out: Finding[] = [];
   const emit = (check: CheckId, file: string, message: string) => out.push({ check, file, message });
-  const { net, progress, summary } = opts;
+  const { progress, summary } = opts;
+  const net = opts.pacer ? pacedNet(opts.net, opts.pacer, opts.clock ?? realClock) : opts.net;
   const now = archiveRefs(decodeAll(snap.files), opts.now);
   const was = archiveRefs(snap.base && decodeAll(snap.base));
   const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
   const results: Problem[] = [];
-  const noted = (url: string) => now.notes.has(url) && !was.notes.has(url);
+  // m-B: a `- Re-archive: <new archive URL>` line added to the same extract in this diff names the new capture, so it
+  // excuses a dead archive URL of that extract (methodology: "names the new archive URL"), never the note's own URL.
+  const noted = (url: string, ref: ArchiveRef) => {
+    const k = blockKey(ref.file, ref.block);
+    const before = was.notes.get(k);
+    return [...(now.notes.get(k) ?? [])].some((n) => n !== url && !before?.has(n));
+  };
   if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
+  if (todo.length > 0 && opts.pacer) {
+    const e = opts.pacer.estimate(todo.map(([url]) => url));
+    const hosts = e.hosts.map((h) => `${h.key} ${h.urls} x ${duration(h.intervalMs)}`).join(", ");
+    progress?.(`L8 pacing: about ${duration(e.ms)} before any retry (hosts in parallel: ${hosts})`);
+  }
   let next = 0;
   let done = 0;
   const verified: string[] = [];
-  const unverified: string[] = [];
+  const unverified: [string, NoVerdict][] = [];
   const ghostVerified: string[] = [];
-  const ghostUnverified: string[] = [];
-  const worker = async () => {
-    for (let i = next++; i < todo.length; i = next++) {
+  const ghostUnverified: [string, NoVerdict][] = [];
+  const check = async (i: number) => {
+    {
       const [url, ref] = todo[i] as [string, ArchiveRef];
       const v = await snapshotVerdict(net, url, ref);
       results[i] = v.problem;
-      if (ref.host === "today" && !v.problem) (v.limited ? unverified : verified).push(url);
-      if (ref.host === "ghost" && !v.problem) (v.limited ? ghostUnverified : ghostVerified).push(url);
+      const why = v.why ?? "rate-limited";
+      if (ref.host === "today" && !v.problem) v.limited ? unverified.push([url, why]) : verified.push(url);
+      if (ref.host === "ghost" && !v.problem) v.limited ? ghostUnverified.push([url, why]) : ghostVerified.push(url);
+      if (v.limited) opts.noVerdict?.(url, why);
       const p = v.problem;
       const word = v.limited
-        ? `${ref.host === "ghost" ? "unverified" : "rate-limited"} (${v.limited})`
+        ? v.why === "blocked"
+          ? `blocked (challenge/CAPTCHA; ${v.limited})`
+          : v.why === "unconfirmed"
+            ? `unconfirmed (${v.limited})`
+            : `rate-limited (${v.limited})`
         : !p
           ? `ok (${v.ok})`
-          : p.dead && noted(url)
+          : p.dead && noted(url, ref)
             ? `excused (HTTP ${p.status}, Re-archive note)`
             : "fail";
       progress?.(`L8 [${++done}/${todo.length}] ${word} ${url}`);
     }
   };
-  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  const worker = async () => {
+    for (let i = next++; i < todo.length; i = next++) await check(i);
+  };
+  if (opts.pacer) {
+    // Paced: one worker per host (its requests serial and spaced), the hosts in parallel.
+    const byHost = new Map<string, number[]>();
+    for (const [i, [url]] of todo.entries()) byHost.set(hostKey(url), [...(byHost.get(hostKey(url)) ?? []), i]);
+    await Promise.all(
+      [...byHost.values()].map(async (idx) => {
+        for (const i of idx) await check(i);
+      }),
+    );
+  } else await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   // Assay M-2: a 403/429 is no verdict, so say how many archive.today captures went unchecked, and which, for review.
-  // Failures are findings and are not counted; with no verified or rate-limited capture there is no line.
-  if (verified.length + unverified.length > 0) {
-    summary?.(`archive.today: ${verified.length} verified, ${unverified.length} unverified (rate-limited)`);
-    for (const url of unverified.sort()) summary?.(url);
-  }
-  // #18: the same for Ghostarchive, whose Cloudflare challenge (403/503) is no verdict.
-  if (ghostVerified.length + ghostUnverified.length > 0) {
-    summary?.(`ghostarchive: ${ghostVerified.length} verified, ${ghostUnverified.length} unverified`);
-    for (const url of ghostUnverified.sort()) summary?.(url);
-  }
+  // Failures are findings and are not counted; with no verified or unverified capture there is no line. #18: the same
+  // for Ghostarchive. Assay (#19): M splits as R rate-limited + B blocked (+ U unconfirmed, shown when not 0).
+  const tally = (name: string, ok: string[], open: [string, NoVerdict][]) => {
+    if (ok.length + open.length === 0) return;
+    const n = (w: NoVerdict) => open.filter(([, x]) => x === w).length;
+    const u = n("unconfirmed") > 0 ? `, ${n("unconfirmed")} unconfirmed` : "";
+    summary?.(
+      `${name}: ${ok.length} verified, ${open.length} unverified (${n("rate-limited")} rate-limited, ${n("blocked")} blocked${u})`,
+    );
+    for (const url of open.map(([x]) => x).sort()) summary?.(url);
+  };
+  tally("archive.today", verified, unverified);
+  tally("ghostarchive", ghostVerified, ghostUnverified);
   for (const [i, [url, ref]] of todo.entries()) {
     const p = results[i];
     if (!p) continue;
-    if (p.dead && noted(url)) continue;
+    if (p.dead && noted(url, ref)) continue;
     const fix = p.dead
-      ? `; the commit must add a "Re-archive: ${url}" note`
-      : noted(url)
+      ? `; recapture it and add "- Re-archive: <new archive URL>" to this extract in the same commit`
+      : noted(url, ref)
         ? `; a Re-archive note excuses only a dead snapshot (HTTP ${DEAD.join("/")})`
         : "";
     emit("L8", ref.file, `archive URL ${url} ${p.message}${fix}`);
   }
   return out;
 }
+
+/** verify's exit: 1 with findings; else 3 when some URL still has no verdict (incomplete: every URL must be checked); else 0. */
+export const verifyExit = (findings: number, noVerdict: number): number => (findings > 0 ? 1 : noVerdict > 0 ? 3 : 0);
