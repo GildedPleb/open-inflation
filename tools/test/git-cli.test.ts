@@ -102,6 +102,7 @@ const cli = async (cwd: string, argv: string[] = [], o: { env?: Record<string, s
 const snapshotGit = (snap: Snapshot): LintGit => ({
   hasHead: () => true,
   mergeBase: () => null,
+  revParse: () => null,
   loadSnapshot: () => snap,
 });
 const text = (m: ReadonlyMap<string, Uint8Array> | null, p: string) => {
@@ -193,11 +194,11 @@ describe("repository identity", () => {
     expect(readme).toContain("[CC BY 4.0](LICENSE-DATA)");
     expect(readme).toContain("Quotes from central banks stay under each bank's own terms.");
   });
-  test("docs: git is a requirement, lint.md covers L1-L13, the network claim names both endpoints", async () => {
+  test("docs: git is a requirement, lint.md covers L1-L15, the network claim names both endpoints", async () => {
     const running = await Bun.file(join(ROOT, "docs", "running.md")).text();
     const rules = await Bun.file(join(ROOT, "docs", "lint.md")).text();
     expect(running).toMatch(/^Bun 1\.4 and git\b/m);
-    for (let i = 1; i <= 13; i++) expect(rules).toMatch(new RegExp(`^### L${i}\n\n\\S`, "m"));
+    for (let i = 1; i <= 15; i++) expect(rules).toMatch(new RegExp(`^### L${i}\n\n\\S`, "m"));
     expect(running).toContain("https://web.archive.org/web/");
     expect(running).toContain("https://archive.org/wayback/available");
     // #18: L8 in lint makes no network calls; the link check is `bun run verify`.
@@ -424,6 +425,44 @@ describe("CLI", () => {
     ])
       expect(await cli(dir, [], { env })).toEqual(plain);
     expect(plain.code).toBe(1);
+  });
+  // verify's base (lib/lint-base.ts), through real git: a branch push uses the merge-base, not event.before; locally on
+  // origin/main the default is HEAD~1, so the last commit counts; an explicit base equal to HEAD gets a note.
+  test("verify: a branch push uses merge-base(HEAD, origin/main); locally on main, HEAD~1; a HEAD base gets a note", async () => {
+    const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });
+    git(dir, "init", "-q", "--template=");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "main");
+    const main = git(dir, "rev-parse", "HEAD");
+    git(dir, "commit", "-q", "--allow-empty", "-m", "branch tip before the push");
+    const before = git(dir, "rev-parse", "HEAD");
+    git(dir, "commit", "-q", "--allow-empty", "-m", "pushed");
+    const fetch = (async () => {
+      throw new Error("no new archive URL, so no request");
+    }) as unknown as typeof globalThis.fetch;
+    const run = async (argv: string[] = [], env: Record<string, string> = {}) => {
+      const err: string[] = [];
+      const code = await verifyMain({ argv, env, cwd: dir, out: () => {}, err: (l) => err.push(l), fetch });
+      return { code, err: err.join("\n") };
+    };
+    const env = { GITHUB_EVENT_NAME: "push", GITHUB_REF: "refs/heads/feature", LINT_BASE: before };
+    expect(await run([], env)).toEqual({
+      code: 2,
+      err: "verify: push to refs/heads/feature: cannot find the merge-base of HEAD and origin/main (fetch origin/main; CI checks out with fetch-depth: 0)",
+    });
+    git(dir, "update-ref", "refs/remotes/origin/main", main);
+    expect((await run([], env)).err).toContain(
+      `verify: base ${main} (merge-base of HEAD and origin/main (push to refs/heads/feature))`,
+    );
+    expect((await run([], { ...env, GITHUB_REF: "refs/heads/main" })).err).toContain(
+      `verify: base ${before} (LINT_BASE)`,
+    );
+    git(dir, "update-ref", "refs/remotes/origin/main", "HEAD");
+    expect((await run()).err).toContain(`verify: base ${before} (HEAD~1 (HEAD is on origin/main))`);
+    expect((await run(["--base", "origin/main"])).err).toContain(
+      "verify: note: base origin/main is HEAD itself, so only uncommitted changes count as new",
+    );
+    expect((await run(["--base", main])).err).not.toContain("verify: note:");
   });
   // Assay (#19): every exit code is pinned, in-process (verifyMain and auditMain; no bun start per case). verify and
   // audit exit 2 on usage before any request; an uncaught error exits 2, not Bun's 1 (exitOnCrash, units). The

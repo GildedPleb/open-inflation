@@ -2,7 +2,7 @@
 // git come in; the exit code goes out. scripts/lint.ts is the thin process wrapper. Lint checks the working tree
 // alone: it reads no base commit, so `--base <ref>` and $LINT_BASE (CI still sets it) are accepted and ignored.
 import { lint } from "./checks.ts";
-import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout } from "./git.ts";
+import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, revParse } from "./git.ts";
 import type { Snapshot } from "./types.ts";
 
 export const USAGE = "usage: bun run lint";
@@ -14,6 +14,7 @@ export const USAGE = "usage: bun run lint";
 export interface LintGit {
   hasHead(dir: string): boolean;
   mergeBase(dir: string, a: string, b: string): string | null;
+  revParse(dir: string, ref: string): string | null;
   loadSnapshot(dir: string, base: string | null): Snapshot;
 }
 
@@ -21,6 +22,7 @@ export const realGit: LintGit = {
   hasHead: (dir) =>
     isGitCheckout(dir) && Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", "HEAD"]).exitCode === 0,
   mergeBase,
+  revParse,
   loadSnapshot,
 };
 

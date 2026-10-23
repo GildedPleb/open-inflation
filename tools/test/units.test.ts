@@ -640,7 +640,11 @@ describe("chooseBase (LINT_BASE selection)", () => {
     calls.push("mergeBase");
     return r;
   };
-  const base = (o: Partial<Parameters<typeof chooseBase>[0]>) => chooseBase({ hasHead: true, mergeBase: mb(MB), ...o });
+  const HEAD = "c".repeat(40);
+  const PARENT = "d".repeat(40);
+  const revs = (parent: string | null) => (ref: string) => (ref === "HEAD" ? HEAD : parent);
+  const base = (o: Partial<Parameters<typeof chooseBase>[0]>) =>
+    chooseBase({ hasHead: true, mergeBase: mb(MB), revParse: revs(PARENT), ...o });
   test("push to a feature branch: merge-base with origin/main, not event.before", () =>
     expect(base({ eventName: "push", ref: "refs/heads/data-2026Q2", envBase: BEFORE })).toMatchObject({ base: MB }));
   test("push that creates a branch (before all zeros) still gets the merge-base", () =>
@@ -668,11 +672,22 @@ describe("chooseBase (LINT_BASE selection)", () => {
     expect(base({ cliBase: "HEAD~1", eventName: "push", ref: "refs/heads/x", envBase: BEFORE })).toMatchObject({
       base: "HEAD~1",
     }));
-  test("local run: LINT_BASE, else HEAD, else none", () => {
+  test("local run: LINT_BASE, else the merge-base with origin/main, else none", () => {
     expect(base({ envBase: BEFORE })).toMatchObject({ base: BEFORE });
-    expect(base({})).toMatchObject({ base: "HEAD" });
+    expect(base({})).toMatchObject({ base: MB, why: "merge-base of HEAD and origin/main" });
     expect(base({ hasHead: false })).toMatchObject({ base: null });
-    expect(base({ envBase: "" })).toMatchObject({ base: "HEAD" });
+    expect(base({ envBase: "" })).toMatchObject({ base: MB });
+  });
+  // Probe N1: on main the merge-base is HEAD itself, so the comparison checked nothing; the last commit is checked.
+  test("local run on origin/main (merge-base is HEAD): HEAD~1, so the last commit is checked", () =>
+    expect(base({ mergeBase: mb(HEAD) })).toEqual({ base: PARENT, why: "HEAD~1 (HEAD is on origin/main)" }));
+  test("local run with no origin/main: HEAD~1; a root commit alone: HEAD", () => {
+    expect(base({ mergeBase: mb(null) })).toEqual({ base: PARENT, why: "HEAD~1 (no origin/main)" });
+    expect(base({ mergeBase: mb(HEAD), revParse: revs(null) })).toEqual({ base: "HEAD", why: "HEAD" });
+  });
+  test("an explicit --base or LINT_BASE stays exact, even when it is HEAD", () => {
+    expect(base({ cliBase: "HEAD" })).toMatchObject({ base: "HEAD" });
+    expect(base({ envBase: HEAD })).toMatchObject({ base: HEAD });
   });
 });
 

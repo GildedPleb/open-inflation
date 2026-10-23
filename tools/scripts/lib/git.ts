@@ -28,6 +28,13 @@ export function mergeBase(dir: string, a: string, b: string): string | null {
   return r.exitCode === 0 && sha !== "" ? sha : null;
 }
 
+/** A ref's commit sha, or null when it does not name a commit. */
+export function revParse(dir: string, ref: string): string | null {
+  const r = Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  const sha = new TextDecoder().decode(r.stdout).trim();
+  return r.exitCode === 0 && sha !== "" ? sha : null;
+}
+
 /** True inside a git work tree. False when git is missing too: either way lint cannot list the files. */
 export function isGitCheckout(dir: string): boolean {
   try {

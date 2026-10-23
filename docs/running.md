@@ -10,7 +10,7 @@ For contributors. Run every command from the repository root.
 | `bun run typecheck` and `bun run check` | TypeScript types; Biome format and code lint | Before every push | Yes | Never |
 | `bun run lint` | Checks the data files in the working tree | Before every push | Yes | Never |
 | `bun run readme` | Rewrites the generated README parts | After adding a quarter | Through lint L13 | Never |
-| `bun run verify --base origin/main` | Checks each archive URL your change adds | While archiving new sources | No | Yes |
+| `bun run verify` | Checks each archive URL your change adds | While archiving new sources | No | Yes |
 | `bun run audit` | Re-checks every link and keeps private copies | When re-checking links | No | Yes |
 
 CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check` and `bun run lint` on every push and pull request. CI never runs `verify` or `audit`.
@@ -127,11 +127,14 @@ bun run verify --base origin/main
 | `--base <ref>` given | That ref. A ref of all zeros means no base. |
 | A GitHub push to any branch but `main` | The merge-base of `HEAD` and `origin/main`. Exit 2 if it cannot be found. |
 | `$LINT_BASE` set | That commit. All zeros means no base. |
-| Otherwise | `HEAD`, or no base in a repository with no commits. |
+| No commits | No base. |
+| The merge-base of `HEAD` and `origin/main` exists and is not `HEAD` (a local branch) | That merge-base. |
+| The merge-base is `HEAD` itself (on `main`), or there is no `origin/main` | `HEAD~1`, so the last commit is checked. |
+| A lone root commit | `HEAD`. |
 
 A GitHub push means `GITHUB_EVENT_NAME=push`, and `GITHUB_REF` is not `refs/heads/main`.
 
-Locally, after a commit, `HEAD` sees no change: pass `--base origin/main`.
+Verify prints the base it chose and why on stderr, except for `--base` and a lone root commit. An explicit base (`--base` or `$LINT_BASE`) that resolves to `HEAD`, such as `--base origin/main` on `main`, compares the tree with its own commit, so only uncommitted changes count; verify says so on stderr.
 
 - It checks each archive URL added since the base that passes L7, once.
 - It also checks each `- Re-archive:` note URL added since the base, even one already committed elsewhere.
