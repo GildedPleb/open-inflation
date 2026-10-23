@@ -2,7 +2,7 @@
 // (HEAD on each new archive URL) is not here; it is `bun run verify` (lib/verify.ts), run locally, never in CI.
 import { posix } from "node:path";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
-import { fencedBlocks, headings, lines, links, slugs } from "./markdown.ts";
+import { fencedBlocks, headings, lines, links, memoText, slugs } from "./markdown.ts";
 import type { CheckId, Files, Finding, LintOptions, Snapshot } from "./types.ts";
 
 /** The series with a CSV and a roll-up schema today. A series id names its CSV and its evidence folder. */
@@ -125,10 +125,11 @@ function checkTarget(ctx: Ctx, from: string, what: string, target: string, rootR
     );
 }
 
-type Machine = { ok: true; data: unknown; line: number; source: string } | { ok: false; error: string };
+export type Machine = { ok: true; data: unknown; line: number; source: string } | { ok: false; error: string };
 
 /** Every ```yaml machine block, in order. A roll-up has one or more; each later one is an appended revision. */
-function machines(body: string): Machine[] {
+export const machines: (body: string) => readonly Machine[] = memoText(parseMachines);
+function parseMachines(body: string): Machine[] {
   if (/^---\r?\n/.test(body))
     return [{ ok: false, error: "front-matter is not a machine block; use a fenced ```yaml block only" }];
   const blocks = fencedBlocks(body, ["yaml", "yml"]);
@@ -397,7 +398,9 @@ const FX_FACT_LINE =
   /^\s*[-*]\s+(Currency|Quote as published|Quote direction|Rate|fx_rate \(USD per unit\)|Adopted):\s*(.*?)\s*$/;
 
 /** Extract blocks (### sections) of one issuer file, plus field lines found outside any block. */
-function extracts(body: string): { blocks: Extract[]; stray: number[] } {
+export const extracts: (body: string) => { readonly blocks: readonly Extract[]; readonly stray: readonly number[] } =
+  memoText(parseExtracts);
+function parseExtracts(body: string): { blocks: Extract[]; stray: number[] } {
   const blocks: Extract[] = [];
   const stray: number[] = [];
   let cur: Extract | null = null;

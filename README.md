@@ -16,7 +16,7 @@ Status: Waypoint 1, the skeleton and lint suite. There is no data yet.
 | `INDEX.md`                                 | Entry point; links every roll-up and issuer-year file                                  |
 | `catalog.json`                             | Series metadata and file paths                                                         |
 | `methodology/`                             | How the numbers are defined and built                                                  |
-| `scripts/lint.ts`                          | All integrity checks                                                                   |
+| `scripts/lint.ts`                          | All integrity checks (the CLI itself is `scripts/lib/lint-main.ts`)                    |
 | `scripts/update.ts`, `scripts/backfill.ts` | Waypoint 3 and 4 entry points (not implemented yet)                                    |
 
 ## Run it
@@ -25,7 +25,7 @@ Requires Bun 1.4 and git ([Bun](https://bun.sh); lint reads the tree and its bas
 
 ```sh
 bun install
-bun test          # offline unit tests with fixtures; about 1 second; the merge gate
+bun test          # offline unit tests with fixtures; well under 1 second; the merge gate
 git fetch origin main
 bun run lint --base origin/main   # integrity checks against main; no network (see AGENTS.md, Commands)
 ```

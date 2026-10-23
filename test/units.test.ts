@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { archiveNet, httpAvailable, httpHead, USER_AGENT } from "../scripts/lib/archive.ts";
-import { archive2Problem } from "../scripts/lib/checks.ts";
+import { archive2Problem, extracts, machines } from "../scripts/lib/checks.ts";
 import { parseDecimal, roundHalfEven, sumOfProducts, usdPerUnit, wholeUsd } from "../scripts/lib/decimal.ts";
 import { chooseBase } from "../scripts/lib/lint-base.ts";
-import { headings, links, slugs } from "../scripts/lib/markdown.ts";
+import { headings, lines, links, memoText, slugs } from "../scripts/lib/markdown.ts";
 import { verify } from "../scripts/lib/verify.ts";
 import { extract, good, goodText, onGood } from "./fixture.ts";
 
@@ -716,5 +716,50 @@ describe("httpHead on archive.today (fake fetch, by URL)", () => {
     const { f, urls } = routes({ [DATED]: [302, a], [a]: [302, DATED] });
     expect(await httpHead(f, 1000)(DATED)).toMatchObject({ kind: "redirect", reason: "loop" });
     expect(urls.length).toBe(6);
+  });
+});
+
+describe("memoText (one parse per text, for lint's repeated reads)", () => {
+  test("the same text parses once and returns the same result; another text parses afresh", () => {
+    const seen: string[] = [];
+    const f = memoText((t: string) => {
+      seen.push(t);
+      return { t };
+    });
+    const a = f("a");
+    expect(f("a")).toBe(a);
+    expect(f("b")).toEqual({ t: "b" });
+    expect(f("a")).toBe(a);
+    expect(seen).toEqual(["a", "b"]);
+  });
+  test("past the cap it starts over, and still answers right", () => {
+    const seen: string[] = [];
+    const f = memoText((t: string) => {
+      seen.push(t);
+      return t.length;
+    }, 2);
+    expect([f("a"), f("bb"), f("ccc"), f("a"), f("ccc")]).toEqual([1, 2, 3, 1, 3]);
+    // a and bb fill it; ccc clears it; a is parsed again; ccc is still there.
+    expect(seen).toEqual(["a", "bb", "ccc", "a"]);
+  });
+  test("lines and slugs are memoized and stay correct across texts", () => {
+    const md = "# A\n```\n# not\n```\n## A\n";
+    expect(lines(md)).toBe(lines(md));
+    expect([...slugs(md)]).toEqual(["a", "a-1"]);
+    expect(slugs(md)).toBe(slugs(md));
+    expect([...slugs("# B\n")]).toEqual(["b"]);
+    expect(lines("x\ny").map((l) => l.text)).toEqual(["x", "y"]);
+  });
+  test("machines (each roll-up's YAML blocks) is memoized and stays correct across texts", () => {
+    const md = "# R\n```yaml\na: 1\n```\n```yaml\na: [\n```\n";
+    expect(machines(md)).toBe(machines(md));
+    expect(machines(md).map((m) => (m.ok ? m.data : "bad"))).toEqual([{ a: 1 }, "bad"]);
+    expect(machines("# S\n```yaml\nb: 2\n```\n").map((m) => m.ok && m.data)).toEqual([{ b: 2 }]);
+  });
+  test("extracts (each issuer file's ### blocks) is memoized and stays correct across texts", () => {
+    const md = "# I\n- Rate: 1\n### A\n- Rate: 2\n### B\n";
+    expect(extracts(md)).toBe(extracts(md));
+    expect(extracts(md).blocks.map((b) => b.title)).toEqual(["A", "B"]);
+    expect(extracts("# J\n### C\n").blocks.map((b) => b.title)).toEqual(["C"]);
   });
 });

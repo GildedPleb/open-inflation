@@ -15,8 +15,26 @@ export interface Line {
   readonly info: string;
 }
 
+/**
+ * One string-keyed result per text, for the pure parsers below and in checks.ts: lint asks for the same file's lines,
+ * headings and extracts many times per run (every anchor link re-reads its target's headings). Results are read-only
+ * (typed so). Bounded: past `cap` texts the cache starts over.
+ */
+export function memoText<T>(parse: (text: string) => T, cap = 64): (text: string) => T {
+  const seen = new Map<string, T>();
+  return (text) => {
+    const hit = seen.get(text);
+    if (hit !== undefined) return hit;
+    if (seen.size >= cap) seen.clear();
+    const v = parse(text);
+    seen.set(text, v);
+    return v;
+  };
+}
+
 /** Every line, 1-based, tagged with its fenced-code role. */
-export function lines(md: string): Line[] {
+export const lines: (md: string) => readonly Line[] = memoText(parseLines);
+function parseLines(md: string): Line[] {
   let open: string | null = null;
   return md.split("\n").map((text, i): Line => {
     const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(text);
@@ -46,7 +64,8 @@ export function headings(md: string): Heading[] {
 }
 
 /** GitHub's heading-anchor algorithm (github-slugger), with -1, -2 ... for repeats. */
-export function slugs(md: string): Set<string> {
+export const slugs: (md: string) => ReadonlySet<string> = memoText(parseSlugs);
+function parseSlugs(md: string): Set<string> {
   const seen = new Map<string, number>();
   const out = new Set<string>();
   for (const h of headings(md)) {
