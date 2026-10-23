@@ -1,3 +1,4 @@
+import "./no-network.ts";
 import { describe, expect, test } from "bun:test";
 import { lint as lintOnly } from "../scripts/lib/checks.ts";
 import type { AvailResult, CheckId, Finding, HeadResult, Net, NoVerdict, Snapshot } from "../scripts/lib/types.ts";
@@ -130,7 +131,7 @@ describe("L2 evidence existence", () => {
         [FED]: `${fedText}\n## 2026Q2\n`,
         "issuers/ECB/2026.md": `${goodText()["issuers/ECB/2026.md"]}\n## 2026Q2\n`,
         "issuers/FX/2026.md": `${goodText()["issuers/FX/2026.md"]}\n## 2026Q2\n\n${fxExtract("EUR")}`,
-        "INDEX.md": index("- [2026Q2](evidence/base_money/2026Q2.md)"),
+        "docs/evidence-index.md": index("- [2026Q2](evidence/base_money/2026Q2.md)"),
         ...csv("2026-06-30,1221,evidence/base_money/2026Q2.md", ROW),
       }),
     ));
@@ -184,7 +185,7 @@ describe("L4 append-only (no committed line changes)", () => {
       }),
     ));
   test("INDEX is not append-only", () =>
-    passes(onGood({ "INDEX.md": index().replace("# Index", "# Evidence index") })));
+    passes(onGood({ "docs/evidence-index.md": index().replace("# Index", "# Evidence index") })));
 });
 
 describe("L4 base_money.csv rows", () => {
@@ -216,7 +217,7 @@ describe("L4 base_money.csv rows", () => {
       onGood({
         ...q4Headings,
         "evidence/base_money/2026Q4.md": rollup(q4Block),
-        "INDEX.md": index("- [2026Q4](evidence/base_money/2026Q4.md)"),
+        "docs/evidence-index.md": index("- [2026Q4](evidence/base_money/2026Q4.md)"),
         ...csv(ROW, "2026-12-31,1221,evidence/base_money/2026Q4.md"),
       }),
     ));
@@ -248,7 +249,7 @@ describe("L4 base_money.csv rows", () => {
       onGood({
         ...q4Headings,
         "evidence/base_money/2026Q4.md": rollup(q4Block),
-        "INDEX.md": index("- [2026Q4](evidence/base_money/2026Q4.md)"),
+        "docs/evidence-index.md": index("- [2026Q4](evidence/base_money/2026Q4.md)"),
         ...csv("2026-09-30,1221,evidence/base_money/2026Q4.md"),
       }),
       ["L4", "L2"],
@@ -270,7 +271,7 @@ describe("L5 link integrity", () => {
   test("external and in-code links are ignored", () =>
     passes(withLink("- [fed](https://www.federalreserve.gov/)\n\n```\n[x](missing.md)\n```\n\n`[y](missing.md)`")));
   test("broken INDEX link", () =>
-    fails(good({ "INDEX.md": index("- [Q4](evidence/base_money/2026Q4.md)") }), ["L5"], /2026Q4/));
+    fails(good({ "docs/evidence-index.md": index("- [Q4](evidence/base_money/2026Q4.md)") }), ["L5"], /2026Q4/));
   test("machine-block anchor uses the exact slug", () =>
     fails(
       good({
@@ -291,20 +292,22 @@ describe("L5 link integrity", () => {
 
 describe("L6 INDEX completeness", () => {
   test("links with anchors count as linking the file", () =>
-    passes(good({ "INDEX.md": index().replace("(issuers/FX/2026.md)", "(issuers/FX/2026.md#2026q3)") })));
+    passes(
+      good({ "docs/evidence-index.md": index().replace("(../issuers/FX/2026.md)", "(../issuers/FX/2026.md#2026q3)") }),
+    ));
   test("issuer-year file not linked", () =>
     fails(
-      good({ "INDEX.md": index().replace("- [FX 2026](issuers/FX/2026.md)\n", "") }),
+      good({ "docs/evidence-index.md": index().replace("- [FX 2026](../issuers/FX/2026.md)\n", "") }),
       ["L6"],
       /issuers\/FX\/2026\.md/,
     ));
   test("roll-up not linked", () =>
     fails(
-      good({ "INDEX.md": index().replace("- [2026Q3](evidence/base_money/2026Q3.md)\n", "") }),
+      good({ "docs/evidence-index.md": index().replace("- [2026Q3](../evidence/base_money/2026Q3.md)\n", "") }),
       ["L6"],
       /base_money\/2026Q3/,
     ));
-  test("missing INDEX.md", () => fails(good({ "INDEX.md": null }), ["L6"], /INDEX\.md/));
+  test("missing INDEX.md", () => fails(good({ "docs/evidence-index.md": null }), ["L6"], /evidence-index\.md/));
 });
 
 describe("L7 extract schema", () => {
@@ -1079,7 +1082,7 @@ describe("L9 adopted_conflicts", () => {
   const conflict = (entry: string) =>
     good({
       [BOJ]: issuerFile("BOJ", "2026Q3", extract({ title: "BOJ primary" }), extract({ title: "IMF secondary" })),
-      "INDEX.md": index("- [BOJ 2026](issuers/BOJ/2026.md)"),
+      "docs/evidence-index.md": index("- [BOJ 2026](issuers/BOJ/2026.md)"),
       [ROLLUP]: rollup(machineBlock({}).replace("adopted_conflicts: []", `adopted_conflicts:\n${entry}`)),
     });
   const OK = [
@@ -1152,7 +1155,7 @@ describe("L10 no binaries", () => {
   test("over 1 MB", () => fails(good({ "big.txt": "a".repeat(1024 * 1024 + 1) }), ["L10"], /1 MB/));
   test("exactly 1 MB passes", () => passes(good({ "big.txt": "a".repeat(1024 * 1024) })));
   test("binary is not fed to other checks", () =>
-    fails(good({ "INDEX.md": new Uint8Array([0xff]) }), ["L10"], /UTF-8/));
+    fails(good({ "docs/evidence-index.md": new Uint8Array([0xff]) }), ["L10"], /UTF-8/));
 });
 
 describe("L11 catalog.json", () => {
@@ -1275,7 +1278,8 @@ describe("L9 component anchors", () => {
 describe("L10 byte-order marks", () => {
   test("BOM on a Markdown file fails", () =>
     fails(good({ "methodology/base_money.md": "\uFEFF# Methodology\n" }), ["L10"], /byte-order mark/));
-  test("BOM on INDEX.md fails", () => fails(good({ "INDEX.md": `\uFEFF${index()}` }), ["L10"], /byte-order mark/));
+  test("BOM on INDEX.md fails", () =>
+    fails(good({ "docs/evidence-index.md": `\uFEFF${index()}` }), ["L10"], /byte-order mark/));
 });
 
 describe("L11 catalog lists the base_money series (F2)", () => {
@@ -1353,7 +1357,7 @@ describe("L11 catalog baskets", () => {
         "catalog.json": withSeries({ version: "1.0.0", baskets: [V1, V2] }),
         [ROLLUP]: rollup(machineBlock({ basketVersion: "1" })),
         "issuers/SNB/2026.md": issuerFile("SNB", "2026Q3"),
-        "INDEX.md": index("- [SNB 2026](issuers/SNB/2026.md)"),
+        "docs/evidence-index.md": index("- [SNB 2026](issuers/SNB/2026.md)"),
       }),
     ));
 });
@@ -1522,7 +1526,7 @@ describe("L9 basket_version", () => {
         V2,
         {
           "issuers/SNB/2026.md": issuerFile("SNB", "2026Q3", extract({ title: "SNB (reference only)" })),
-          "INDEX.md": index("- [SNB 2026](issuers/SNB/2026.md)"),
+          "docs/evidence-index.md": index("- [SNB 2026](issuers/SNB/2026.md)"),
         },
       ),
     ));
@@ -1767,7 +1771,7 @@ describe("L9 reference_values and coverage_pct", () => {
       good({
         "catalog.json": withSeries({ baskets: [{ ...V1, issuers: ["PBOC", "FED", "ECB", "BOJ"] }] }),
         "issuers/PBOC/2026.md": issuerFile("PBOC", "2026Q3", extract({ title: "PBOC (reference only)" })),
-        "INDEX.md": index("- [PBOC 2026](issuers/PBOC/2026.md)"),
+        "docs/evidence-index.md": index("- [PBOC 2026](issuers/PBOC/2026.md)"),
         [ROLLUP]: rollup(
           machineBlock({
             exclusions:
@@ -1809,7 +1813,7 @@ describe("L9 reference_values and coverage_pct", () => {
     fails(
       good({
         "issuers/BOJ/2026.md": null as unknown as string,
-        "INDEX.md": index(),
+        "docs/evidence-index.md": index(),
       }),
       ["L5"],
       /issuers\/BOJ\/2026\.md#2026q3/,
@@ -1936,7 +1940,7 @@ describe("L7 As of inside the quarter heading (P2-m1)", () => {
               }),
             ]),
       ),
-      "INDEX.md": index("- [CBR 2026](issuers/CBR/2026.md)"),
+      "docs/evidence-index.md": index("- [CBR 2026](issuers/CBR/2026.md)"),
     });
   test("CBR (start_of_day) As of 2026-07-01 under Q2 passes", () => passes(cbr("2026-07-01")));
   test("CBR (start_of_day) As of 2026-06-30 (quarter end) under Q2 fails", () =>
@@ -2007,7 +2011,7 @@ describe("L12 placement", () => {
     });
   test("an issuer not in the catalog basket is named", () =>
     fails(
-      good({ "issuers/XYZ/2026.md": "# x\n", "INDEX.md": index("- [XYZ](issuers/XYZ/2026.md)") }),
+      good({ "issuers/XYZ/2026.md": "# x\n", "docs/evidence-index.md": index("- [XYZ](issuers/XYZ/2026.md)") }),
       ["L12"],
       /XYZ is not in the catalog basket/,
     ));
@@ -2015,14 +2019,14 @@ describe("L12 placement", () => {
     passes(
       good({
         "issuers/BOJ/2026.md": issuerFile("BOJ", "2026Q3"),
-        "INDEX.md": index("- [BOJ 2026](issuers/BOJ/2026.md)"),
+        "docs/evidence-index.md": index("- [BOJ 2026](issuers/BOJ/2026.md)"),
       }),
     ));
   test("issuers/FX/<YYYY>.md passes though FX is not a basket issuer", () =>
     passes(
       good({
         "issuers/FX/2026.md": issuerFile("FX", "2026Q3", fxExtract("EUR")),
-        "INDEX.md": index("- [FX 2026](issuers/FX/2026.md)"),
+        "docs/evidence-index.md": index("- [FX 2026](issuers/FX/2026.md)"),
       }),
     ));
   // Assay (a): FX is an exact, case-sensitive folder name, and issuer folders are upper-case ids, even when no
@@ -2056,7 +2060,7 @@ describe("L12 placement", () => {
       good({
         "issuers/FX/2025.md": issuerFile("FX", "2025Q4"),
         "research/base_money/2025Q4.md": "# 2025Q4 research log\n",
-        "INDEX.md": index("- [FX 2025](issuers/FX/2025.md)"),
+        "docs/evidence-index.md": index("- [FX 2025](issuers/FX/2025.md)"),
       }),
     ));
   test(".gitkeep anywhere under issuers/, evidence/ and research/, and files outside them, pass", () =>

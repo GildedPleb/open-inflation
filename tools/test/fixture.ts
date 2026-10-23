@@ -259,30 +259,35 @@ export const catalog = (series?: unknown): string =>
     2,
   )}\n`;
 
+/** Links in docs/evidence-index.md are relative to docs/. */
+const rel = (md: string): string => md.replace(/\]\((evidence|issuers)\//g, "](../$1/");
+
 export const index = (...extra: string[]): string =>
-  [
-    "# Index",
-    "",
-    "## Quarterly roll-ups",
-    "",
-    "- [2026Q3](evidence/base_money/2026Q3.md)",
-    "",
-    "## Issuer years",
-    "",
-    "- [FED 2026](issuers/FED/2026.md)",
-    "- [ECB 2026](issuers/ECB/2026.md)",
-    "- [BOJ 2026](issuers/BOJ/2026.md)",
-    "- [FX 2026](issuers/FX/2026.md)",
-    ...extra,
-    "",
-  ].join("\n");
+  rel(
+    [
+      "# Index",
+      "",
+      "## Quarterly roll-ups",
+      "",
+      "- [2026Q3](evidence/base_money/2026Q3.md)",
+      "",
+      "## Issuer years",
+      "",
+      "- [FED 2026](issuers/FED/2026.md)",
+      "- [ECB 2026](issuers/ECB/2026.md)",
+      "- [BOJ 2026](issuers/BOJ/2026.md)",
+      "- [FX 2026](issuers/FX/2026.md)",
+      ...extra,
+      "",
+    ].join("\n"),
+  );
 
 /** A complete, valid one-quarter repo. Every check must pass on it. */
 export const goodText = (): Record<string, string> => ({
   "README.md": "# fixture\n",
   "catalog.json": catalog(),
   "base_money.csv": `${CSV_HEADER}2026-09-30,1221,evidence/base_money/2026Q3.md\n`,
-  "INDEX.md": index(),
+  "docs/evidence-index.md": index(),
   "methodology/base_money.md": "# Methodology\n",
   "evidence/base_money/2026Q3.md": rollup(),
   "issuers/FED/2026.md": issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
@@ -309,7 +314,7 @@ export const skeletonText = (): Record<string, string> => ({
     },
   ]),
   "base_money.csv": CSV_HEADER,
-  "INDEX.md": "# Index\n\nNo quarters yet.\n",
+  "docs/evidence-index.md": "# Index\n\nNo quarters yet.\n",
   "methodology/base_money.md": "# Methodology (stub)\n",
   "evidence/base_money/.gitkeep": "",
   "issuers/.gitkeep": "",
