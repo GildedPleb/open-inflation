@@ -1,24 +1,24 @@
 # Evidence index
 
-Every quarterly roll-up in `evidence/base_money/` and every issuer-year file in `issuers/` is linked here. This page is generated from `base_money.csv`, the roll-ups and `catalog.json` by `bun run readme`; `bun run lint` fails if it is out of date or misses a file.
+Every quarterly roll-up in `base_money/` and every issuer-year file in `base_money/sources/` is linked here. This page is generated from `base_money.csv`, the roll-ups and `catalog.json` by `bun run readme`; `bun run lint` fails if it is out of date or misses a file.
 
 ## Quarterly roll-ups
 
-- [2026 Q2 base money](../evidence/base_money/2026Q2.md)
-- [2026 Q1 base money](../evidence/base_money/2026Q1.md)
+- [2026 Q2 base money](../base_money/2026Q2.md)
+- [2026 Q1 base money](../base_money/2026Q1.md)
 
 ## Issuer-year files
 
-- [PBOC 2026](../issuers/PBOC/2026.md)
-- [FED 2026](../issuers/FED/2026.md)
-- [ECB 2026](../issuers/ECB/2026.md)
-- [BOJ 2026](../issuers/BOJ/2026.md)
-- [BOE 2026](../issuers/BOE/2026.md)
-- [SNB 2026](../issuers/SNB/2026.md)
-- [RBI 2026](../issuers/RBI/2026.md)
-- [CBR 2026](../issuers/CBR/2026.md)
-- [BCB 2026](../issuers/BCB/2026.md)
-- [FX 2026](../issuers/FX/2026.md)
+- [PBOC 2026](../base_money/sources/PBOC/2026.md)
+- [FED 2026](../base_money/sources/FED/2026.md)
+- [ECB 2026](../base_money/sources/ECB/2026.md)
+- [BOJ 2026](../base_money/sources/BOJ/2026.md)
+- [BOE 2026](../base_money/sources/BOE/2026.md)
+- [SNB 2026](../base_money/sources/SNB/2026.md)
+- [RBI 2026](../base_money/sources/RBI/2026.md)
+- [CBR 2026](../base_money/sources/CBR/2026.md)
+- [BCB 2026](../base_money/sources/BCB/2026.md)
+- [FX 2026](../base_money/sources/FX/2026.md)
 
 ## Baskets
 
