@@ -121,6 +121,24 @@ describe("L13 generated README and evidence index; L6 links (G3)", () => {
     expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "30 September 2026", "1 October 2026")))).toEqual(["L13"]);
     expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "newest first.", "newest first. Edited.")))).toEqual([]);
   });
+  test("the quarter list names each quarter's coverage and the issuers left out", async () => {
+    const t = generated();
+    expect(t[EVIDENCE_INDEX]).toContain("; covers 99.92% of the basket, left out: BOJ");
+    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "; covers 99.92% of the basket, left out: BOJ", "")))).toEqual(
+      ["L13"],
+    );
+  });
+  test("a coverage figure in front-page prose must be the latest quarter's coverage_pct", async () => {
+    const prose = (pct: string) => (t: Record<string, string>) =>
+      edit(
+        t,
+        "README.md",
+        "# fixture\n",
+        `# fixture\n\nThe basket covers ${pct}% of base money; 1.5% is not a coverage figure.\n`,
+      );
+    expect(await ids(snap(prose("99.92")))).toEqual([]);
+    expect(await ids(snap(prose("99.91")))).toEqual(["L13"]);
+  });
   test("the quarter list is filled in place under its heading, newest first, gaps named", () => {
     const list = [
       "- [2026 Q2](quarters/2026Q2.md): x",

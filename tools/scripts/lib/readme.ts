@@ -181,9 +181,7 @@ export function generate(text: Texts, _paths: readonly string[]): Generated | nu
   const latestQ = newest[0];
   let latest = "No quarters published yet.";
   if (latestQ) {
-    const basketOrder = cat.baskets.get(latestQ.basket) ?? cat.order;
-    const out = latestQ.excluded.map((e) => e.issuer);
-    const left = [...basketOrder.filter((i) => out.includes(i)), ...out.filter((i) => !basketOrder.includes(i))];
+    const left = leftOut(latestQ, cat);
     const cover = `Covers ${latestQ.coverage}% of the basket${left.length ? `; left out: ${left.join(", ")}.` : "."}`;
     const updated = cat.lastUpdated ? `Updated ${dayLabel(cat.lastUpdated)} · ` : "";
     latest = [
@@ -192,21 +190,33 @@ export function generate(text: Texts, _paths: readonly string[]): Generated | nu
       `${updated}dataset version ${cat.version} · next quarter: ${quarterLabel(shiftQuarter(latestQ.id, 1))}`,
     ].join("\n");
   }
-  return { blocks: { latest, table, "yoy-notes": yoyNotes }, index: quarterList(qs) };
+  return { blocks: { latest, table, "yoy-notes": yoyNotes }, index: quarterList(qs, cat) };
 }
 
 /** 2026-06-30 -> "30 June 2026". */
 const longDay = (iso: string) =>
   `${Number(iso.slice(8, 10))} ${FULL_MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
 
-/** The quarter list: every CSV row newest first (date and total), with any gap quarter listed. */
-function quarterList(qs: readonly Quarter[]): string {
+/** A quarter's excluded issuers, in basket order (any outside the basket last). */
+function leftOut(q: Quarter, cat: Catalog): string[] {
+  const basketOrder = cat.baskets.get(q.basket) ?? cat.order;
+  const out = q.excluded.map((e) => e.issuer);
+  return [...basketOrder.filter((i) => out.includes(i)), ...out.filter((i) => !basketOrder.includes(i))];
+}
+
+/**
+ * The quarter list: every CSV row newest first (date and total; when issuers are left out, the coverage and who),
+ * with any gap quarter listed.
+ */
+function quarterList(qs: readonly Quarter[], cat: Catalog): string {
   const out: string[] = [];
   for (let i = qs.length - 1; i >= 0; i--) {
     const q = qs[i] as Quarter;
     const link = relLink(QUARTER_LIST, q.evidenceId);
+    const left = leftOut(q, cat);
+    const cover = left.length ? `; covers ${q.coverage}% of the basket, left out: ${left.join(", ")}` : "";
     out.push(
-      `- [${quarterLabel(q.id)}](${link}): ${longDay(q.date)}, $${group(q.value.toString())} (about $${trillions(q.value)} trillion)`,
+      `- [${quarterLabel(q.id)}](${link}): ${longDay(q.date)}, $${group(q.value.toString())} (about $${trillions(q.value)} trillion)${cover}`,
     );
     const prev = qs[i - 1];
     if (prev)

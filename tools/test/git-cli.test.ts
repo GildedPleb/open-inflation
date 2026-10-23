@@ -102,6 +102,7 @@ const cli = async (cwd: string, argv: string[] = [], o: { env?: Record<string, s
 const snapshotGit = (snap: Snapshot): LintGit => ({
   hasHead: () => true,
   mergeBase: () => null,
+  revParse: () => null,
   loadSnapshot: () => snap,
 });
 const text = (m: ReadonlyMap<string, Uint8Array> | null, p: string) => {

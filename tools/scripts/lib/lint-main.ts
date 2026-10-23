@@ -1,7 +1,7 @@
 // The lint CLI as a function, so the suite runs it in-process (no bun start per case): argv, env, cwd, output and
 // git come in; the exit code goes out. scripts/lint.ts is the thin process wrapper.
 import { lint } from "./checks.ts";
-import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, UnknownBase } from "./git.ts";
+import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, revParse, UnknownBase } from "./git.ts";
 import { chooseBase } from "./lint-base.ts";
 import type { Snapshot } from "./types.ts";
 
@@ -11,6 +11,7 @@ export const USAGE = "usage: bun run lint [--base <ref>]";
 export interface LintGit {
   hasHead(dir: string): boolean;
   mergeBase(dir: string, a: string, b: string): string | null;
+  revParse(dir: string, ref: string): string | null;
   loadSnapshot(dir: string, base: string | null): Snapshot;
 }
 
@@ -18,6 +19,7 @@ export const realGit: LintGit = {
   hasHead: (dir) =>
     isGitCheckout(dir) && Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", "HEAD"]).exitCode === 0,
   mergeBase,
+  revParse,
   loadSnapshot,
 };
 
@@ -58,6 +60,7 @@ export async function lintMain(io: LintIo): Promise<number> {
     ref: io.env.GITHUB_REF,
     hasHead: git.hasHead(dir),
     mergeBase: () => git.mergeBase(dir, "HEAD", "origin/main"),
+    revParse: (ref) => git.revParse(dir, ref),
   });
   if ("error" in choice) {
     io.err(`lint: ${choice.error}`);
@@ -65,6 +68,14 @@ export async function lintMain(io: LintIo): Promise<number> {
   }
   const { base } = choice;
   if (base !== null && choice.why !== "HEAD" && choice.why !== "--base") io.err(`lint: base ${base} (${choice.why})`);
+  // An explicit base that is HEAD's own commit (e.g. --base origin/main on main) checks only uncommitted changes.
+  if (base !== null && base !== "HEAD" && (choice.why === "--base" || choice.why === "LINT_BASE")) {
+    const sha = git.revParse(dir, base);
+    if (sha !== null && sha === git.revParse(dir, "HEAD"))
+      io.err(
+        `lint: note: base ${base} is HEAD itself, so only uncommitted changes count as new (plain \`bun run lint\` uses HEAD~1 on main)`,
+      );
+  }
   let snapshot: Snapshot;
   try {
     snapshot = git.loadSnapshot(dir, base);

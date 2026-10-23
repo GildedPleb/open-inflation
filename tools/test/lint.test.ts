@@ -8,6 +8,7 @@ import {
   catalog,
   ECB,
   extract,
+  FX,
   files,
   folderReadme,
   fxFile,
@@ -3633,4 +3634,236 @@ describe("no failed-attempts log in quarter files", () => {
     ));
   test("removing a committed failed_attempts block passes (it was never a machine block)", () =>
     passes({ files: files(goodText()), base: files(goodText(), { [ROLLUP]: `${rollup()}${LOG}` }) }));
+});
+
+// Probe's repo walk (2026-10-23), "Lint coverage gaps": every rule we state and can check mechanically is linted.
+/** The L12 path patterns as a layout list names them (any <ISS> placeholder name). */
+const LAYOUT = [
+  "base_money/base_money.csv",
+  "base_money/README.md",
+  "base_money/quarters/YYYYQn.md",
+  "base_money/issuers/<ID>/<YYYY>.md",
+  "base_money/issuers/<ID>/README.md",
+  "base_money/FX/<YYYY>.md",
+  "base_money/FX/README.md",
+];
+const layout = (paths: string[]) => paths.map((p) => `- \`${p}\``).join("\n");
+// The good repo's 2026Q3: FED $1,001, ECB 200.25 EUR × 1.1 = $220, BOJ (reference) $1; total $1,222.
+const SHARES: [string, string][] = [
+  ["FED", "81.91%"],
+  ["ECB", "18.00%"],
+  ["BOJ", "0.08%"],
+];
+const shareTable = (q: string, rows: [string, string][]) =>
+  [
+    `| Id | Name | Share of the basket, ${q} (display, rounded) |`,
+    "| :-- | :-- | --: |",
+    ...rows.map(([id, s]) => `| \`${id}\` | x | ${s} |`),
+  ].join("\n");
+/** The good repo plus a docs set every docs rule passes on; `patch` replaces or drops files. */
+const docs = (patch: Record<string, string | null> = {}) =>
+  good({
+    "docs/README.md":
+      "# Docs\n\n- [Running](running.md)\n- [Evidence](evidence-chain.md)\n- [Methodology](methodology/base_money.md)\n- [Agents](../AGENTS.md)\n",
+    "docs/running.md": `# Running\n\nSee [the docs](README.md#docs).\n\n${layout(LAYOUT)}\n`,
+    "docs/evidence-chain.md": "# Evidence\n",
+    "docs/methodology/base_money.md": `# M\n\n${shareTable("2026Q3", SHARES)}\n`,
+    "AGENTS.md": `# AGENTS.md\n\nSee [running](docs/running.md).\n\n${layout(LAYOUT)}\n`,
+    ...patch,
+  });
+describe("L5/L6 docs: links resolve, docs/README.md indexes every doc", () => {
+  test("linked, indexed docs pass", () => passes(docs()));
+  test("a broken link in docs/ fails L5", () =>
+    fails(
+      docs({ "docs/evidence-chain.md": "# E\n\nSee [lint](lint.md).\n" }),
+      ["L5"],
+      /docs\/lint\.md does not exist/,
+    ));
+  test("a broken anchor in AGENTS.md fails L5", () =>
+    fails(
+      docs({ "AGENTS.md": `# AGENTS.md\n\n[x](docs/running.md#nope)\n\n${layout(LAYOUT)}\n` }),
+      ["L5"],
+      /no heading .*#nope/,
+    ));
+  test("a link inside inline code is not a link", () =>
+    passes(docs({ "docs/evidence-chain.md": "# E\n\n`[x](nope.md)` is how a link looks.\n" })));
+  test("a doc the index does not link fails L6", () =>
+    fails(
+      docs({
+        "docs/README.md": "# Docs\n\n- [r](running.md)\n- [e](evidence-chain.md)\n- [m](methodology/base_money.md)\n",
+      }),
+      ["L6"],
+      /does not link AGENTS\.md/,
+    ));
+  test("docs without docs/README.md fail L6", () =>
+    fails(docs({ "docs/README.md": null }), ["L6", "L5"], /docs\/README\.md is missing/));
+});
+
+describe("L14 docs agree with the rules", () => {
+  const doc = (body: string, path = "docs/evidence-chain.md") => docs({ [path]: body });
+  const methodology = (body: string) =>
+    doc(`${body}\n\n${shareTable("2026Q3", SHARES)}\n`, "docs/methodology/base_money.md");
+  test("a backticked path that exists passes; placeholders, refs, hosts and retired roots are not paths", () =>
+    passes(
+      doc(
+        "# E\n\n`base_money/base_money.csv`, `base_money/quarters/`, `base_money/quarters/YYYYQn.md`, `origin/main`, `archive.ph/abc`, `x/example.com`, `issuers/`, `catalog.json`\n\n```\nnot/here.md\n```\n",
+      ),
+    ));
+  test("a backticked path that does not exist fails", () =>
+    fails(
+      doc("# E\n\nRun `scripts/lint.ts`.\n"),
+      ["L14"],
+      /`scripts\/lint\.ts` names scripts\/lint\.ts, which does not exist/,
+    ));
+  test("a :line or #fragment suffix is dropped before the check", () =>
+    fails(doc("# E\n\n`tools/nope.ts:12` and `base_money/base_money.csv:1`\n"), ["L14"], /names tools\/nope\.ts,/));
+  test("a methodology machine-block anchor without base_money/ fails, fenced or not", () =>
+    fails(
+      methodology("# M\n\n```yaml\nanchor: issuers/FED/<YYYY>.md#<yyyy>q<n>\n```"),
+      ["L14"],
+      /anchor "issuers\/FED\/<YYYY>\.md#…" must start with base_money\//,
+    ));
+  test("the base_money/ form passes", () =>
+    passes(methodology("# M\n\n```yaml\nanchor: base_money/issuers/FED/<YYYY>.md#<yyyy>q<n>\n```")));
+  for (const term of [
+    "failed-attempts block",
+    "FX-rate extract",
+    "adopted FX extract",
+    "quarter-end exchange rate",
+    "Components link",
+  ])
+    test(`the retired term "${term}" fails in docs`, () =>
+      fails(doc(`# E\n\nThe ${term.toUpperCase()} is here.\n`), ["L14"], /is a retired term/));
+  test("a retired term on the front page fails; docs/lint.md may name them", async () => {
+    await fails(docs({ "README.md": "# f\n\nAt the quarter-end exchange rate.\n" }), ["L14"], /is a retired term/);
+    await passes(
+      docs({
+        "docs/README.md":
+          "# Docs\n\n- [r](running.md)\n- [e](evidence-chain.md)\n- [m](methodology/base_money.md)\n- [l](lint.md)\n- [a](../AGENTS.md)\n",
+        "docs/lint.md": "# L\n\nNo FX-rate extract.\n",
+      }),
+    );
+  });
+  test("layout lists naming every L12 path pattern pass (any <ISS> placeholder name)", () =>
+    passes(doc(`# R\n\n${layout(LAYOUT)}\n`, "docs/running.md")));
+  test("a layout list missing an L12 path pattern fails", () =>
+    fails(
+      doc(`# R\n\n${layout(LAYOUT.filter((p) => p !== "base_money/FX/README.md"))}\n`, "docs/running.md"),
+      ["L14"],
+      /does not name `base_money\/FX\/README\.md`/,
+    ));
+
+  const shares = (q: string, rows: [string, string][]) =>
+    doc(`# M\n\n${shareTable(q, rows)}\n`, "docs/methodology/base_money.md");
+  const RIGHT = SHARES;
+  test("shares of the latest quarter, half-to-even to 2 dp, pass", () => passes(shares("2026Q3", RIGHT)));
+  test("a stale share fails", () =>
+    fails(shares("2026Q3", [["FED", "81.30%"], ...RIGHT.slice(1)]), ["L14"], /FED's share is 81\.91% in 2026Q3/));
+  test("a table for an older quarter fails", () =>
+    fails(shares("2026Q2", RIGHT), ["L14"], /share column is for 2026Q2; the latest quarter is 2026Q3/));
+  test("a missing issuer row fails", () => fails(shares("2026Q3", RIGHT.slice(0, 2)), ["L14"], /no row for BOJ/));
+  test("a methodology with no share table fails", () =>
+    fails(doc("# M\n\nNo table.\n", "docs/methodology/base_money.md"), ["L14"], /no basket table/));
+});
+
+describe("L7 defined line types and superseded conversions", () => {
+  const withLines = (...extra: string[]) =>
+    fed(extract({ title: "FED H.4.1", fields: ["- As of: 2026-09-30", ...extra] }));
+  test("defined record lines pass", () =>
+    passes(
+      good(
+        withLines(
+          "- Note 2026-10-23: a note.",
+          "- Capture check (Ghostarchive; opened and checked): shows the figure.",
+          "- Rejected source: x: not the series used.",
+        ),
+      ),
+    ));
+  test("an undefined `- <Label>:` line fails", () =>
+    fails(good(withLines("- Archive check: fine.")), ["L7"], /"- Archive check:" is not a defined line type/));
+  test("in an append-only extract file only added lines are checked (committed lines cannot be reworded)", async () => {
+    const old = (goodText()[FED] as string).replace("- Adopted: yes", "- Archive check: committed.\n- Adopted: yes");
+    const base = files(goodText(), { [FED]: old });
+    await passes({ files: base, base });
+    await fails(
+      {
+        files: files(goodText(), { [FED]: old.replace("- Adopted: yes", "- Archive check: new.\n- Adopted: yes") }),
+        base,
+      },
+      ["L7"],
+      /line \d+: "- Archive check:"/,
+    );
+  });
+  const oldRate = (note?: string) =>
+    good({
+      [FED]: (goodText()[FED] as string).replace(
+        "- Notes: synthetic fixture",
+        `- Notes: converted at the quarter-end rate (H.10).${note ? `\n${note}` : ""}`,
+      ),
+    });
+  test("Notes converting at an older rate without a superseded note fail", () =>
+    fails(oldRate(), ["L7"], /convert at an older rate/));
+  test("with a dated superseded note they pass", () =>
+    passes(oldRate("- Note 2026-10-23: the USD conversion above is superseded; see the FX table.")));
+});
+
+describe("L9 an FX year file is a table with at most a one-line preamble", () => {
+  test("one preamble line passes", () => passes(good()));
+  test("more fails", () =>
+    fails(
+      good({
+        [FX]: (goodText()[FX] as string).replace("not archived).", "not archived).\n\n- Rate: x\n- Date rule: y"),
+      }),
+      ["L9"],
+      /3 preamble lines before the first table/,
+    ));
+});
+
+describe("L15 evidence wording", () => {
+  for (const [what, line] of [
+    ["a PR number", "Checked in PR #12."],
+    ["a team member", "Probe checked this."],
+    ["a review artifact", "Per the PREREAD."],
+    ["the retired archive log", "See the archive log."],
+    ["migration history", "Capture check (moved from the 2026Q2 quarter file): fine."],
+  ])
+    test(`${what} in base_money/ fails`, () =>
+      fails(
+        good({ [ROLLUP]: (goodText()[ROLLUP] as string).replace("## Machine block", `${line}\n\n## Machine block`) }),
+        ["L15"],
+        /is process narrative/,
+      ));
+  test("in an append-only extract file only added lines count", async () => {
+    const old = (goodText()[FED] as string).replace("synthetic fixture", "synthetic fixture (PR #2)");
+    const base = files(goodText(), { [FED]: old });
+    await passes({ files: base, base });
+    await fails(
+      {
+        files: files(goodText(), {
+          [FED]: old.replace("- Adopted: yes", "- Note 2026-10-23: Probe said so.\n- Adopted: yes"),
+        }),
+        base,
+      },
+      ["L15"],
+      /"Probe" is process narrative/,
+    );
+  });
+  const rejected = (bullet: string, extra: string[] = []) =>
+    good({
+      [ROLLUP]: (goodText()[ROLLUP] as string).replace(
+        "## Machine block",
+        `### Sources considered and rejected\n\n- ${bullet}\n\n## Machine block`,
+      ),
+      ...fed(extract({ title: "FED H.4.1", fields: ["- As of: 2026-09-30", ...extra] })),
+    });
+  test("a quarter-file rejection naming an issuer that records it under its extract fails", () =>
+    fails(
+      rejected("FED H.6 weekly: not end of period.", ["- Rejected source: FED H.6 weekly: not end of period."]),
+      ["L15"],
+      /names FED/,
+    ));
+  test("a general rejection, or an issuer with no extract rejections, passes", async () => {
+    await passes(rejected("Porkopolis: methodology only.", ["- Rejected source: FED H.6 weekly: not end of period."]));
+    await passes(rejected("FED H.6 weekly: not end of period."));
+  });
 });

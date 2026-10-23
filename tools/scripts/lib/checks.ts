@@ -27,7 +27,17 @@ import {
   RETIRED_ROOTS,
   relLink,
 } from "./paths.ts";
-import { fillIndex, fillList, fillReadme, generate, hasMarkers, README, YEARS_HEADING, yearLists } from "./readme.ts";
+import {
+  fillIndex,
+  fillList,
+  fillReadme,
+  generate,
+  hasMarkers,
+  quarters,
+  README,
+  YEARS_HEADING,
+  yearLists,
+} from "./readme.ts";
 import type { CheckId, Files, Finding, LintOptions, Snapshot } from "./types.ts";
 
 /** The series with a CSV and a roll-up schema today. A series id names its CSV and its evidence folder. */
@@ -84,12 +94,15 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   quarterHeadings(ctx, emit);
   indexCompleteness(ctx, emit);
   extractSchema(ctx, emit);
+  extractLines(ctx, emit);
   rearchiveNotes(ctx, emit);
   aggregation(ctx, rows, emit);
   fxTables(ctx, emit);
   catalog(ctx, emit);
   placement(ctx, emit);
   generated(ctx, emit);
+  docsAgree(ctx, rows, emit);
+  evidenceWording(ctx, emit);
   const order = (c: CheckId) => Number(c.slice(1));
   return out.sort((a, b) => order(a.check) - order(b.check));
 }
@@ -505,7 +518,8 @@ function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
 
 function linkIntegrity(ctx: Ctx, emit: Emit) {
   for (const [p, body] of md(ctx, {
-    test: (x: string) => x === README || x === QUARTER_LIST || QUARTER_FILE.test(x) || folderReadmeOf(x) !== undefined,
+    test: (x: string) =>
+      x === README || x === QUARTER_LIST || QUARTER_FILE.test(x) || folderReadmeOf(x) !== undefined || isDoc(x),
   })) {
     for (const l of links(body)) checkTarget(ctx, p, `link (line ${l.line})`, l.target, false, emit);
     if (!QUARTER_FILE.test(p)) continue;
@@ -568,6 +582,7 @@ function quarterHeadings(ctx: Ctx, emit: Emit) {
 }
 
 function indexCompleteness(ctx: Ctx, emit: Emit) {
+  docsIndex(ctx, emit);
   const I = QUARTER_LIST;
   if (!ctx.files.has(I)) return emit("L6", I, `${I} is missing`);
   const body = ctx.text.get(I);
@@ -582,6 +597,16 @@ function indexCompleteness(ctx: Ctx, emit: Emit) {
   const fromReadme = new Set(links(readme ?? "").map((l) => resolveLink(README, l.target, false)?.path));
   for (const p of [...ctx.files.keys()].sort())
     if (QUARTER_FILE.test(p) && !fromReadme.has(p)) emit("L6", README, `README.md table does not link ${p}`);
+}
+
+/** docs/README.md is the one docs index: it links every other docs/**.md and AGENTS.md. */
+function docsIndex(ctx: Ctx, emit: Emit) {
+  const docs = [...ctx.files.keys()].filter((p) => isDoc(p) && p !== DOCS_INDEX).sort();
+  if (!docs.some((p) => p.startsWith("docs/"))) return;
+  const body = ctx.text.get(DOCS_INDEX);
+  if (body === undefined) return emit("L6", DOCS_INDEX, `${DOCS_INDEX} is missing (the docs index)`);
+  const linked = new Set(links(body).map((l) => resolveLink(DOCS_INDEX, l.target, false)?.path));
+  for (const p of docs) if (!linked.has(p)) emit("L6", DOCS_INDEX, `the docs index does not link ${p}`);
 }
 
 // ---------- L13 ----------
@@ -637,6 +662,7 @@ function generated(ctx: Ctx, emit: Emit) {
     const diff = firstDiff(readme ?? "", filled);
     emit("L13", README, `generated block differs from the data at line ${diff + 1}; ${fix}`);
   }
+  frontPageCoverage(readme ?? "", quarters(ctx.text)?.at(-1)?.coverage, (m) => emit("L13", README, m));
   const index = ctx.text.get(QUARTER_LIST);
   if (index === undefined) return; // L6 reports a missing list
   const want = fillIndex(index, g.index);
@@ -645,6 +671,22 @@ function generated(ctx: Ctx, emit: Emit) {
     const diff = firstDiff(index, want);
     emit("L13", QUARTER_LIST, `quarter list differs from the data at line ${diff + 1}; ${fix}`);
   }
+}
+
+/** The front page states one coverage figure: every NN.NN% outside the generated blocks is the latest quarter's. */
+function frontPageCoverage(readme: string, latest: string | undefined, e: (m: string) => void) {
+  if (latest === undefined) return;
+  let inBlock = false;
+  readme.split("\n").forEach((l, i) => {
+    if (l.startsWith("<!-- BEGIN GENERATED ")) inBlock = true;
+    else if (l.startsWith("<!-- END GENERATED ")) inBlock = false;
+    else if (!inBlock)
+      for (const m of l.matchAll(/(?<![\d.])(\d+\.\d{2})%/g))
+        if (m[1] !== latest)
+          e(
+            `line ${i + 1}: ${m[1]}% differs from the latest coverage ${latest}% (the front page states one coverage figure)`,
+          );
+  });
 }
 
 // ---------- L7, L8 ----------
@@ -1673,11 +1715,27 @@ function dateRuleProblem(rule: string, asOf: string, rateCell: string): string |
  * in that extract's quote; the Date rule is one of DATE_RULES and the Rate date follows it; Pair names the currency and Rate is a positive plain
  * decimal; Source holds exactly one http(s) link. The machine block's fx_rate equals the row's (fxRateEntry).
  */
+/** The non-blank lines between an FX year file's # title and its first ## heading or table. */
+function fxPreamble(body: string): number[] {
+  const out: number[] = [];
+  for (const l of lines(body)) {
+    if (/^#\s/.test(l.text) && l.fence === "none") continue;
+    if (l.fence === "none" && (/^#{2,6}\s/.test(l.text) || l.text.startsWith("|"))) break;
+    if (l.text.trim() !== "") out.push(l.line);
+  }
+  return out;
+}
+
 function fxTables(ctx: Ctx, emit: Emit) {
   for (const [p, body] of ctx.text) {
     if (!isFxPath(p)) continue;
     const e = (m: string) => emit("L9", p, m);
     const year = /(\d{4})\.md$/.exec(p)?.[1] as string;
+    const pre = fxPreamble(body);
+    if (pre.length > 1)
+      e(
+        `lines ${pre[0]}–${pre.at(-1)}: ${pre.length} preamble lines before the first table; an FX year file is a table with at most a one-line preamble (the sources and rules live in ${folderReadmePath(FX_ID)})`,
+      );
     for (const [q, sec] of fxTable(body)) {
       if (q.slice(0, 4) !== year) {
         e(`## ${q} (line ${sec.line}) is not a quarter of ${year}`);
@@ -2373,5 +2431,260 @@ function placement(ctx: Ctx, emit: Emit) {
           `${iss} is not in the catalog basket (${[...basket].join(", ")}); ${ISSUER_TEXT} needs a basket issuer`,
         );
     }
+  }
+}
+
+// ---------- shared: docs and new lines ----------
+
+/** The docs lint reads as docs (L5 links, L6 index, L14): AGENTS.md and every docs/**.md. */
+export const DOCS_INDEX = "docs/README.md";
+export const AGENTS = "AGENTS.md";
+const isDoc = (p: string) => p === AGENTS || (p.startsWith("docs/") && p.endsWith(".md"));
+
+/**
+ * The 1-based line numbers of `body` that L7's line-type rule and L15 read: every line, except in an append-only
+ * issuer extract file, where only the lines the diff adds count (committed lines can never be reworded; L4).
+ */
+function newLines(ctx: Ctx, p: string, body: string): Set<number> {
+  const all = body.split("\n");
+  const old = isExtract(p) ? baseOf(ctx, p) : undefined;
+  if (old === undefined) return new Set(all.map((_, i) => i + 1));
+  const left = new Map<string, number>();
+  for (const l of old.split("\n")) left.set(l, (left.get(l) ?? 0) + 1);
+  const out = new Set<number>();
+  all.forEach((l, i) => {
+    const n = left.get(l) ?? 0;
+    if (n > 0) left.set(l, n - 1);
+    else out.add(i + 1);
+  });
+  return out;
+}
+
+// ---------- L14 docs agree with the rules ----------
+
+/** Phrases for retired concepts: none may appear in README.md, AGENTS.md or docs/** (docs/lint.md names them). */
+export const RETIRED_TERMS = [
+  "failed-attempts block",
+  "FX-rate extract",
+  "adopted FX extract",
+  "quarter-end exchange rate",
+  "Components link",
+];
+/** L12's path patterns, as the layout lists in docs/running.md and AGENTS.md must name them. */
+export const LAYOUT_PATTERNS = [
+  CSV_PATH,
+  QUARTER_LIST,
+  QUARTER_TEXT,
+  ISSUER_TEXT,
+  FOLDER_README_TEXT,
+  FX_TEXT,
+  folderReadmePath(FX_ID),
+];
+const LAYOUT_LISTS = ["docs/running.md", AGENTS];
+/**
+ * A backticked repo path: two or more segments, the first without a dot (not a host), ending in a file extension the
+ * repo uses or in "/"; an optional #fragment or :line suffix is dropped. `origin/main` or `x/example.com` are not paths.
+ */
+const DOC_PATH =
+  /^(?:\.\/)?([\w-]+(?:\/[\w.-]+)*(?:\/[\w.-]+\.(?:md|ts|csv|json|yml|yaml|lock|txt)|\/))(?:#[\w.-]*|:\d+(?:[–-]\d+)?)?$/;
+const PLACEHOLDER = /YYYY|Qn\b|<|\*|\.\.\./;
+/** A root-relative machine-block anchor without the base_money/ prefix L9 requires. */
+const OLD_ANCHOR = /(?<![\w./-])(?:issuers|FX)\/[^\s`"')|]*\.md#/;
+export const METHODOLOGY = "docs/methodology/base_money.md";
+const SHARE_HEADER = /Share of the basket, (\d{4}Q[1-4])/;
+
+function docsAgree(ctx: Ctx, rows: Row[], emit: Emit) {
+  const e = (p: string, m: string) => emit("L14", p, m);
+  const docs = [...ctx.text].filter(([p]) => isDoc(p)).sort(([a], [b]) => a.localeCompare(b));
+  for (const [p, body] of docs) {
+    for (const l of lines(body)) {
+      if (l.fence !== "none") continue;
+      for (const m of l.text.matchAll(/`([^`]+)`/g)) {
+        const span = m[1] as string;
+        const d = DOC_PATH.exec(span);
+        // Retired roots (L12) are named as retired, so they need not exist.
+        if (!d || PLACEHOLDER.test(span) || RETIRED_ROOTS.includes(span)) continue;
+        const path = (d[1] as string).replace(/\/$/, "");
+        if (!ctx.files.has(path) && ![...ctx.files.keys()].some((k) => k.startsWith(`${path}/`)))
+          e(p, `line ${l.line}: \`${span}\` names ${path}, which does not exist`);
+      }
+    }
+    if (p.startsWith("docs/methodology/"))
+      for (const l of lines(body))
+        if (OLD_ANCHOR.test(l.text))
+          e(
+            p,
+            `line ${l.line}: machine-block anchor "${OLD_ANCHOR.exec(l.text)?.[0]}…" must start with base_money/ (the form L9 requires)`,
+          );
+  }
+  for (const [p, body] of [...docs, [README, ctx.text.get(README)] as const]) {
+    if (body === undefined || p === "docs/lint.md") continue;
+    for (const l of lines(body))
+      for (const t of RETIRED_TERMS)
+        if (l.text.toLowerCase().includes(t.toLowerCase()))
+          e(p, `line ${l.line}: "${t}" is a retired term (see docs/lint.md#l14)`);
+  }
+  for (const p of LAYOUT_LISTS) {
+    const body = ctx.text.get(p);
+    if (body === undefined) continue;
+    const named = new Set(
+      lines(body)
+        .filter((l) => l.fence === "none")
+        .flatMap((l) => [...l.text.matchAll(/`([^`]+)`/g)])
+        .map((m) => (m[1] as string).replace(/^(base_money\/issuers\/)<[A-Z]+>\//, "$1<ISS>/")),
+    );
+    for (const want of LAYOUT_PATTERNS)
+      if (!named.has(want)) e(p, `the layout list does not name \`${want}\` (every L12 path pattern)`);
+  }
+  methodologyShares(ctx, rows, (m) => e(METHODOLOGY, m));
+}
+
+/**
+ * The methodology's basket table: its "Share of the basket, <YYYYQn>" column names the latest quarter in the CSV, and
+ * each row's share is that issuer's whole-dollar USD (component or reference value of the quarter's current block)
+ * over the sum of all of them, × 100, rounded half-to-even to 2 dp.
+ */
+function methodologyShares(ctx: Ctx, rows: Row[], e: (m: string) => void) {
+  const body = ctx.text.get(METHODOLOGY);
+  const last = rows.at(-1);
+  if (body === undefined || last === undefined) return;
+  const all = lines(body);
+  const head = all.find((l) => l.fence === "none" && l.text.startsWith("|") && SHARE_HEADER.test(l.text));
+  if (!head) return e('has no basket table with a "Share of the basket, <YYYYQn>" column');
+  const q = SHARE_HEADER.exec(head.text)?.[1] as string;
+  const latest = quarterOf(last.date);
+  if (q !== latest) e(`line ${head.line}: the share column is for ${q}; the latest quarter is ${latest}`);
+  const m = machine(ctx.text.get(last.evidenceId) ?? "");
+  if (!m.ok || !isObj(m.data)) return; // L2 / L9 report it
+  const usd = new Map<string, bigint>();
+  for (const key of ["components", "reference_values"] as const)
+    for (const c of Array.isArray(m.data[key]) ? m.data[key] : []) {
+      if (!isObj(c) || typeof c.local_value !== "string" || typeof c.fx_rate !== "string") return;
+      const v = parseDecimal(c.local_value);
+      const fx = parseDecimal(c.fx_rate);
+      if (!v || !fx) return;
+      usd.set(String(c.issuer), wholeUsd(v, fx));
+    }
+  const total = [...usd.values()].reduce((a, b) => a + b, 0n);
+  if (total === 0n) return;
+  const cols = tableCells(head.text);
+  const idCol = cols.indexOf("Id");
+  const shareCol = cols.findIndex((c) => SHARE_HEADER.test(c));
+  const seen = new Set<string>();
+  for (const l of all.slice(head.line + 1)) {
+    if (!l.text.startsWith("|")) break;
+    const cells = tableCells(l.text);
+    const id = (cells[idCol] ?? "").replaceAll("`", "");
+    const got = cells[shareCol] ?? "";
+    seen.add(id);
+    const v = usd.get(id);
+    if (v === undefined) {
+      e(`line ${l.line}: ${id} is not in ${latest}'s current machine block`);
+      continue;
+    }
+    const want = `${hundredths(ratioHalfEven(v * 10_000n, total))}%`;
+    if (got !== want) e(`line ${l.line}: ${id}'s share is ${want} in ${latest} (USD ${v} of ${total}), not ${got}`);
+  }
+  for (const id of usd.keys()) if (!seen.has(id)) e(`the basket table has no row for ${id} (in ${latest}'s block)`);
+}
+
+// ---------- L15 evidence wording ----------
+
+/** Team, review and migration references a cold reader cannot resolve. */
+export const NARRATIVE = [
+  /\bPR #\d+/,
+  /\bProbe\b/,
+  /\bPREREAD\b/,
+  /\barchive log\b/i,
+  /moved from the [^.;)]*quarter file/i,
+];
+
+function evidenceWording(ctx: Ctx, emit: Emit) {
+  for (const [p, body] of [...ctx.text].sort(([a], [b]) => a.localeCompare(b))) {
+    if (!p.startsWith(EVIDENCE_ROOT) || !p.endsWith(".md")) continue;
+    const fresh = newLines(ctx, p, body);
+    let yaml = false;
+    for (const l of lines(body)) {
+      if (l.fence === "open") yaml = l.info === "yaml" || l.info === "yml";
+      if (l.fence === "close") yaml = false;
+      if (yaml || !fresh.has(l.line)) continue;
+      const hit = NARRATIVE.map((r) => r.exec(l.text)?.[0]).find((x) => x !== undefined);
+      if (hit)
+        emit(
+          "L15",
+          p,
+          `line ${l.line}: "${hit}" is process narrative (team, PR, review or migration history); evidence states the fact for a cold reader`,
+        );
+    }
+  }
+  // Issuer-specific rejected sources live under the extract: a quarter file's rejected-source bullet may not name an
+  // issuer that records a "- Rejected source:" line under that quarter in its year file.
+  const basket = catalogBasket(ctx);
+  for (const [p, body] of md(ctx, QUARTER_FILE)) {
+    const q = quarterOfPath(p) as string;
+    let inRejected = false;
+    for (const l of lines(body)) {
+      if (l.fence !== "none") continue;
+      const h = /^#{2,6}\s+(.*)$/.exec(l.text);
+      if (h) {
+        inRejected = /rejected/i.test(h[1] ?? "");
+        continue;
+      }
+      if (!inRejected || !/^\s*[-*]\s/.test(l.text)) continue;
+      for (const iss of basket) {
+        if (!new RegExp(`\\b${iss}\\b`, "i").test(l.text)) continue;
+        const ext = extracts(ctx.text.get(extractPath(iss, q.slice(0, 4))) ?? "").blocks;
+        if (ext.some((b) => b.quarter === q && b.notes.some((n) => n.kind === "Rejected source")))
+          emit(
+            "L15",
+            p,
+            `line ${l.line}: rejected source names ${iss}, which records its rejected sources under its ${q} extracts (- Rejected source:); issuer-specific rejections live only there`,
+          );
+      }
+    }
+  }
+}
+
+// ---------- L7 line types and superseded conversions ----------
+
+/** The `- <Label>:` lines an extract may hold: the template's fields and the defined record lines. */
+const LINE_LABEL =
+  /^(?:Retrieved|Original URL|Archive URL(?: [23])?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Notes|Rejected source|Re-archive|Archive attempt\b.*|Link audit\b.*|Note \d{4}-\d{2}-\d{2}|Capture check(?: \(.*)?)$/;
+/** A Notes line that converts at a rate other than the quarter's FX table row. */
+const OLD_CONVERSION = /H\.10|official rate|quarter-end rate/i;
+const SUPERSEDED_NOTE = /^- Note \d{4}-\d{2}-\d{2}:.*\bsuperseded\b/i;
+
+function extractLines(ctx: Ctx, emit: Emit) {
+  for (const [p, body] of issuerTexts(ctx.text)) {
+    const fresh = newLines(ctx, p, body);
+    let block: { title: string; line: number; notes: number | null; superseded: boolean } | null = null;
+    const close = () => {
+      if (block?.notes != null && !block.superseded)
+        emit(
+          "L7",
+          p,
+          `extract "${block.title}" (line ${block.line}): its Notes (line ${block.notes}) convert at an older rate (H.10, official or quarter-end rate); append a "- Note <YYYY-MM-DD>: … superseded …" line pointing at the FX table`,
+        );
+    };
+    for (const l of lines(body)) {
+      if (l.fence !== "none") continue;
+      const h = /^ {0,3}(#{1,6})\s+(.*?)\s*$/.exec(l.text);
+      if (h) {
+        close();
+        block = h[1]?.length === 3 ? { title: h[2] ?? "", line: l.line, notes: null, superseded: false } : null;
+        continue;
+      }
+      if (!block) continue;
+      if (/^- Notes:/.test(l.text) && OLD_CONVERSION.test(l.text)) block.notes = l.line;
+      if (SUPERSEDED_NOTE.test(l.text)) block.superseded = true;
+      const lab = /^[-*]\s+([^:]+):/.exec(l.text);
+      if (lab && fresh.has(l.line) && !LINE_LABEL.test((lab[1] as string).trim()))
+        emit(
+          "L7",
+          p,
+          `extract "${block.title}" line ${l.line}: "- ${(lab[1] as string).trim()}:" is not a defined line type (the template's fields, Archive attempt, Link audit, Rejected source, Re-archive, Note <date>, Capture check)`,
+        );
+    }
+    close();
   }
 }
