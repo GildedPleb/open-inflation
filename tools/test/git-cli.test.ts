@@ -432,24 +432,7 @@ describe("CLI", () => {
       out: "lint: clean (base HEAD)\n",
     });
   });
-  test("locally on origin/main the default base is HEAD~1, and an explicit base equal to HEAD gets a note", async () => {
-    const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });
-    git(dir, "init", "-q", "--template=");
-    git(dir, "add", ".");
-    git(dir, "commit", "-qm", "first");
-    const first = git(dir, "rev-parse", "HEAD");
-    git(dir, "commit", "-q", "--allow-empty", "-m", "second");
-    const head = git(dir, "rev-parse", "HEAD");
-    git(dir, "update-ref", "refs/remotes/origin/main", head);
-    // The bare repo has L6/L11 findings; only the base lines matter here.
-    expect((await cli(dir)).out).toContain(`lint: base ${first} (HEAD~1 (HEAD is on origin/main))\n`);
-    const explicit = await cli(dir, ["--base", "origin/main"]);
-    expect(explicit.out).toContain(
-      "lint: note: base origin/main is HEAD itself, so only uncommitted changes count as new",
-    );
-    expect((await cli(dir, ["--base", first])).out).not.toContain("lint: note:");
-  });
-  test("a push to a branch lints against merge-base(HEAD, origin/main), not event.before", async () => {
+  test("a push to a branch lints against merge-base(HEAD, origin/main), not event.before; locally on main, HEAD~1", async () => {
     const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });
     git(dir, "init", "-q", "--template=");
     git(dir, "add", ".");
@@ -471,6 +454,14 @@ describe("CLI", () => {
     expect(r.out).toContain(`lint: base ${main} (merge-base of HEAD and origin/main (push to refs/heads/feature))\n`);
     const onMain = await cli(dir, [], { env: { ...env, GITHUB_REF: "refs/heads/main" } });
     expect(onMain.out).toContain(`lint: base ${before} (LINT_BASE)\n`);
+    // Locally with HEAD on origin/main, the merge-base is HEAD itself: the default is HEAD~1, so the last commit counts.
+    git(dir, "update-ref", "refs/remotes/origin/main", "HEAD");
+    expect((await cli(dir)).out).toContain(`lint: base ${before} (HEAD~1 (HEAD is on origin/main))\n`);
+    // An explicit base equal to HEAD checks only uncommitted changes, and says so; another explicit base does not.
+    expect((await cli(dir, ["--base", "origin/main"])).out).toContain(
+      "lint: note: base origin/main is HEAD itself, so only uncommitted changes count as new",
+    );
+    expect((await cli(dir, ["--base", main])).out).not.toContain("lint: note:");
   });
   // Assay (#19): every exit code is pinned, in-process (verifyMain and auditMain; no bun start per case). verify and
   // audit exit 2 on usage before any request; an uncaught error exits 2, not Bun's 1 (exitOnCrash, units). The

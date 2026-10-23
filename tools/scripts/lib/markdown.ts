@@ -18,9 +18,11 @@ export interface Line {
 /**
  * One string-keyed result per text, for the pure parsers below and in checks.ts: lint asks for the same file's lines,
  * headings and extracts many times per run (every anchor link re-reads its target's headings). Results are read-only
- * (typed so). Bounded: past `cap` texts the cache starts over.
+ * (typed so). Bounded: past `cap` texts the cache starts over. The cap sits well above one lint run's distinct texts
+ * (every .md file plus the table cells `links` reads, about 120 today): a run that passes it clears the cache
+ * mid-run and re-parses every large file.
  */
-export function memoText<T>(parse: (text: string) => T, cap = 64): (text: string) => T {
+export function memoText<T>(parse: (text: string) => T, cap = 512): (text: string) => T {
   const seen = new Map<string, T>();
   return (text) => {
     const hit = seen.get(text);

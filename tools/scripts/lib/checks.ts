@@ -159,14 +159,26 @@ function resolveLink(
   return { path: posix.normalize(joined).replace(/\/$/, ""), frag };
 }
 
+/** Every folder that holds a file, per file set: a path check is one lookup, not a scan of every path per link. */
+const folderSets = new WeakMap<Files, Set<string>>();
+function folders(fs: Files): Set<string> {
+  let out = folderSets.get(fs);
+  if (out) return out;
+  out = new Set<string>();
+  for (const k of fs.keys()) for (let i = k.indexOf("/"); i >= 0; i = k.indexOf("/", i + 1)) out.add(k.slice(0, i));
+  folderSets.set(fs, out);
+  return out;
+}
+/** A repo path names a file or a folder holding one. */
+const exists = (ctx: Ctx, path: string) => ctx.files.has(path) || folders(ctx.files).has(path);
+
 /** One link or anchor check, shared by markdown links and machine-block anchors. */
 function checkTarget(ctx: Ctx, from: string, what: string, target: string, rootRelative: boolean, emit: Emit) {
   const r = resolveLink(from, target, rootRelative);
   if (!r) return;
   if (r.path === ".." || r.path.startsWith("../"))
     return emit("L5", from, `${what} "${target}" escapes the repository`);
-  const isDir = [...ctx.files.keys()].some((k) => k.startsWith(`${r.path}/`));
-  if (!ctx.files.has(r.path) && !isDir) return emit("L5", from, `${what} "${target}" -> ${r.path} does not exist`);
+  if (!exists(ctx, r.path)) return emit("L5", from, `${what} "${target}" -> ${r.path} does not exist`);
   if (r.frag === null) return;
   const body = ctx.text.get(r.path);
   if (body === undefined) return emit("L5", from, `${what} "${target}": ${r.path} has no headings to anchor`);
@@ -2451,6 +2463,7 @@ export const RETIRED_TERMS = [
   "quarter-end exchange rate",
   "Components link",
 ];
+const RETIRED_LOWER = RETIRED_TERMS.map((t) => [t, t.toLowerCase()] as const);
 /** L12's path patterns, as the layout lists in docs/running.md and AGENTS.md must name them. */
 export const LAYOUT_PATTERNS = [
   CSV_PATH,
@@ -2486,8 +2499,7 @@ function docsAgree(ctx: Ctx, rows: Row[], emit: Emit) {
         // Retired roots (L12) are named as retired, so they need not exist.
         if (!d || PLACEHOLDER.test(span) || RETIRED_ROOTS.includes(span)) continue;
         const path = (d[1] as string).replace(/\/$/, "");
-        if (!ctx.files.has(path) && ![...ctx.files.keys()].some((k) => k.startsWith(`${path}/`)))
-          e(p, `line ${l.line}: \`${span}\` names ${path}, which does not exist`);
+        if (!exists(ctx, path)) e(p, `line ${l.line}: \`${span}\` names ${path}, which does not exist`);
       }
     }
     if (p.startsWith("docs/methodology/"))
@@ -2500,10 +2512,14 @@ function docsAgree(ctx: Ctx, rows: Row[], emit: Emit) {
   }
   for (const [p, body] of [...docs, [README, ctx.text.get(README)] as const]) {
     if (body === undefined || p === "docs/lint.md") continue;
-    for (const l of lines(body))
-      for (const t of RETIRED_TERMS)
-        if (l.text.toLowerCase().includes(t.toLowerCase()))
-          e(p, `line ${l.line}: "${t}" is a retired term (see docs/lint.md#l14)`);
+    // Most docs name no retired term: one search of the whole body skips the per-line pass.
+    const whole = body.toLowerCase();
+    if (!RETIRED_LOWER.some(([, tl]) => whole.includes(tl))) continue;
+    for (const l of lines(body)) {
+      const low = l.text.toLowerCase();
+      for (const [t, tl] of RETIRED_LOWER)
+        if (low.includes(tl)) e(p, `line ${l.line}: "${t}" is a retired term (see docs/lint.md#l14)`);
+    }
   }
   for (const p of LAYOUT_LISTS) {
     const body = ctx.text.get(p);
@@ -2579,6 +2595,8 @@ export const NARRATIVE = [
   /\barchive log\b/i,
   /moved from the [^.;)]*quarter file/i,
 ];
+/** One pass over a line: any NARRATIVE pattern (most lines match none). */
+const ANY_NARRATIVE = new RegExp(NARRATIVE.map((r) => `(?:${r.source})`).join("|"), "i");
 
 function evidenceWording(ctx: Ctx, emit: Emit) {
   for (const [p, body] of [...ctx.text].sort(([a], [b]) => a.localeCompare(b))) {
@@ -2589,6 +2607,7 @@ function evidenceWording(ctx: Ctx, emit: Emit) {
       if (l.fence === "open") quote = l.info === "text";
       if (l.fence === "close") quote = false;
       if (l.fence === "open" || l.fence === "close" || quote || /^\s*>/.test(l.text)) continue;
+      if (!ANY_NARRATIVE.test(l.text)) continue;
       const hit = NARRATIVE.map((r) => r.exec(l.text)?.[0]).find((x) => x !== undefined);
       if (hit)
         emit(
