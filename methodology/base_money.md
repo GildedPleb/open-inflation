@@ -19,7 +19,7 @@ This file contains no observations. Template figures are placeholders. The share
 - [Update cadence](#update-cadence)
 - [Gaps policy](#gaps-policy)
 - [Extract template](#extract-template)
-  - [Third link](#third-link)
+  - [Third and fourth links](#third-and-fourth-links)
   - [Link audit](#link-audit)
   - [Extract templates](#extract-templates)
 - [Roll-up template](#roll-up-template)
@@ -227,7 +227,7 @@ The dataset is versioned in `catalog.json` (`version`, semver) with a matching g
 
 - Quarterly. A quarter is run once every basket issuer's figure for it is available under [Status and vintages](#status-and-vintages). An issuer that is missing, blocked or (RBI) not yet final at run time is excluded, with its reason, provided the [coverage floor](#coverage) still holds.
 - In practice the RBI is last for Q1: its final figure for 31 March is available only after its balance sheet (by end-May). The other issuers are normally published within about 4 weeks of quarter end.
-- A run does, in order: fetch each source, archive each URL read (archive.org, at retrieval time) and attempt an archive.today capture of it (see [Third link](#third-link)), run `bun run verify` and open each unverified archive.today capture in a browser, recording the result in the quarter's research log, append the extracts, append the FX extracts, write the roll-up, append the CSV row, update `INDEX.md`, run `bun test` and `bun run lint`, then commit.
+- A run does, in order: fetch each source, archive each URL read (archive.org, at retrieval time) and attempt an archive.today capture and, by hand in a browser, a Ghostarchive capture of it (see [Third and fourth links](#third-and-fourth-links)), run `bun run verify` and open each unverified archive.today capture in a browser, recording the result in the quarter's research log, append the extracts, append the FX extracts, write the roll-up, append the CSV row, update `INDEX.md`, run `bun test` and `bun run lint`, then commit.
 - Back data is ingested the same way, one quarter at a time, newest first, using the vintage that is live (or archived) at the time.
 
 ## Gaps policy
@@ -246,24 +246,25 @@ Issuer extracts live only at `issuers/<ISS>/<YYYY>.md`, where `<ISS>` is a baske
 - exactly one line `- Original URL: <url>`, the exact URL read;
 - exactly one line `- Archive URL: https://web.archive.org/web/<14-digit timestamp>/<Original URL>`, where the part after the timestamp embeds the Original URL, the two compared after percent-decoding each component (Wayback writes `/` in a query as `%2F`, which matches `/`; a malformed `%` escape fails), and the timestamp is within 24 hours of Retrieved;
 - exactly one line `- Archive URL 2: <archive.today URL>`: `https://archive.ph/<id>`, `https://archive.today/<id>` or `https://archive.is/<id>`, or the dated form `https://archive.ph/<YYYYMMDDhhmmss>/<Original URL>` (same hosts; a real timestamp; that Original URL); or, when archive.today could not capture the page, `- Archive URL 2: attempted <YYYY-MM-DD>: <reason>`, where the reason says what failed in at least 3 words (a word counts only if it contains a letter or a digit) and contains no URL, no `scheme://` and no bare host or path such as `example.com` or `archive.ph/abc`. The attempt date, and the UTC date of a dated form's timestamp, is on or after the UTC date of Retrieved and not after the UTC date of the lint run (10 min skew allowed). Any other host, a self-hosted copy included, fails;
+- exactly one line `- Archive URL 3: https://ghostarchive.org/archive/<id>`, where `<id>` is letters and digits only; or, when Ghostarchive could not capture the page, `- Archive URL 3: attempted <YYYY-MM-DD>: <reason>`, with the same date and reason rules as Archive URL 2;
 - a verbatim quote: at least one `>` blockquote line, or a non-empty fenced block (use a fenced `text` block for CSV, JSON or XML rows).
 
 The four field names are exact: a hyphen bullet, a space, the field name, a colon. A bold (`**Retrieved:**`), unbulleted or differently spelled field fails as the wrong form. Lint L8 checks the form of each archive URL offline; neither lint nor CI ever contacts an archive or a source. `bun run verify --base origin/main` is a local research script, not a merge gate. It is run while archiving new sources and checks each newly added archive URL once (an archive.today HTTP 403 or 429 is its CAPTCHA or rate limit: logged, no verdict, not a failure). It prints `archive.today: N verified, M unverified (rate-limited)` and the unverified URLs, and the researcher opens each of those in a browser and confirms it shows the source's content, as part of archiving, and records each confirmation (capture id, date, what it shows) in the quarter's research log at `research/base_money/<YYYY>Q<n>.md`. A made-up capture id is caught only by this browser check; it is not repeated in PR review. A `- Re-archive: <new archive URL>` line in the same commit excuses only a snapshot that is confirmed dead (HTTP 404 or 410).
 
 The other bullets below are not parsed by lint but are required by this methodology. Do not start any other bullet with the words "Retrieved", "Original URL" or "Archive URL". Every `###` title in a file must be unique (include the release or vintage date), so its anchor can be cited in `adopted_conflicts`. Lines outside a `###` block are allowed only for the `#` title and the `##` quarter headings.
 
-### Third link
+### Third and fourth links
 
-Backup rule: two is one and one is none. Every extract carries three link lines: the `- Original URL:`, the Wayback `- Archive URL:` and one `- Archive URL 2:`, which is an archive.today capture or, when none could be made, the recorded attempt (its forms are in the list above). An attempt is a line, not a link.
-- The archive.today capture must be attempted for every URL read. The attempt is mandatory; a failed attempt, recorded as `attempted <YYYY-MM-DD>: <reason>` with the UTC date of the attempt (on or after the extract's Retrieved date, and not in the future) and the failure as seen, does not fail the extract.
+Backup rule: two is one and one is none. Every extract carries four link lines: the `- Original URL:`, the Wayback `- Archive URL:`, one `- Archive URL 2:` (archive.today) and one `- Archive URL 3:` (Ghostarchive, chosen by the user on 2026-10-22). Each of the last two is a capture or, when none could be made, the recorded attempt (their forms are in the list above). An attempt is a line, not a link.
+- The archive.today and Ghostarchive captures must both be attempted for every URL read. Ghostarchive blocks scripted submission, so its captures are made by hand in a browser, opened, and checked to show the source's content (a capture can hang on "Loading" or save a challenge page instead of the source; resubmit once, then record the attempt). The attempt is mandatory; a failed attempt, recorded as `attempted <YYYY-MM-DD>: <reason>` with the UTC date of the attempt (on or after the extract's Retrieved date, and not in the future) and the failure as seen, does not fail the extract.
 - Never self-host a copy: no file, screenshot or mirror of a source is committed to this repository or hosted by us anywhere else. Only the source and public third-party archives are linked. Copies saved by the [link audit](#link-audit) stay on the auditor's local disk; they are never committed or published.
-- L7 requires the `- Archive URL 2:` line on every extract, committed or new. No extract on `main` predates the rule: the first data, 2026Q2, carries the line on every extract, so no extract needs an exception.
+- L7 requires the `- Archive URL 2:` and `- Archive URL 3:` lines on every extract, committed or new. No extract on `main` predates either rule: the first data, 2026Q2, carries both lines on every extract, so no extract needs an exception.
 
 ### Link audit
 
 Sources degrade: pages move, files are replaced, archives lose captures. A link audit re-checks, months or years later, links that were confirmed when they were added.
 - **Cadence and owner.** The audit runs quarterly, in the middle of January, April, July and October. Assay, the project's researcher, runs it on its own computer. `bun run audit` is a local script, never in CI and never a merge gate.
-- **What the script checks.** It re-checks every Original URL, Archive URL and Archive URL 2 in the repository by HTTP status and content, and classifies each as ok (resolves, same content as the last saved copy), changed (resolves, but its content differs from the last saved copy, or it redirects to a different URL), lost (404, 410 or gone), or no verdict (rate-limited or blocked). The script does not judge whether a figure is still shown.
+- **What the script checks.** It re-checks every Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the repository by HTTP status and content, and classifies each as ok (resolves, same content as the last saved copy), changed (resolves, but its content differs from the last saved copy, or it redirects to a different URL), lost (404, 410 or gone), or no verdict (rate-limited or blocked). The script does not judge whether a figure is still shown.
 - **What the researcher checks.** For every changed link, the researcher opens it and records whether it still shows the figure used: if it does, the link is ok; if not, it is degraded.
 - **Remains.** The script saves whatever still resolves to a local store outside the repository, on Assay's computer (default `~/open-inflation-archive/`). Those copies are private, never committed or published; how to persist them more durably is the user's decision, made when it is needed.
 - **Findings.** Assay appends the findings, never editing in place, to the quarter's research log at `research/base_money/<YYYY>Q<n>.md` under `## Link audit <YYYY-MM-DD>`: for each degraded or lost link, the extract it belongs to, its status, and what still remains (for example, "Original 404; Wayback capture intact; archive.today capture intact"). A link that cannot be found again is recorded as lost, and that is the end of it: nothing is reconstructed or filled in.
@@ -287,6 +288,7 @@ Issuer-year file, with one extract (`<...>` marks a placeholder):
 - Original URL: <exact URL read>
 - Archive URL: https://web.archive.org/web/<YYYYMMDDhhmmss>/<exact URL read>
 - Archive URL 2: https://archive.ph/<id>
+- Archive URL 3: https://ghostarchive.org/archive/<id>
 - Series: <title as published, in the original language and in English if both exist>
 - Reference period: <month M as YYYY-MM, or the statement date>
 - As of: <the observation date the figure represents: YYYY-MM-DD, or YYYY-MM for a monthly-average or month-end convention; never the release date>
@@ -305,10 +307,11 @@ Issuer-year file, with one extract (`<...>` marks a placeholder):
 > <verbatim footnote that defines the series or flags the figure>
 ```
 
-If archive.today could not capture the page, the Archive URL 2 line is instead:
+If archive.today or Ghostarchive could not capture the page, its line is instead:
 
 ```markdown
 - Archive URL 2: attempted <YYYY-MM-DD>: <reason>
+- Archive URL 3: attempted <YYYY-MM-DD>: <reason>
 ```
 
 For an FX extract (`issuers/FX/<YYYY>.md`; one adopted extract per currency per quarter, confirming extracts allowed, for every currency used by a component or by a reference-only extract, such as BRL while BCB is excluded), use the same block with these replacements: `- Series:` is the rate series (for example "H.10 Weekly, CHINA, P.R. YUAN"), `- As of:` is the actual rate date, `- Convention:` is "noon buying rate in New York" or "Bank of Russia official rate", and `- Value (local currency units):` and `- Components:` are replaced by:
@@ -509,6 +512,7 @@ An example FED extract under `## 2026Q2` of `issuers/FED/2026.md`. The quote, he
 - Original URL: https://www.federalreserve.gov/releases/h6/20260728/
 - Archive URL: <https://web.archive.org/web/<timestamp>/https://www.federalreserve.gov/releases/h6/20260728/>
 - Archive URL 2: <https://archive.ph/<id>>
+- Archive URL 3: <https://ghostarchive.org/archive/<id>>
 - Series: H.6 Money Stock Measures, Table 1, Not seasonally adjusted, Monetary base, column "Monetary base 5"
 - Reference period: 2026-06
 - As of: 2026-06 (monthly average)
@@ -531,7 +535,7 @@ An example FED extract under `## 2026Q2` of `issuers/FED/2026.md`. The quote, he
 
 ## Checklist before a commit
 
-- Every extract follows the [Extract template](#extract-template), with an archive snapshot taken at retrieval time and one `- Archive URL 2:` line (an archive.today capture, or the recorded failed attempt; see [Third link](#third-link)). Nothing is self-hosted. Its printed figure occurs verbatim in the quote, and printed figure × multiplier equals its local value.
+- Every extract follows the [Extract template](#extract-template), with an archive snapshot taken at retrieval time one `- Archive URL 2:` line and one `- Archive URL 3:` line (an archive.today and a Ghostarchive capture, each or its recorded failed attempt; see [Third and fourth links](#third-and-fourth-links)). Nothing is self-hosted. Its printed figure occurs verbatim in the quote, and printed figure × multiplier equals its local value.
 - Every alternative definition named in [Per-issuer definitions](#per-issuer-definitions) is extracted and labelled `- Adopted: no`.
 - The FX file has one adopted extract per currency per quarter (confirming extracts allowed), for every currency used by a component or by a reference-only extract (for example BRL when BCB is excluded).
 - Every extract's `- As of:` is the observation date (`YYYY-MM-DD`, or `YYYY-MM` for monthly-average and month-end conventions) and falls inside its heading's quarter, inclusive, except that for an issuer with `as_of_convention: "start_of_day"` (CBR) it is the next quarter's first day, the start-of-day date printed by the CBR narrow-definition page and tied to the broad xlsx month row by matching currency issued (the broad xlsx labels rows by month only); an H.10 FX extract's is the last business day on or before the quarter end (the quarter-end date, or the last business day before it when the quarter end is a weekend or its column is ND), and a RUB FX extract's is the `ValCurs Date`.
