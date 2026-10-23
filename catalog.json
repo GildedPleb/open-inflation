@@ -6,8 +6,8 @@
       "unit": "USD",
       "frequency": "quarterly",
       "methodology": "methodology/base_money.md",
-      "last_updated": null,
-      "version": "0.1.0",
+      "last_updated": "2026-10-22",
+      "version": "1.0.0",
       "license": "CC-BY-4.0",
       "baskets": [
         {
