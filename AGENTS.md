@@ -43,7 +43,7 @@ A quarterly time series, in U.S. dollars, of base money summed over a fixed bask
 8. Run `bun run readme`: it regenerates the generated parts of `README.md` and `base_money/README.md`, including the quarter list (lint L13 fails if you skip it).
 9. Leave the `catalog.json` `version` alone: it is only a label until the v1 release (see [Versioning](docs/methodology/base_money.md#versioning)).
 10. Go through the [Checklist before a commit](docs/methodology/base_money.md#checklist-before-a-commit).
-11. Run the checks below (`bun run lint --base origin/main` makes no network calls), then open a pull request. While archiving new sources, `bun run verify --base origin/main` checks each new archive URL once; it is a local research script, not a merge gate.
+11. Run the checks below (`bun run lint` makes no network calls), then open a pull request. While archiving new sources, `bun run verify` checks each new archive URL once; it is a local research script, not a merge gate.
 
 ## Definition of done
 
@@ -68,17 +68,17 @@ bun run check                      # biome format and code lint (its options are
 bun run typecheck                  # tsc -p tools
 bun test                           # unit tests; offline; whole suite about 1 s
 git fetch origin main              # so origin/main is current
-bun run lint --base origin/main    # repository rules L1-L13, against main; no network calls
+bun run lint                       # repository rules L1-L15, against the base; no network calls
 ```
 
 Local research scripts, never in CI and never a merge gate:
 
 ```sh
-bun run verify --base origin/main  # HEAD each archive URL the diff adds, once (L8's link check)
+bun run verify                     # HEAD each archive URL the diff adds, once (L8's link check)
 bun run audit                      # re-check every link; store: $OBM_ARCHIVE_DIR or ~/open-inflation-archive/
 ```
 
-- **Lint base.** Pass `--base origin/main`. Plain `bun run lint` compares with `HEAD`, so after a commit it sees no change. See [Lint](docs/running.md#lint).
+- **Lint base.** Plain `bun run lint` picks a real base: on a branch, the merge-base of `HEAD` and `origin/main` (fetch first); on `main`, `HEAD~1`; in CI, the PR base. `--base <ref>` overrides it. See [Lint](docs/running.md#lint).
 - **No network in lint, tests or CI.** L8 checks archive URLs by form only. Every test file imports `tools/test/no-network.ts` first. A new CLI test uses the in-process `lintMain` harness, not `Bun.spawn`.
 - **verify and audit** are local research scripts, never merge gates. See [Verify](docs/running.md#verify) and [Audit](docs/running.md#audit).
   - verify prints `archive.today (distinct URLs): N verified, M unverified (R rate-limited, B blocked)` and the unverified URLs; open each in a browser.

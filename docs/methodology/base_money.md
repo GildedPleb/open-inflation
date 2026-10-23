@@ -253,7 +253,7 @@ From the v1 release, the dataset `version` is semver, each release is tagged, co
 - No interpolation, no carry-forward and no estimated values (research standard 6). This holds for excluded issuers too: an excluded issuer contributes nothing to the CSV. **Reference weights are exempt** from the no-carry-forward rule. They are never published or summed, and because their period must fall inside the quarter being published (see [Coverage](#coverage)), a value is never carried across quarters.
 - A quarter whose evidenced issuers are below the [coverage floor](#coverage), or whose coverage cannot be stated because an excluded issuer has no reference value, is left out of the CSV and gets no roll-up. A documented gap is preferred to an under-sourced number.
 - Compliant extracts for the evidenced issuers may still be committed, so the work is not lost; they do not create a row.
-- The gap is recorded as plain text in `base_money/README.md`, as a line in the Quarters list: the quarter, the missing issuer ids, the reason and the coverage share reached. When the gap is later filled, the quarter file and row are added, and the line links the quarter file with a note of the commit that filled it.
+- The gap is plain text in the Quarters list of `base_money/README.md`: each missing quarter shows `- YYYY Qn: no row; a missing quarter is never estimated.` `bun run readme` writes it and L13 checks it.
 - A quarter that is in the CSV with exclusions is not a gap. Its coverage and warning are in the quarter file's "What's left out" section (see [Quarter inclusion](#quarter-inclusion)).
 - A secondary source (IMF, BIS) may stand in for a primary only under research standard 1, only when the primary is unavailable, only with this file updated first, and it is labelled SECONDARY in the extract.
 
@@ -267,7 +267,7 @@ Issuer extracts live only at `base_money/issuers/<ISS>/<YYYY>.md`, where `<ISS>`
 - exactly one line `- Archive URL 3: https://ghostarchive.org/archive/<id>`, where `<id>` is letters and digits only; or, when Ghostarchive could not capture the page, `- Archive URL 3: attempted <YYYY-MM-DD>: <reason>`, with the same date and reason rules as Archive URL 2;
 - a verbatim quote: at least one `>` blockquote line, or a non-empty fenced block (use a fenced `text` block for CSV, JSON or XML rows).
 
-The five field names are exact: a hyphen bullet, a space, the field name, a colon. A bold (`**Retrieved:**`), unbulleted or differently spelled field fails as the wrong form. Lint L8 checks the form of each archive URL offline; neither lint nor CI ever contacts an archive or a source. `bun run verify --base origin/main` is a local research script, not a merge gate. It is run while archiving new sources and checks each newly added archive URL; committed links are never re-checked. It sends a HEAD request to each Wayback snapshot (when web.archive.org is unreachable, it asks archive.org's availability API instead, in up to three equivalent query forms, because the API caches each exact query string for hours, and only the exact timestamp confirms the snapshot) and to each archive.today capture, and a GET of at most the first 256 KiB of each Ghostarchive capture, since Ghostarchive also answers HTTP 200 for failed and unfinished captures.
+The five field names are exact: a hyphen bullet, a space, the field name, a colon. A bold (`**Retrieved:**`), unbulleted or differently spelled field fails as the wrong form. Lint L8 checks the form of each archive URL offline; neither lint nor CI ever contacts an archive or a source. `bun run verify` is a local research script, not a merge gate. It is run while archiving new sources and checks each newly added archive URL; committed links are never re-checked. It sends a HEAD request to each Wayback snapshot (when web.archive.org is unreachable, it asks archive.org's availability API instead, in up to three equivalent query forms, because the API caches each exact query string for hours, and only the exact timestamp confirms the snapshot) and to each archive.today capture, and a GET of at most the first 256 KiB of each Ghostarchive capture, since Ghostarchive also answers HTTP 200 for failed and unfinished captures.
 
 Every link must be checked while keeping under each host's rate limit, so verify (and the [link audit](#link-audit)) paces its requests in code. Requests to one host go one at a time, at least that host's interval apart: archive.today 30 s, Ghostarchive 5 s, web.archive.org 2 s, the archive.org availability API 5 s, and any other host 1 s. Each interval can be overridden with `OBM_RATE_<KEY>_MS`, where KEY is the host's pacing key upper-cased with each run of other characters written `_`; archive.today's names (archive.ph, archive.is, archive.today and the rest) share the key `archive.today`. The variables are `OBM_RATE_ARCHIVE_TODAY_MS` (for example `OBM_RATE_ARCHIVE_TODAY_MS=60000`), `OBM_RATE_GHOSTARCHIVE_ORG_MS`, `OBM_RATE_WEB_ARCHIVE_ORG_MS`, `OBM_RATE_ARCHIVE_ORG_MS` (the availability API) and `OBM_RATE_DEFAULT_MS` for any other host. Different hosts run in parallel, and the expected run time is printed first. An HTTP 429 or 503 is retried after its Retry-After (a short one is honoured, but never sooner than the host's interval), or, when it gives none, after a backoff (60 s, doubling to at most 10 min, plus up to 25% jitter), and that host is slowed by 1.5 times for the rest of the run. A link is given up after 5 tries (`OBM_RATE_MAX_TRIES`), or when the next wait would pass the run's 60-minute budget (`OBM_RATE_BUDGET_MS`). Each link ends in one of six outcomes:
 - **verified**: the capture answered HTTP 200 (for Ghostarchive, with a page that is a capture: its `<replay-web-page>` player or its `Archive date:` line), or the availability API listed the exact timestamp.
@@ -341,6 +341,24 @@ If archive.today or Ghostarchive could not capture the page, its line is instead
 - Archive URL 2: attempted <YYYY-MM-DD>: <reason>
 - Archive URL 3: attempted <YYYY-MM-DD>: <reason>
 ```
+
+After the fields, an extract may carry only these defined line types (L7); any other bullet label fails:
+
+```markdown
+- Capture check (<archive>; opened and checked for the figure it backs): <what the capture shows, as printed>
+- Archive attempt <YYYY-MM-DD>: <the archive tried (archive.today, Ghostarchive or Wayback) and what failed>.
+- Link audit <YYYY-MM-DD>: <each degraded or lost link, its status and what remains>.
+- Rejected source: <what>: <reason>.
+- Re-archive: <new archive URL>
+- Note <YYYY-MM-DD>: <a fact learned after retrieval that changes how the extract is read>.
+```
+
+- **Capture check:** a capture opened by hand and checked for the figure. A capture check that was redone adds "(re-checked in a browser on <YYYY-MM-DD>)".
+- **Archive attempt:** one line per failed attempt not already recorded in the `- Archive URL 2:` or `- Archive URL 3:` line.
+- **Link audit:** see [Link audit](#link-audit).
+- **Rejected source:** a source considered for this extract and not used; no URL.
+- **Re-archive:** the new capture of a dead snapshot (L8).
+- **Note:** during beta, a wrong line is corrected in place rather than annotated, so a Note adds information and never corrects an earlier line.
 
 FX is not an extract block. `base_money/FX/<YYYY>.md` has one table per quarter under `## YYYYQn`, one row per non-USD currency used by a component or a reference value (for example BRL while BCB is excluded):
 
@@ -579,6 +597,6 @@ An example FED extract under `## 2026Q2` of `base_money/issuers/FED/2026.md`. Th
 - Each of the quarter's allowed exclusions is re-checked against the floor on that quarter's own figures: the quarter's coverage share, with all its exclusions together, is computed from its own extracts and must clear the floor, whatever an earlier quarter's figures showed.
 - The 80%-of-global review gate passes: the quarter file names its basket version and links [Global 80% basis](#global-80-basis), which links the reference global releases the basket was checked against (links only, no figure or share recorded), and the reviewer judges from those links that the evidenced issuers cover at least 80% of global base money. Passing the lint floor (`floor_pct`, 94% of the basket) does not replace this check.
 - `bun run readme` has listed the quarter, with its date and total, in `base_money/README.md`; the quarter file names its basket version and carries any coverage note.
-- The four CI steps are clean: `bun run check`, `bun run typecheck`, `bun test` and `bun run lint --base origin/main`.
+- The four CI steps are clean: `bun run check`, `bun run typecheck`, `bun test` and `bun run lint`.
 - An issuer's rejected source is a `- Rejected source:` line under its extract. Only a rejected source with no issuer extract is listed in the quarter file's Sources considered and rejected (research standard 8). There is no separate research log: overall notes about a quarter are in `base_money/quarters/<YYYY>Q<n>.md`, and everything about a specific source is under its extract in the year file.
 - The quarter file has no source or archive URLs outside its machine block; its table has the three links (issuer README, FX table row, USD extract). Every issuer in the quarter has `base_money/issuers/<ISS>/README.md`, and its Years list links every year file, the new one included.
