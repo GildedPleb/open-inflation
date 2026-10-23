@@ -20,6 +20,7 @@ This file contains no observations. Template figures are placeholders. The share
 - [Gaps policy](#gaps-policy)
 - [Extract template](#extract-template)
   - [Third link](#third-link)
+  - [Link audit](#link-audit)
   - [Extract templates](#extract-templates)
 - [Roll-up template](#roll-up-template)
 - [Extract example](#extract-example)
@@ -247,16 +248,25 @@ Issuer extracts live only at `issuers/<ISS>/<YYYY>.md`, where `<ISS>` is a baske
 - exactly one line `- Archive URL 2: <archive.today URL>`: `https://archive.ph/<id>`, `https://archive.today/<id>` or `https://archive.is/<id>`, or the dated form `https://archive.ph/<YYYYMMDDhhmmss>/<Original URL>` (same hosts; a real timestamp; that Original URL); or, when archive.today could not capture the page, `- Archive URL 2: attempted <YYYY-MM-DD>: <reason>`, where the reason says what failed in at least 3 words and contains no URL. The attempt date, and the UTC date of a dated form's timestamp, is on or after the UTC date of Retrieved and not after the UTC date of the lint run (10 min skew allowed). Any other host, a self-hosted copy included, fails;
 - a verbatim quote: at least one `>` blockquote line, or a non-empty fenced block (use a fenced `text` block for CSV, JSON or XML rows).
 
-The four field names are exact: a hyphen bullet, a space, the field name, a colon. A bold (`**Retrieved:**`), unbulleted or differently spelled field fails as the wrong form. Lint L8 then checks each newly added archive URL once (an archive.today HTTP 403 or 429 is its CAPTCHA or rate limit: logged, no verdict, not a failure; lint then prints `archive.today: N verified, M unverified (rate-limited)` and the unverified URLs, which review opens by hand). A `- Re-archive: <new archive URL>` line in the same commit excuses only a snapshot that is confirmed dead (HTTP 404 or 410).
+The four field names are exact: a hyphen bullet, a space, the field name, a colon. A bold (`**Retrieved:**`), unbulleted or differently spelled field fails as the wrong form. Lint L8 checks the form of each archive URL offline; neither lint nor CI ever contacts an archive or a source. Before merge, `bun run verify --base origin/main` is run locally and checks each newly added archive URL once (an archive.today HTTP 403 or 429 is its CAPTCHA or rate limit: logged, no verdict, not a failure). It prints `archive.today: N verified, M unverified (rate-limited)` and the unverified URLs, and the reviewer opens each of those in a browser and records in the PR review that it shows the source's content; a made-up capture id is caught only by this browser check. A `- Re-archive: <new archive URL>` line in the same commit excuses only a snapshot that is confirmed dead (HTTP 404 or 410).
 
 The other bullets below are not parsed by lint but are required by this methodology. Do not start any other bullet with the words "Retrieved", "Original URL" or "Archive URL". Every `###` title in a file must be unique (include the release or vintage date), so its anchor can be cited in `adopted_conflicts`. Lines outside a `###` block are allowed only for the `#` title and the `##` quarter headings.
 
 ### Third link
 
 Backup rule: two is one and one is none. Every extract carries three link lines: the `- Original URL:`, the Wayback `- Archive URL:` and one `- Archive URL 2:`, which is an archive.today capture or, when none could be made, the recorded attempt (its forms are in the list above). An attempt is a line, not a link.
-- The archive.today capture must be attempted for every URL read. The attempt is mandatory; a failed attempt, recorded as `attempted <YYYY-MM-DD>: <reason>` with the date of the attempt and the failure as seen, does not fail the extract.
-- Never self-host a copy: no file, screenshot or mirror of a source is committed to this repository or hosted by us anywhere else. Only the source and the two public archives are linked.
+- The archive.today capture must be attempted for every URL read. The attempt is mandatory; a failed attempt, recorded as `attempted <YYYY-MM-DD>: <reason>` with the UTC date of the attempt (on or after the extract's Retrieved date, and not in the future) and the failure as seen, does not fail the extract.
+- Never self-host a copy: no file, screenshot or mirror of a source is committed to this repository or hosted by us anywhere else. Only the source and public third-party archives are linked. Copies saved by the [link audit](#link-audit) stay on the auditor's local disk; they are never committed or published.
 - L7 requires the `- Archive URL 2:` line on every extract, committed or new. No extract on `main` predates the rule: the first data, 2026Q2, carries the line on every extract, so no extract needs an exception.
+
+### Link audit
+
+Sources degrade: pages move, files are replaced, archives lose captures. A link audit re-checks, months or years later, links that were confirmed when they were added.
+- `bun run audit` is run locally, never in CI. It re-checks every Original URL, Archive URL and Archive URL 2 in the repository and classifies each as ok, degraded (it resolves but no longer shows the figure used, or redirects elsewhere), lost (404, 410 or gone), or no verdict (rate-limited or blocked).
+- It saves whatever still resolves to a local store outside the repository (default `~/open-inflation-archive/`). Those copies are private; how to persist them more durably is the user's decision, made when it is needed.
+- Findings are appended, never edited in place, to the quarter's research log at `research/base_money/<YYYY>Q<n>.md` under `## Link audit <YYYY-MM-DD>`: for each degraded or lost link, the extract it belongs to, its status, and what still remains (for example, "Original 404; Wayback capture intact; archive.today capture intact"). A link that cannot be found again is recorded as lost, and that is the end of it: nothing is reconstructed or filled in.
+- Every degraded or lost source is reported to the user after each audit.
+- An audit never changes a value. If the remains no longer support a figure, that is handled as a [revision](#revisions) or a [gap](#gaps-policy), never by editing the extract.
 
 ### Extract templates
 
@@ -496,7 +506,7 @@ An example FED extract under `## 2026Q2` of `issuers/FED/2026.md`. The quote, he
 - Retrieved: <YYYY-MM-DDThh:mm:ssZ>
 - Original URL: https://www.federalreserve.gov/releases/h6/20260728/
 - Archive URL: <https://web.archive.org/web/<timestamp>/https://www.federalreserve.gov/releases/h6/20260728/>
-- Archive URL 2: <https://archive.ph/<id> (or: attempted <YYYY-MM-DD>: <reason>)>
+- Archive URL 2: <https://archive.ph/<id>>
 - Series: H.6 Money Stock Measures, Table 1, Not seasonally adjusted, Monetary base, column "Monetary base 5"
 - Reference period: 2026-06
 - As of: 2026-06 (monthly average)
@@ -528,5 +538,5 @@ An example FED extract under `## 2026Q2` of `issuers/FED/2026.md`. The quote, he
 - Each of the quarter's allowed exclusions is re-checked against the floor on that quarter's own figures: the quarter's coverage share, with all its exclusions together, is computed from its own extracts and must clear the floor, whatever an earlier quarter's figures showed.
 - The 80%-of-global review gate passes: the quarter's research log at `research/base_money/<YYYY>Q<n>.md` has a "Global 80% basis" section that links the reference global releases (links only, no figure or share recorded), and the reviewer judges from those links that the evidenced issuers cover at least 80% of global base money. Passing the lint floor (`floor_pct`, 94% of the basket) does not replace this check.
 - `INDEX.md` links the roll-up and every issuer-year file, names the row's basket version under "Baskets", and records any gap and any Coverage note.
-- `bun test` and `bun run lint` are clean.
+- The four CI steps are clean: `bun run check`, `bun run typecheck`, `bun test` and `bun run lint --base origin/main`. `bun run verify --base origin/main` has been run locally, and the reviewer has opened every unverified archive.today capture in a browser and recorded each confirmation in the PR review.
 - Sources considered and rejected are logged in the roll-up's Conflicts section or in the quarter's research log at `research/base_money/<YYYY>Q<n>.md` (research standard 8). Lint on main restricts `research/` under L12: the only file allowed there (besides `.gitkeep`) is `research/base_money/<YYYY>Q<n>.md`, matched exactly and case-sensitively, and any other file under `research/` fails. L12 checks placement only; apart from L10 (UTF-8, no byte-order mark, at most 1 MB), which covers every file, no check reads a research log: it is not append-only under L3 or L4, and its links are not resolved by L5.
