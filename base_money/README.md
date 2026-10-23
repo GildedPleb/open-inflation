@@ -8,3 +8,4 @@ The series itself is [base_money/base_money.csv](base_money.csv) (`date,value,ev
 
 - [2026 Q2](quarters/2026Q2.md): 30 June 2026, $22,041,431,082,440 (about $22.04 trillion); covers 98.78% of the basket, left out: BCB
 - [2026 Q1](quarters/2026Q1.md): 31 March 2026, $22,365,865,359,611 (about $22.37 trillion); covers 98.84% of the basket, left out: BCB
+- [2025 Q4](quarters/2025Q4.md): 31 December 2025, $22,472,588,647,198 (about $22.47 trillion); covers 98.89% of the basket, left out: BCB

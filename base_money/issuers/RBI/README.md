@@ -14,3 +14,4 @@ Weekly Statistical Supplement "Reserve Money: Components and Sources"; stock on 
 ## Years
 
 - [2026](2026.md)
+- [2025](2025.md)

@@ -5,3 +5,4 @@ Market rates used to convert each issuer's figure to US dollars, per the [FX rul
 ## Years
 
 - [2026](2026.md)
+- [2025](2025.md)

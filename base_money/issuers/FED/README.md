@@ -14,3 +14,4 @@ H.6 "Money Stock Measures", Table 1, "Monetary base", not seasonally adjusted; m
 ## Years
 
 - [2026](2026.md)
+- [2025](2025.md)
