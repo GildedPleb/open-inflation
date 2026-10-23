@@ -31,6 +31,10 @@ interface Ctx {
   readonly text: Texts;
   readonly base: Texts | null;
   readonly now: number;
+  /** Renames base -> head (old path -> new path), exact content only: see findRenames. */
+  readonly renames: ReadonlyMap<string, string>;
+  /** The same renames, new path -> old path. */
+  readonly renamedFrom: ReadonlyMap<string, string>;
 }
 type Emit = (check: CheckId, file: string, message: string) => void;
 
@@ -38,7 +42,10 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   const out: Finding[] = [];
   const emit: Emit = (check, file, message) => out.push({ check, file, message });
   const text = noBinaries(snap.files, emit);
-  const ctx: Ctx = { files: snap.files, text, base: snap.base && decodeAll(snap.base), now: opts.now };
+  const renames = findRenames(snap);
+  const renamedFrom = new Map([...renames].map(([a, b]) => [b, a]));
+  const base = snap.base && decodeAll(snap.base);
+  const ctx: Ctx = { files: snap.files, text, base, now: opts.now, renames, renamedFrom };
   const rows = csvContract(ctx, emit);
   evidenceExistence(ctx, rows, emit);
   headingImmutability(ctx, emit);
@@ -225,11 +232,43 @@ function evidenceExistence(ctx: Ctx, rows: Row[], emit: Emit) {
 // ---------- L3, L4 ----------
 
 const APPEND_ONLY = /^(issuers|evidence)\/.*\.md$/;
+/** Where a committed append-only file may be renamed to and still be followed (L3/L4). Elsewhere it is a delete. */
+const RENAME_TARGET = APPEND_ONLY;
+
+const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+/**
+ * Renames lint follows: a committed append-only file absent from the tree, paired with a new file (absent from the
+ * base) under RENAME_TARGET whose bytes are identical. This is git's rename detection at 100% similarity
+ * (`git diff -M100%`): a file edited in any way while moving is a delete plus an add, so L4 reports the delete.
+ * Rename-following never loosens L3/L4: the moved file is checked against its old path's committed content.
+ */
+function findRenames(snap: Snapshot): Map<string, string> {
+  const out = new Map<string, string>();
+  const base = snap.base;
+  if (!base) return out;
+  const gone = [...base.keys()].filter((p) => APPEND_ONLY.test(p) && !snap.files.has(p)).sort();
+  const added = [...snap.files.keys()].filter((p) => RENAME_TARGET.test(p) && !base.has(p)).sort();
+  const taken = new Set<string>();
+  for (const p of gone) {
+    const old = base.get(p) as Uint8Array;
+    const q = added.find((a) => !taken.has(a) && sameBytes(old, snap.files.get(a) as Uint8Array));
+    if (q === undefined) continue;
+    taken.add(q);
+    out.set(p, q);
+  }
+  return out;
+}
+
+/** The committed content a tree path is checked against: its own base path, or the path it was renamed from. */
+const baseOf = (ctx: Ctx, p: string): string | undefined =>
+  ctx.base?.get(p) ?? ctx.base?.get(ctx.renamedFrom.get(p) ?? "");
 
 function headingImmutability(ctx: Ctx, emit: Emit) {
   if (!ctx.base) return;
-  for (const [p, old] of ctx.base) {
-    if (!APPEND_ONLY.test(p) || (ctx.files.has(p) && !ctx.text.has(p))) continue;
+  for (const [from, old] of ctx.base) {
+    const p = ctx.renames.get(from) ?? from;
+    if (!APPEND_ONLY.test(from) || (ctx.files.has(p) && !ctx.text.has(p))) continue;
     const now = new Map<string, number>();
     for (const h of headings(ctx.text.get(p) ?? "")) {
       const k = `${"#".repeat(h.level)} ${h.text}`;
@@ -246,8 +285,9 @@ function headingImmutability(ctx: Ctx, emit: Emit) {
 
 function appendOnly(ctx: Ctx, emit: Emit) {
   if (!ctx.base) return;
-  for (const [p, old] of ctx.base) {
-    if (!APPEND_ONLY.test(p)) continue;
+  for (const [from, old] of ctx.base) {
+    const p = ctx.renames.get(from) ?? from;
+    if (!APPEND_ONLY.test(from)) continue;
     if (!ctx.files.has(p)) {
       emit("L4", p, "committed file was deleted; evidence is append-only");
       continue;
@@ -286,12 +326,17 @@ function csvAppendOnly(ctx: Ctx, rows: Row[], emit: Emit) {
     const r = now.get(date);
     if (!r) {
       if (!present.has(date)) e(`committed row for ${date} was deleted; rows are append-only`);
-    } else if (r.evidenceId !== evidenceId) e(`row for ${date}: evidence_id changed ${evidenceId} -> ${r.evidenceId}`);
+    } else if (r.evidenceId !== evidenceId && ctx.renames.get(evidenceId) !== r.evidenceId)
+      e(`row for ${date}: evidence_id changed ${evidenceId} -> ${r.evidenceId}`);
+    else if (r.evidenceId !== evidenceId && r.value !== value)
+      e(
+        `row for ${date}: evidence_id follows the rename ${evidenceId} -> ${r.evidenceId}, so value must stay ${value}`,
+      );
     else if (r.value !== value) {
       const after = ctx.text.get(r.evidenceId);
       const m = after === undefined ? null : machine(after);
       const total = m?.ok && isObj(m.data) ? m.data.total_usd : undefined;
-      if (blocks(after) <= blocks(ctx.base?.get(r.evidenceId)))
+      if (blocks(after) <= blocks(baseOf(ctx, r.evidenceId)))
         e(`row for ${date}: value ${value} -> ${r.value} without appending a revision block to ${r.evidenceId}`);
       else if (total !== r.value)
         e(
@@ -994,7 +1039,7 @@ function aggregation(ctx: Ctx, rows: Row[], emit: Emit) {
     const fx = fxCurrencies(ctx, q);
     const rates = adoptedRates(ctx, q);
     // Blocks already committed on the base keep their implied basket version 1; later ones are new.
-    const was = ctx.base?.get(p);
+    const was = baseOf(ctx, p);
     const committed = was === undefined ? 0 : machines(was).filter((m) => m.ok).length;
     for (const [i, m] of all.entries()) {
       const current = i === all.length - 1;

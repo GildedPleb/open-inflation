@@ -257,6 +257,51 @@ describe("L4 base_money.csv rows", () => {
     ));
 });
 
+describe("L3/L4 follow renames (exact content, like git diff -M100%)", () => {
+  const ROLL = rollup();
+  const MOVED = "evidence/base_money/2026Q4.md";
+  const FED25 = "issuers/FED/2025.md";
+  const without = async (snap: Snapshot, banned: CheckId[]) => {
+    const fs = await lint(snap, OFF);
+    expect(ids(fs).filter((c) => banned.includes(c))).toEqual([]);
+  };
+  const has = async (snap: Snapshot, check: CheckId, reason: RegExp) => {
+    const fs = await lint(snap, OFF);
+    expect(fs.some((f) => f.check === check && reason.test(f.message))).toBe(true);
+  };
+  test("pure rename of an issuer file and a roll-up is not a delete (no L3/L4)", async () => {
+    await without(onGood({ [FED]: null, [FED25]: fedText, [ROLLUP]: null, [MOVED]: ROLL }), ["L3", "L4"]);
+    // Control: the same deletes without the moved copies are L4.
+    await has(onGood({ [FED]: null, [ROLLUP]: null }), "L4", /committed file was deleted/);
+  });
+  test("rename plus a changed committed line fails L4", () =>
+    has(onGood({ [FED]: null, [FED25]: fedText.replace("synthetic): 1", "synthetic): 2") }), "L4", /deleted/));
+  test("rename plus a removed heading fails L3", () =>
+    has(onGood({ [ROLLUP]: null, [MOVED]: ROLL.replace("## Conflicts", "## Conflict") }), "L3", /Conflicts/));
+  test("partial rename (moved and appended to) is a delete plus an add and fails L4", () =>
+    has(onGood({ [FED]: null, [FED25]: `${fedText}\nappended\n` }), "L4", /committed file was deleted/));
+  test("rename to a place no rule allows still fails L12", async () => {
+    const fs = await lint(onGood({ [FED]: null, "issuers/fed/2026.md": fedText }), OFF);
+    expect(fs.some((f) => f.check === "L12" && f.file === "issuers/fed/2026.md")).toBe(true);
+  });
+  test("rename out of the append-only trees is a delete", () =>
+    has(onGood({ [FED]: null, "notes/FED-2026.md": fedText }), "L4", /committed file was deleted/));
+  test("evidence_id rewritten to the renamed roll-up's new path passes L4", () =>
+    without(onGood({ [ROLLUP]: null, [MOVED]: ROLL, ...csv(`2026-09-30,1221,${MOVED}`) }), ["L3", "L4"]));
+  test("evidence_id rewritten without a matching rename fails", () =>
+    has(onGood({ [MOVED]: ROLL, ...csv(`2026-09-30,1221,${MOVED}`) }), "L4", /evidence_id changed/));
+  test("evidence_id rewritten to a path other than the rename target fails", () =>
+    has(
+      onGood({ [ROLLUP]: null, [MOVED]: ROLL, ...csv("2026-09-30,1221,evidence/base_money/2027Q1.md") }),
+      "L4",
+      /evidence_id changed/,
+    ));
+  test("value changed in the renamed row fails", () =>
+    has(onGood({ [ROLLUP]: null, [MOVED]: ROLL, ...csv(`2026-09-30,1222,${MOVED}`) }), "L4", /value must stay 1221/));
+  test("date changed in the renamed row fails", () =>
+    has(onGood({ [ROLLUP]: null, [MOVED]: ROLL, ...csv(`2026-12-31,1221,${MOVED}`) }), "L4", /2026-09-30 was deleted/));
+});
+
 describe("L5 link integrity", () => {
   const withLink = (l: string) => good({ [ROLLUP]: rollup().replace("## Conflicts", `${l}\n\n## Conflicts`) });
   test("uppercase fragment does not match GitHub's lowercase slug", () =>
