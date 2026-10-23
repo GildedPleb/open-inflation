@@ -2,7 +2,8 @@
 // Checks the working tree against a base commit: --base; on a GitHub push to any ref but main, merge-base(HEAD,
 // origin/main); else $LINT_BASE (all zeros: none); else HEAD if it exists. See lib/lint-base.ts.
 // Network: only archive URLs the diff adds that pass L7, once each: HEAD on web.archive.org, else archive.org availability;
-// HEAD on archive.today (Archive URL 2; HTTP 403/429 is rate-limited, no verdict). Committed links are never re-swept.
+// HEAD on archive.today (Archive URL 2; HTTP 403/429 is rate-limited, no verdict, listed in the stdout line
+// "archive.today: N verified, M unverified (rate-limited)"). Committed links are never re-swept.
 import { archiveNet } from "./lib/archive.ts";
 import { lint } from "./lib/checks.ts";
 import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, UnknownBase } from "./lib/git.ts";
@@ -60,6 +61,7 @@ const findings = await lint(snapshot, {
   net: archiveNet(offline ? refuse : fetch, 15_000),
   now: Date.now(),
   progress: (line) => console.error(`lint: ${line}`),
+  summary: (line) => console.log(line),
 });
 for (const f of findings) console.log(`${f.check} ${f.file}: ${f.message}`);
 console.log(findings.length === 0 ? `lint: clean (base ${base ?? "none"})` : `lint: ${findings.length} finding(s)`);

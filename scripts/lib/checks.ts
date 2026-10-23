@@ -47,7 +47,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   quarterHeadings(ctx, emit);
   indexCompleteness(ctx, emit);
   extractSchema(ctx, emit);
-  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net, emit, opts.progress);
+  if (opts.archive !== "off" && opts.net) await archiveResolution(ctx, opts.net, emit, opts.progress, opts.summary);
   aggregation(ctx, rows, emit);
   catalog(ctx, emit);
   placement(ctx, emit);
@@ -476,26 +476,70 @@ const sameUrl = (a: string, b: string): boolean | null => {
 const ts14Ms = (ts: string) =>
   utcMs(ts.slice(0, 4), ts.slice(4, 6), ts.slice(6, 8), ts.slice(8, 10), ts.slice(10, 12), ts.slice(12, 14));
 
+/** A timestamp with `Z` or a `±HH:MM` offset, as ms since the epoch; null when it is neither or not a real time. */
+const INSTANT = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|([+-])(\d{2}):(\d{2}))$/;
+function instantMs(t: string): number | null {
+  const m = INSTANT.exec(t);
+  if (!m) return null;
+  const local = utcMs(m[1] ?? "", m[2] ?? "", m[3] ?? "", m[4] ?? "", m[5] ?? "", m[6] ?? "0");
+  if (local === null || m[7] === undefined) return local;
+  const [oh, om] = [Number(m[8]), Number(m[9])];
+  if (oh > 23 || om > 59) return null;
+  return local - (m[7] === "-" ? -1 : 1) * (oh * 60 + om) * 60_000;
+}
+/** The UTC calendar date (YYYY-MM-DD) of an instant. */
+const utcDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * The window an archive.today date must fall in (Assay): on or after the UTC date of Retrieved (an offset is
+ * converted to UTC; an unreadable Retrieved is L7's own finding and skips this) and no later than the UTC date of
+ * `now` plus the Retrieved clock skew. null when `day` (YYYY-MM-DD) is inside it.
+ */
+function dateWindowProblem(what: string, day: string, retrieved?: string, now?: number): string | null {
+  const rMs = retrieved === undefined ? null : instantMs(retrieved);
+  if (rMs !== null && day < utcDate(rMs))
+    return `${what} ${day} is before Retrieved ${retrieved} (UTC date ${utcDate(rMs)}); archive.today is tried at or after retrieval`;
+  if (now !== undefined && day > utcDate(now + SKEW_MS))
+    return `${what} ${day} is in the future (now ${new Date(now).toISOString()}, UTC date ${utcDate(now + SKEW_MS)} with the 10 min skew)`;
+  return null;
+}
+/** A URL in an attempt reason: any http(s) scheme, or a bare www. host. */
+const URLISH = /https?:\/\/|\bwww\./i;
+const MIN_REASON_WORDS = 3;
+
 /**
  * L7 on one Archive URL 2 value: an archive.today URL (short id, or the dated form of the Original URL at a real
- * time), or `attempted <YYYY-MM-DD>: <reason>` with a real date and a non-empty reason. null when it passes.
+ * time), or `attempted <YYYY-MM-DD>: <reason>` with a real date and a reason of at least 3 words and no URL. The
+ * attempt date and the dated form's timestamp date are inside dateWindowProblem's window. null when it passes.
  */
-export function archive2Problem(v: string, original: string | undefined): string | null {
+export function archive2Problem(
+  v: string,
+  original: string | undefined,
+  retrieved?: string | undefined,
+  now?: number | undefined,
+): string | null {
   if (v.startsWith("attempted")) {
     const m = ATTEMPTED.exec(v);
     if (!m) return `Archive URL 2 ${show(v)} must read "attempted YYYY-MM-DD: <reason>"`;
-    if (!isIsoDate(m[1] ?? "")) return `Archive URL 2 attempt date ${show(m[1])} is not a real YYYY-MM-DD date`;
-    if ((m[2] ?? "").trim() === "") return `Archive URL 2 ${show(v)} needs a reason after the date`;
-    return null;
+    const day = m[1] ?? "";
+    if (!isIsoDate(day)) return `Archive URL 2 attempt date ${show(day)} is not a real YYYY-MM-DD date`;
+    const reason = (m[2] ?? "").trim();
+    if (reason === "") return `Archive URL 2 ${show(v)} needs a reason after the date`;
+    if (reason.split(/\s+/).length < MIN_REASON_WORDS)
+      return `Archive URL 2 attempt reason ${show(reason)} is too short: say what failed in at least ${MIN_REASON_WORDS} words`;
+    if (URLISH.test(reason))
+      return `Archive URL 2 attempt reason ${show(reason)} contains a URL; a reason is prose (record links in their own fields)`;
+    return dateWindowProblem("Archive URL 2 attempt date", day, retrieved, now);
   }
   const a = ARCHIVE_TODAY.exec(v);
   if (!a)
     return `Archive URL 2 ${show(v)} is not an archive.today URL or "attempted YYYY-MM-DD: <reason>" (archive.today: https://archive.ph/, https://archive.today/ or https://archive.is/, then <id> or <YYYYMMDDhhmmss>/<Original URL>)`;
   if (a[1] === undefined) return null;
-  if (ts14Ms(a[1]) === null) return `Archive URL 2 timestamp ${a[1]} is not a real time`;
+  const tsMs = ts14Ms(a[1]);
+  if (tsMs === null) return `Archive URL 2 timestamp ${a[1]} is not a real time`;
   if (original !== undefined && sameUrl(a[2] ?? "", original) === false)
     return `Archive URL 2 captures ${show(a[2])}, not the Original URL ${show(original)}`;
-  return null;
+  return dateWindowProblem(`Archive URL 2 timestamp ${a[1]} date`, utcDate(tsMs), retrieved, now);
 }
 
 /** Everything L7 has to say about one extract block; empty means the block passes. */
@@ -515,7 +559,7 @@ function blockProblems(b: Extract, now: number): string[] {
   };
   const [retrieved, original, archive, archive2] = FIELDS.map(one);
   if (archive2 !== undefined) {
-    const m = archive2Problem(archive2, original);
+    const m = archive2Problem(archive2, original, retrieved, now);
     if (m) out.push(m);
   }
   if (!b.quote) out.push("has no verbatim quote (blockquote or fenced block)");
@@ -833,7 +877,13 @@ async function todayVerdict(net: Net, url: string): Promise<Verdict> {
 }
 
 /** Check each archive URL once: when the diff first adds it. Committed URLs are never re-checked. */
-async function archiveResolution(ctx: Ctx, net: Net, emit: Emit, progress?: (line: string) => void) {
+async function archiveResolution(
+  ctx: Ctx,
+  net: Net,
+  emit: Emit,
+  progress?: (line: string) => void,
+  summary?: (line: string) => void,
+) {
   const now = archiveRefs(ctx.text, ctx.now);
   const was = archiveRefs(ctx.base);
   const todo = [...now.urls].filter(([url]) => !was.urls.has(url));
@@ -842,11 +892,14 @@ async function archiveResolution(ctx: Ctx, net: Net, emit: Emit, progress?: (lin
   if (todo.length > 0) progress?.(`L8 checking ${todo.length} new archive URL${todo.length === 1 ? "" : "s"}`);
   let next = 0;
   let done = 0;
+  const verified: string[] = [];
+  const unverified: string[] = [];
   const worker = async () => {
     for (let i = next++; i < todo.length; i = next++) {
       const [url, ref] = todo[i] as [string, ArchiveRef];
       const v = await snapshotVerdict(net, url, ref);
       results[i] = v.problem;
+      if (ref.host === "today" && !v.problem) (v.limited ? unverified : verified).push(url);
       const p = v.problem;
       const word = v.limited
         ? `rate-limited (${v.limited})`
@@ -859,6 +912,12 @@ async function archiveResolution(ctx: Ctx, net: Net, emit: Emit, progress?: (lin
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  // Assay M-2: a 403/429 is no verdict, so say how many archive.today captures went unchecked, and which, for review.
+  // Failures are findings and are not counted; with no verified or rate-limited capture there is no line.
+  if (verified.length + unverified.length > 0) {
+    summary?.(`archive.today: ${verified.length} verified, ${unverified.length} unverified (rate-limited)`);
+    for (const url of unverified.sort()) summary?.(url);
+  }
   for (const [i, [url, ref]] of todo.entries()) {
     const p = results[i];
     if (!p) continue;
@@ -1048,6 +1107,11 @@ function valueEntry(key: string, i: number, c: unknown, q: string, fxHave: Set<s
   else if (c.local_currency === "USD" && v.scale > 0)
     errs.push(
       `${key}[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_value ${c.local_value} is USD more precise than $1 (USD is recorded to the whole dollar, no decimal point)`,
+    );
+  // A USD whole-dollar figure is written canonically: "0", or no leading zero ("0123" fails).
+  else if (c.local_currency === "USD" && !/^(0|[1-9]\d*)$/.test(c.local_value as string))
+    errs.push(
+      `${key}[${i}]${nonEmpty(c.issuer) ? ` (${c.issuer})` : ""} local_value ${c.local_value} has a leading zero (write USD as "0" or with no leading zero)`,
     );
   if (!fx || fx.digits === 0n)
     errs.push(`${key}[${i}].fx_rate must be a positive decimal string (quoted), got ${show(c.fx_rate)}`);
