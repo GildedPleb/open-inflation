@@ -14,11 +14,13 @@ Every `evidence_id` is `evidence/base_money/YYYYQn.md`, exists, and matches the 
 
 ### L3
 
-No committed heading in `issuers/` or `evidence/` is renamed or removed.
+No committed heading in `issuers/` or `evidence/` is renamed or removed. A file moved within those folders keeps every heading it had at its old path (see renames under L4).
 
 ### L4
 
 Committed basket entries in `catalog.json` are never changed or removed (append a new version instead). Committed lines in `issuers/` and `evidence/` are never changed or deleted. Committed CSV rows are never deleted; a value changes only if the same diff appends a `## Revision` section with a new full machine block to that roll-up whose `total_usd` is the new value (an append, so no exception to the rule above).
+
+Renames: L3 and L4 follow a file moved between the base and the working tree, and check it against its old path's committed content. A move counts only at 100% similarity, as with `git diff -M100%`: the new file is byte-identical to the old one and lies under `issuers/` or `evidence/`. A file edited in any way during the move, even by appending, counts as a delete plus an add, so L4 reports the delete. Make the move and the later edits in separate PRs. A file moved anywhere else is a delete too, and a move to a misplaced path inside those folders still fails L12. A committed CSV row's `evidence_id` may change only when the roll-up it names was moved in the same diff to exactly the new value, with the row's date and value unchanged. Rename-following keeps these rules as strict as before. It does not loosen them.
 
 ### L5
 

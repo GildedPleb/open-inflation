@@ -133,6 +133,20 @@ describe("git snapshot loader", () => {
     expect(text(s.files, "issuers/A/2026.md")).toBe("one\ntwo\n");
     expect(text(s.base, "issuers/A/2026.md")).toBe("one\n");
   });
+  test("git mv between base and HEAD: lint follows the rename; an edited move is a delete (L4)", async () => {
+    const dir = repo(goodText());
+    git(dir, "init", "-q", "--template=");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "base");
+    git(dir, "mv", "issuers/FED/2026.md", "issuers/FED/2025.md");
+    git(dir, "commit", "-qm", "move");
+    const moved = await lint(loadSnapshot(dir, "HEAD~1"), { now: Date.now() });
+    expect(moved.filter((f) => f.check === "L3" || f.check === "L4")).toEqual([]);
+    const path = join(dir, "issuers/FED/2025.md");
+    writeFileSync(path, readFileSync(path, "utf8").replace("synthetic): 1", "synthetic): 2"));
+    const edited = await lint(loadSnapshot(dir, "HEAD~1"), { now: Date.now() });
+    expect(edited.some((f) => f.check === "L4" && f.file === "issuers/FED/2026.md")).toBe(true);
+  });
   test("null and all-zero base mean no base", () => {
     const dir = repo({ "a.txt": "a\n" });
     git(dir, "init", "-q", "--template=");
