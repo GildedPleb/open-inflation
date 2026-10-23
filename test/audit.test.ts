@@ -159,14 +159,22 @@ describe("audit: classes (one per class)", () => {
     for (const error of ["timed out after 1000 ms", "ECONNRESET", "more than 10 redirects"])
       expect(res({ httpStatus: null, sha256: null, error }).status).toBe("no verdict");
   });
-  test("no verdict on Ghostarchive: 403 and 503 are its Cloudflare challenge, 429 as on every host; 404 is still lost", () => {
-    const g = (httpStatus: number) => classify({ httpStatus, finalUrl: null, sha256: null, error: null }, prior, GHOST);
-    for (const s of [403, 503])
-      expect(g(s)).toEqual({
-        status: "no verdict",
-        detail: `HTTP ${s} (blocked: Ghostarchive Cloudflare challenge)`,
-        noVerdict: "blocked",
-      });
+  test("no verdict on Ghostarchive: a 403 is its Cloudflare challenge; a 503 is a challenge only when one is detected", () => {
+    const g = (httpStatus: number, paced = {}) =>
+      classify({ httpStatus, finalUrl: null, sha256: null, error: null }, prior, GHOST, paced);
+    expect(g(403)).toEqual({
+      status: "no verdict",
+      detail: "HTTP 403 (blocked: Ghostarchive Cloudflare challenge)",
+      noVerdict: "blocked",
+    });
+    // Assay: a 503 with no challenge detected (here not retried: no pacer, or the network looked down) is never
+    // labelled a challenge; it is a rate limit.
+    expect(g(503)).toEqual({ status: "no verdict", detail: "HTTP 503 (rate-limited)", noVerdict: "rate-limited" });
+    expect(g(503, { challenge: true })).toEqual({
+      status: "no verdict",
+      detail: "HTTP 503 (blocked: challenge/CAPTCHA)",
+      noVerdict: "blocked",
+    });
     expect(g(429)).toEqual({ status: "no verdict", detail: "HTTP 429 (rate-limited)", noVerdict: "rate-limited" });
     expect(g(404).status).toBe("lost");
     // Elsewhere a 503 is "other" no verdict, a 403 blocked and a 429 rate-limited.
@@ -311,7 +319,7 @@ describe("audit: run, manifest and report", () => {
     expect(gone.report.counts).toEqual({ ok: 0, changed: 0, lost: 3, "no verdict": 0 });
     expect(readFileSync(gone.mdPath, "utf8")).toContain("## Lost");
   });
-  test("Archive URL 3 is audited; Ghostarchive's 503 challenge is no verdict, not lost", async () => {
+  test("Archive URL 3 is audited; Ghostarchive's 503 is no verdict (rate-limited, not a challenge), not lost", async () => {
     const fs = files(
       {},
       {
@@ -323,7 +331,8 @@ describe("audit: run, manifest and report", () => {
     expect(r.report.links.find((l) => l.url === GHOST)).toMatchObject({
       field: "Archive URL 3",
       status: "no verdict",
-      detail: "HTTP 503 (blocked: Ghostarchive Cloudflare challenge)",
+      detail: "HTTP 503 (rate-limited)",
+      noVerdict: "rate-limited",
     });
     // The report's class line: item (b), "any other HTTP status" is listed under no verdict.
     expect(readFileSync(r.mdPath, "utf8").replace(/\n/g, " ")).toContain(

@@ -136,7 +136,8 @@ async function todayVerdict(net: Net, url: string): Promise<Verdict> {
 /**
  * Ghostarchive statuses that are no verdict: its Cloudflare challenge answers a script with 403, its rate limit with
  * 429 (Assay: the same as archive.today); a 503 is retried by pacing as a rate limit and, still there at the cap,
- * is rate-limited (F-2), blocked only when a challenge was detected or it was not retried (no pacer, one try). Logged as unverified (the researcher opens the
+ * is rate-limited (F-2), and so is one that was not retried (no pacer, one try): a 503 is blocked, and called a
+ * Cloudflare challenge, only when a challenge was detected (Assay). Logged as unverified (the researcher opens the
  * capture in a browser); not a failure.
  */
 const GHOST_BLOCKED = [403, RATE_LIMITED, 503];
@@ -175,12 +176,12 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
     };
   if (r.kind === "http") {
     if (GHOST_BLOCKED.includes(r.status)) {
-      // A 503 retried to the cap is a rate limit; a challenge, or a 503 that was not retried (no pacer), is blocked.
-      const limit = r.status === RATE_LIMITED || r.gaveUp !== undefined;
+      // A 403 or a detected challenge is blocked; a 429 or 503 otherwise is a rate limit, retried to the cap or not.
+      const blocked = r.challenge === true || r.status === 403;
       return {
         problem: null,
-        limited: `${gaveUp(r)}${hostOf(url)} HTTP ${r.status}, ${limit ? "rate limit" : "Cloudflare challenge"}; no verdict`,
-        why: r.challenge || !limit ? "blocked" : "rate-limited",
+        limited: `${gaveUp(r)}${hostOf(url)} HTTP ${r.status}, ${blocked ? "Cloudflare challenge" : "rate limit"}; no verdict`,
+        why: blocked ? "blocked" : "rate-limited",
       };
     }
     return {

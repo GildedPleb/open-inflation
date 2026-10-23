@@ -114,9 +114,11 @@ const NXDOMAIN = /ENOTFOUND/;
 export { CANARIES, canaryOnline } from "./archive.ts";
 
 const LOST = [404, 410];
-/** Ghostarchive's Cloudflare challenge answers a script with 403 or 503: a block, not a verdict on the capture. */
+/**
+ * Ghostarchive's Cloudflare challenge answers a script with 403: a block, not a verdict on the capture. Its 503 is a
+ * rate limit (Assay): called a challenge only when one was detected (paced.challenge), never for the status alone.
+ */
 const GHOST = /^https:\/\/ghostarchive\.org\//;
-const GHOST_BLOCKED = [403, 503];
 /** Non-2xx answers whose page is read (512 KiB at most) for a challenge or CAPTCHA. */
 const BLOCK_STATUSES = [403, 429, 503];
 const CHALLENGE_READ = 512 * 1024;
@@ -124,8 +126,8 @@ const CHALLENGE_READ = 512 * 1024;
 /**
  * Why a link has no verdict, so the INCOMPLETE line counts from the row itself (F-1, Probe: it matched detail
  * substrings, and two of the three "blocked" wordings were not counted). rate-limited: 429, or pacing gave up at the
- * cap; blocked: a challenge/CAPTCHA page or header, a 403, or a Ghostarchive 503 that was not retried
- * to the cap (no pacer; with one, a 503 is retried and ends rate-limited); unconfirmed: a Ghostarchive 200 with no capture on it (loading, in progress, unrecognised);
+ * cap; blocked: a challenge/CAPTCHA page or header, or a 403 (a Ghostarchive 503 is rate-limited, retried
+ * or not, unless a challenge was detected); unconfirmed: a Ghostarchive 200 with no capture on it (loading, in progress, unrecognised);
  * error page: Ghostarchive's "Archiving error" page; offline: a network error while no canary host answers; other:
  * any other HTTP status, or a network error while a canary answers (timeout, reset, redirect loop, a DNS error but
  * ENOTFOUND, an oversized body).
@@ -173,8 +175,8 @@ export function classify(
       "rate-limited",
       `HTTP ${s} (rate-limited: gave up after ${paced.gaveUp.tries} tries over ${duration(paced.gaveUp.elapsedMs)})`,
     );
-  if (GHOST.test(url) && GHOST_BLOCKED.includes(s))
-    return none("blocked", `HTTP ${s} (blocked: Ghostarchive Cloudflare challenge)`);
+  if (GHOST.test(url) && s === 403) return none("blocked", `HTTP 403 (blocked: Ghostarchive Cloudflare challenge)`);
+  if (GHOST.test(url) && s === 503) return none("rate-limited", `HTTP 503 (rate-limited)`);
   if (s === 403) return none("blocked", `HTTP 403 (blocked)`);
   if (s === 429) return none("rate-limited", `HTTP 429 (rate-limited)`);
   if (s < 200 || s > 299 || p.sha256 === null || p.finalUrl === null)

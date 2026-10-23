@@ -2503,15 +2503,24 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     expect(progress.at(-1)).toBe(`L8 [2/2] ok (HTTP 200, Ghostarchive) ${GHOST}`);
     expect(summary).toEqual(["ghostarchive: 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
-  test("HTTP 403 (its Cloudflare challenge), 429 (its rate limit) and an unretried 503 are no verdict, not a fail", async () => {
-    for (const status of [403, 429, 503]) {
-      const { fs, progress, summary } = await run(onGood({ [FED]: added }), fake({ kind: "http", status }).opts);
+  test("HTTP 403 (its Cloudflare challenge), 429 and an unretried 503 (its rate limit) are no verdict, not a fail", async () => {
+    // Assay: a 403 may be labelled a challenge; a 503 with no challenge detected never is, retried or not.
+    for (const [status, challenge] of [
+      [403, false],
+      [429, false],
+      [503, false],
+      [503, true],
+      [429, true],
+    ] as const) {
+      const r = { kind: "http", status, ...(challenge ? { challenge } : {}) } as const;
+      const { fs, progress, summary } = await run(onGood({ [FED]: added }), fake(r).opts);
       expect(fs).toEqual([]);
-      const why = status === 429 ? "rate limit" : "Cloudflare challenge";
-      const word = status === 429 ? "rate-limited (" : "blocked (challenge/CAPTCHA; ";
+      const blocked = status === 403 || challenge;
+      const why = blocked ? "Cloudflare challenge" : "rate limit";
+      const word = blocked ? "blocked (challenge/CAPTCHA; " : "rate-limited (";
       // Assay (#19): the host and the HTTP status on every no-verdict line.
       expect(progress.at(-1)).toBe(`L8 [2/2] ${word}ghostarchive.org HTTP ${status}, ${why}; no verdict) ${GHOST}`);
-      const split = status === 429 ? "1 rate-limited, 0 blocked" : "0 rate-limited, 1 blocked";
+      const split = blocked ? "0 rate-limited, 1 blocked" : "1 rate-limited, 0 blocked";
       expect(summary).toEqual([`ghostarchive: 0 verified, 1 unverified (${split})`, GHOST]);
     }
   });
@@ -2618,7 +2627,7 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     expect(fs).toEqual([]);
     expect(summary).toEqual([
       "archive.today: 1 verified, 0 unverified (0 rate-limited, 0 blocked)",
-      "ghostarchive: 1 verified, 2 unverified (0 rate-limited, 2 blocked)",
+      "ghostarchive: 1 verified, 2 unverified (1 rate-limited, 1 blocked)",
       M,
       Z,
     ]);
