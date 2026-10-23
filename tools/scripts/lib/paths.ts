@@ -1,0 +1,72 @@
+// Every evidence path in one place. Lint (checks.ts), the README/quarter-list generator (readme.ts), the base
+// snapshot (git.ts), the audit report and the test fixtures read these; re-pointing the layout is an edit here.
+import { posix } from "node:path";
+
+/** The folder holding all evidence: the quarter list, the quarter files and the extracts. */
+export const EVIDENCE_ROOT = "base_money/";
+/** The hand-written quarter list; its "## Quarters" bullet list is generated (L6, L13). */
+export const QUARTER_LIST = "base_money/README.md";
+/** Quarter files: <QUARTERS_DIR>/YYYYQn.md. */
+export const QUARTERS_DIR = "base_money/quarters";
+/** Issuer-year extracts: <ISSUERS_DIR>/<ISS>/<YYYY>.md. */
+export const ISSUERS_DIR = "base_money/issuers";
+/** FX extracts (the sources fx_source_anchor cites; not a basket issuer): <FX_DIR>/<YYYY>.md. */
+export const FX_DIR = "base_money/FX";
+/** The id the FX extracts go by in messages and in extractOf. */
+export const FX_ID = "FX";
+
+/** Top-level folders of earlier layouts: any file there now is misplaced (L12). */
+export const RETIRED_ROOTS = ["issuers/", "evidence/", "research/"];
+/** Quarter files at earlier paths (the base side of a move): path -> quarter. */
+const LEGACY_QUARTERS = [/^evidence\/base_money\/(\d{4}Q[1-4])\.md$/, /^evidence\/(\d{4}Q[1-4])\.md$/];
+/** Earlier quarter lists (generated or hand-written): not extracts. */
+const LEGACY_LISTS = ["evidence/README.md", "docs/evidence-index.md"];
+/** Folders whose committed .md files (other than quarters and lists) are strictly append-only extracts. */
+const EXTRACT_ROOTS = [EVIDENCE_ROOT, "issuers/", "evidence/"];
+
+/** Base files lint needs: every evidence tree (current and earlier, for moves), the CSV (L4) and the catalog. */
+export const BASE_PREFIXES = [...new Set([...EXTRACT_ROOTS, ...RETIRED_ROOTS])].concat([
+  "base_money.csv",
+  "catalog.json",
+]);
+
+/** Path patterns as written in messages and docs. */
+export const QUARTER_TEXT = `${QUARTERS_DIR}/YYYYQn.md`;
+export const ISSUER_TEXT = `${ISSUERS_DIR}/<ISS>/<YYYY>.md`;
+export const FX_TEXT = `${FX_DIR}/<YYYY>.md`;
+
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const QUARTER_RE = new RegExp(`^${esc(QUARTERS_DIR)}/(\\d{4}Q[1-4])\\.md$`);
+const FX_RE = new RegExp(`^${esc(FX_DIR)}/(\\d{4})\\.md$`);
+const ISSUER_RE = new RegExp(`^${esc(ISSUERS_DIR)}/([A-Z][A-Z0-9]*)/(\\d{4})\\.md$`);
+
+export const quarterPath = (q: string) => `${QUARTERS_DIR}/${q}.md`;
+export const extractPath = (issuer: string, year: string) =>
+  issuer === FX_ID ? `${FX_DIR}/${year}.md` : `${ISSUERS_DIR}/${issuer}/${year}.md`;
+export const fxPath = (year: string) => extractPath(FX_ID, year);
+
+/** The quarter of a quarter file at its current path (2026Q2), else undefined. */
+export const quarterOfPath = (p: string): string | undefined => QUARTER_RE.exec(p)?.[1];
+/** The quarter of a quarter file at its current or an earlier path. */
+export const anyQuarterOfPath = (p: string): string | undefined =>
+  quarterOfPath(p) ?? LEGACY_QUARTERS.map((r) => r.exec(p)?.[1]).find((q) => q !== undefined);
+
+/** An extract at its current path: its issuer (FX_ID for an FX file) and year; else undefined. */
+export function extractOf(p: string): { issuer: string; year: string } | undefined {
+  const fx = FX_RE.exec(p);
+  if (fx) return { issuer: FX_ID, year: fx[1] as string };
+  const m = ISSUER_RE.exec(p);
+  if (!m || (m[1] === FX_ID && (FX_DIR as string) !== `${ISSUERS_DIR}/${FX_ID}`)) return undefined;
+  return { issuer: m[1] as string, year: m[2] as string };
+}
+
+/** A committed file that is a strictly append-only extract (current or earlier layout): not a quarter, not a list. */
+export const isExtractPath = (p: string) =>
+  p.endsWith(".md") &&
+  EXTRACT_ROOTS.some((r) => p.startsWith(r)) &&
+  p !== QUARTER_LIST &&
+  !LEGACY_LISTS.includes(p) &&
+  anyQuarterOfPath(p) === undefined;
+
+/** A markdown link from file `from` to repo path `to`. */
+export const relLink = (from: string, to: string) => posix.relative(posix.dirname(from), to);

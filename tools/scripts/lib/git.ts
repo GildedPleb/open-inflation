@@ -1,9 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { BASE_PREFIXES } from "./paths.ts";
 import type { Files, Snapshot } from "./types.ts";
-
-/** Base files lint needs: the append-only trees and the CSV (L4), and the catalog (basket history, L4/L11). */
-const BASE_PREFIXES = ["issuers/", "evidence/", "base_money.csv", "catalog.json"];
 
 function git(dir: string, args: string[], input?: Uint8Array): Uint8Array {
   const r = Bun.spawnSync(["git", "-C", dir, ...args], input ? { stdin: input } : {});

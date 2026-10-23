@@ -3,7 +3,18 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { lint } from "../scripts/lib/checks.ts";
-import { BLOCKS, begin, EVIDENCE_INDEX, end, fillReadme, generate, type Quarter, yoy } from "../scripts/lib/readme.ts";
+import {
+  BLOCKS,
+  begin,
+  EVIDENCE_INDEX,
+  end,
+  fillIndex,
+  fillReadme,
+  freshIndex,
+  generate,
+  type Quarter,
+  yoy,
+} from "../scripts/lib/readme.ts";
 import { REPO_ROOT } from "../scripts/lib/root.ts";
 import type { CheckId, Snapshot } from "../scripts/lib/types.ts";
 import { files, goodText } from "./fixture.ts";
@@ -28,7 +39,7 @@ describe("YoY (R3)", () => {
     id,
     date: "",
     value,
-    evidenceId: `evidence/base_money/${id}.md`,
+    evidenceId: `base_money/quarters/${id}.md`,
     basket: 1,
     included: ["A", "B"],
     excluded: [],
@@ -64,7 +75,7 @@ describe("L13 generated README and evidence index; L6 links (G3)", () => {
     if (!g) throw new Error("fixture does not generate");
     const readme = fillReadme(skeleton, g.blocks);
     if (typeof readme !== "string") throw new Error(readme.join("; "));
-    return { ...text, "README.md": readme, [EVIDENCE_INDEX]: g.index };
+    return { ...text, "README.md": readme, [EVIDENCE_INDEX]: freshIndex(g.index) };
   };
   const snap = (patch: (t: Record<string, string>) => void): Snapshot => {
     const t = generated();
@@ -96,11 +107,26 @@ describe("L13 generated README and evidence index; L6 links (G3)", () => {
     expect(await ids(snap((t) => edit(t, "README.md", end("table"), "")))).toContain("L13");
   });
   test("a missing roll-up link in the README fails", async () => {
-    const s = snap((t) => edit(t, "README.md", "[Sources](evidence/base_money/2026Q3.md)", "Sources"));
+    const s = snap((t) => edit(t, "README.md", "[Sources](base_money/quarters/2026Q3.md)", "Sources"));
     expect(await ids(s)).toEqual(["L13", "L6"].sort() as CheckId[]);
   });
-  test("a missing issuer-year link in the evidence index fails", async () => {
-    const s = snap((t) => edit(t, EVIDENCE_INDEX, "- [FX 2026](../issuers/FX/2026.md)\n", ""));
+  test("a missing quarter link in the quarter list fails", async () => {
+    const s = snap((t) => edit(t, EVIDENCE_INDEX, "[2026 Q3](quarters/2026Q3.md)", "2026 Q3"));
     expect(await ids(s)).toEqual(["L13", "L6"].sort() as CheckId[]);
+  });
+  test("a hand-edited quarter list line fails L13; prose around the list is free", async () => {
+    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "30 September 2026", "1 October 2026")))).toEqual(["L13"]);
+    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "newest first.", "newest first. Edited.")))).toEqual([]);
+  });
+  test("the quarter list is filled in place under its heading, newest first, gaps named", () => {
+    const list = [
+      "- [2026 Q2](quarters/2026Q2.md): x",
+      "- 2026 Q1: no row; a missing quarter is never estimated.",
+    ].join("\n");
+    expect(fillIndex("# Q\n\nintro\n\n## Quarters\n\n- old\n\n## After\n", list)).toBe(
+      `# Q\n\nintro\n\n## Quarters\n\n${list}\n\n## After\n`,
+    );
+    expect(fillIndex("# Q\n\n## Quarters\n", list)).toBe(`# Q\n\n## Quarters\n\n${list}\n`);
+    expect(fillIndex("# Q\n", list)).toEqual({ problem: expect.stringContaining("## Quarters") });
   });
 });

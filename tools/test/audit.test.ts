@@ -39,7 +39,7 @@ const tmp = (p = "obm-audit-") => {
   return d;
 };
 
-const FED = "issuers/FED/2026.md";
+const FED = "base_money/issuers/FED/2026.md";
 const ORIG = "https://example.test/FED-src";
 const WB = `https://web.archive.org/web/20261002140500/${ORIG}`;
 const TODAY = "https://archive.ph/AbC12";
@@ -287,7 +287,7 @@ describe("audit: run, manifest and report", () => {
     const md = readFileSync(r.mdPath, "utf8");
     expect(md).toMatch(/^# Link audit 2026-10-22$/m);
     expect(md).toContain("ok 3, changed 0, lost 0, no verdict 0");
-    expect(md).toContain("research/base_money/<YYYY>Q<n>.md");
+    expect(md).toContain("base_money/quarters/YYYYQn.md");
     expect(md).toMatch(/dynamic/i);
     const manifest = JSON.parse(readFileSync(join(store, "manifest.json"), "utf8"));
     expect(Object.keys(manifest).sort()).toEqual([ORIG, TODAY, WB].sort());

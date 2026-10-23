@@ -5,7 +5,7 @@
       "path": "base_money.csv",
       "unit": "USD",
       "frequency": "quarterly",
-      "methodology": "methodology/base_money.md",
+      "methodology": "docs/methodology/base_money.md",
       "last_updated": "2026-10-23",
       "version": "1.1.0",
       "license": "CC-BY-4.0",
