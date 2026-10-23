@@ -14,13 +14,15 @@ import { join } from "node:path";
 import {
   type AuditLink,
   auditLinks,
+  CANARIES,
+  canaryOnline,
   classify,
   defaultStore,
   rawUrl,
   runAudit,
   storeProblem,
 } from "../scripts/lib/audit.ts";
-import { extract, files, goodText } from "./fixture.ts";
+import { extract, files, GHOST_CAPTURE_PAGE, GHOST_ERROR_PAGE, goodText } from "./fixture.ts";
 
 // #18: `bun run audit`, local only. Every Original URL, Archive URL and Archive URL 2 is re-checked by HTTP status
 // and content hash against the last saved copy in a store outside the repository. Fake fetch, temp dirs only.
@@ -60,9 +62,17 @@ const fetchOf = (table: Record<string, Route | Error>) => {
   }) as unknown as typeof fetch;
   return { f, urls, agents };
 };
-const run = (store: string, date: string, table: Record<string, Route | Error>, fs = one()) => {
+const run = (store: string, date: string, table: Record<string, Route | Error>, fs = one(), up = true) => {
   const net = fetchOf(table);
-  return runAudit({ files: fs, fetch: net.f, store, date, timeoutMs: 1000, pauseMs: 0 }).then((r) => ({ ...r, net }));
+  return runAudit({
+    files: fs,
+    fetch: net.f,
+    store,
+    date,
+    timeoutMs: 1000,
+    pauseMs: 0,
+    online: async () => up,
+  }).then((r) => ({ ...r, net }));
 };
 const statusOf = (links: readonly AuditLink[], url: string) => links.find((l) => l.url === url)?.status;
 
@@ -107,11 +117,25 @@ describe("audit: classes (one per class)", () => {
       status: "changed",
       detail: expect.stringMatching(/final URL https:\/\/example\.test\/moved, was https:\/\/example\.test\/FED-src/),
     }));
-  test("lost: 404, 410, DNS failure", () => {
+  test("lost: 404, 410, host not found (ENOTFOUND)", () => {
     for (const httpStatus of [404, 410]) expect(res({ httpStatus, sha256: null }).status).toBe("lost");
     for (const error of ["getaddrinfo ENOTFOUND example.test", "DNS lookup failed (ENOTFOUND)"])
       expect(res({ httpStatus: null, sha256: null, error }).status).toBe("lost");
   });
+  // m-G: offline, Bun says `getaddrinfo ETIMEOUT <host>` for every lookup; a resolver that did not answer is no verdict.
+  test("no verdict: a DNS error that is not ENOTFOUND (the resolver timed out or failed)", () => {
+    for (const error of ["getaddrinfo ETIMEOUT example.test", "getaddrinfo EAI_AGAIN example.test", "DNS SERVFAIL"])
+      expect(res({ httpStatus: null, sha256: null, error })).toEqual({ status: "no verdict", detail: error });
+  });
+  test("no verdict: ENOTFOUND while offline (no canary answered)", () =>
+    expect(
+      classify({ httpStatus: null, finalUrl: null, sha256: null, error: "getaddrinfo ENOTFOUND x.test" }, null, "", {
+        offline: true,
+      }),
+    ).toEqual({
+      status: "no verdict",
+      detail: "getaddrinfo ENOTFOUND x.test (network unreachable: no canary host answered)",
+    }));
   test("no verdict: 403, 429, blocked (other errors and statuses too)", () => {
     for (const httpStatus of [403, 429, 500, 503]) expect(res({ httpStatus, sha256: null }).status).toBe("no verdict");
     // A non-2xx body (an error page) is never compared with the saved copy, even when it was read and hashed.
@@ -132,6 +156,19 @@ describe("audit: classes (one per class)", () => {
     expect(classify({ httpStatus: 403, finalUrl: null, sha256: null, error: null }, prior, ORIG).detail).toMatch(
       /blocked or rate-limited/,
     );
+  });
+  // R5-n1: a Ghostarchive 200 is a capture only with its replay wrapper; lost stays ENOTFOUND, 404 or 410 (Assay).
+  test("no verdict on Ghostarchive: a 200 that is its Archiving error page, or no capture at all", () => {
+    const p = { httpStatus: 200, finalUrl: GHOST, sha256: "b".repeat(64), error: null };
+    expect(classify(p, prior, GHOST, { page: "error" })).toEqual({
+      status: "no verdict",
+      detail: 'HTTP 200, Ghostarchive "Archiving error" page, not a capture',
+    });
+    expect(classify(p, null, GHOST, { page: "other" })).toEqual({
+      status: "no verdict",
+      detail: "HTTP 200, no capture on the Ghostarchive page (loading, in progress or unrecognised)",
+    });
+    expect(classify(p, null, GHOST, { page: "capture" }).status).toBe("ok");
   });
 });
 
@@ -268,8 +305,28 @@ describe("audit: run, manifest and report", () => {
     });
     // The report's class line names Ghostarchive's 503 among the no-verdict statuses.
     expect(readFileSync(r.mdPath, "utf8").replace(/\n/g, " ")).toContain(
-      "no verdict (403, 429, blocked; Ghostarchive also 503; retried at the next audit).",
+      'no verdict (403, 429, blocked; Ghostarchive also 503, and a 200 with no capture (its "Archiving error" page, or loading); any other DNS error; no network, when no canary answers; retried at the next audit).',
     );
+  });
+  test("a Ghostarchive Archiving error page (HTTP 200) is no verdict and is not saved; a capture page is", async () => {
+    const fs = files(
+      {},
+      {
+        [FED]: `# FED 2026\n\n## 2026Q3\n\n${extract({ title: "FED src", original: ORIG, archive2: TODAY, archive3: GHOST })}`,
+      },
+    );
+    const store = join(tmp(), "store");
+    const r = await run(store, "2026-10-22", { ...healthy, [GHOST]: [200, GHOST_ERROR_PAGE] }, fs);
+    expect(r.report.links.find((l) => l.url === GHOST)).toMatchObject({
+      status: "no verdict",
+      detail: 'HTTP 200, Ghostarchive "Archiving error" page, not a capture',
+      saved: null,
+    });
+    const manifest = JSON.parse(readFileSync(join(store, "manifest.json"), "utf8"));
+    expect(manifest[GHOST]).toBeUndefined();
+    const ok = await run(store, "2026-10-23", { ...healthy, [GHOST]: [200, GHOST_CAPTURE_PAGE] }, fs);
+    expect(ok.report.links.find((l) => l.url === GHOST)).toMatchObject({ status: "ok" });
+    expect(JSON.parse(readFileSync(join(store, "manifest.json"), "utf8"))[GHOST]).toHaveLength(1);
   });
   test("a same-date rerun is idempotent: same report, one manifest entry per date, compared with the earlier date", async () => {
     const store = join(tmp(), "store");
@@ -312,5 +369,83 @@ describe("audit: run, manifest and report", () => {
     });
     expect(readdirSync(r, { recursive: true }).sort()).toEqual(before);
     expect(existsSync(join(store, "manifest.json"))).toBe(true);
+  });
+});
+
+// m-G: an offline audit marked all 88 links "lost (DNS failure)". Lost needs the network to be up.
+describe("audit: network down is no verdict, never lost", () => {
+  const offline = (msg: (u: string) => string) =>
+    (async (u: string) => {
+      throw new TypeError(msg(new URL(u).hostname));
+    }) as unknown as typeof fetch;
+  const audit = (f: typeof fetch, online?: () => Promise<boolean>) =>
+    runAudit({
+      files: one(),
+      fetch: f,
+      store: join(tmp(), "store"),
+      date: "2026-10-22",
+      timeoutMs: 1000,
+      pauseMs: 0,
+      ...(online ? { online } : {}),
+    });
+  test("Bun offline (getaddrinfo ETIMEOUT for every host, canaries included): nothing lost", async () => {
+    const r = await audit(offline((h) => `getaddrinfo ETIMEOUT ${h}`));
+    expect(r.report.counts).toEqual({ ok: 0, changed: 0, lost: 0, "no verdict": 3 });
+  });
+  test("ENOTFOUND for every host, canaries included (default check over the same fetch): nothing lost", async () => {
+    const r = await audit(offline((h) => `getaddrinfo ENOTFOUND ${h}`));
+    expect(r.report.counts).toEqual({ ok: 0, changed: 0, lost: 0, "no verdict": 3 });
+    expect(r.report.links.every((l) => l.detail.endsWith("(network unreachable: no canary host answered)"))).toBe(true);
+  });
+  test("ENOTFOUND for one host while a canary answers: that link is lost", async () => {
+    const f = (async (u: string) => {
+      if (u === CANARIES[0]) return new Response(null, { status: 204 });
+      if (u === ORIG) throw new TypeError("getaddrinfo ENOTFOUND example.test");
+      return new Response("x", { status: 200 });
+    }) as unknown as typeof fetch;
+    const r = await audit(f);
+    expect(r.report.links.find((l) => l.url === ORIG)).toMatchObject({
+      status: "lost",
+      detail: "DNS failure (getaddrinfo ENOTFOUND example.test)",
+    });
+  });
+  test("the reachability check is injectable and asked once per minute, not once per link", async () => {
+    let asked = 0;
+    const r = await audit(
+      offline((h) => `getaddrinfo ENOTFOUND ${h}`),
+      async () => {
+        asked++;
+        return false;
+      },
+    );
+    expect(asked).toBe(1);
+    expect(r.report.counts.lost).toBe(0);
+  });
+  test("canaryOnline: any HTTP answer from any canary is online; none is offline", async () => {
+    const seen: string[] = [];
+    const f = (answer: (u: string) => Response | Error) =>
+      (async (u: string) => {
+        seen.push(u);
+        const a = answer(u);
+        if (a instanceof Error) throw a;
+        return a;
+      }) as unknown as typeof fetch;
+    expect(
+      await canaryOnline(
+        f(() => new Response(null, { status: 503 })),
+        1000,
+      ),
+    ).toBe(true);
+    expect(seen).toEqual([CANARIES[0]]);
+    seen.length = 0;
+    const second = (u: string) => (u === CANARIES[1] ? new Response(null, { status: 200 }) : new Error("ETIMEOUT"));
+    expect(await canaryOnline(f(second), 1000)).toBe(true);
+    expect(seen).toEqual([...CANARIES]);
+    expect(
+      await canaryOnline(
+        f(() => new Error("ENOTFOUND")),
+        1000,
+      ),
+    ).toBe(false);
   });
 });

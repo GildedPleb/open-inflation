@@ -3,9 +3,13 @@
 // origin/main); else $LINT_BASE (all zeros: none); else HEAD if it exists. See lib/lint-base.ts.
 // No network, ever: lint and CI never contact an archive or a source. L8 here checks form only; whether a new
 // archive URL resolves is `bun run verify`, a local research script (scripts/verify.ts), never a CI step or gate.
+// Exit 0 clean, 1 with findings, 2 on usage or base errors (or any internal error, lib/exit.ts).
 import { lint } from "./lib/checks.ts";
+import { exitOnCrash } from "./lib/exit.ts";
 import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, UnknownBase } from "./lib/git.ts";
 import { chooseBase } from "./lib/lint-base.ts";
+
+exitOnCrash("lint");
 
 const USAGE = "usage: bun run lint [--base <ref>]";
 

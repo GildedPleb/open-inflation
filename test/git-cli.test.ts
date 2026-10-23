@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { lint } from "../scripts/lib/checks.ts";
@@ -276,6 +276,28 @@ describe("CLI", () => {
     } finally {
       extra = {};
     }
+  });
+  // Assay (#19): every exit code is pinned. verify and audit exit 2 on usage before any request (verify's 0/1/3 is
+  // verifyExit; audit's 0 is the audit tests); an uncaught error exits 2, not Bun's 1 (exitOnCrash, units).
+  test("verify and audit: 2 on bad usage", async () => {
+    const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });
+    const usage = (script: string, ...args: string[]) => {
+      const p = Bun.spawn(
+        ["bun", "--preload", join(ROOT, "test", "no-network.ts"), join(ROOT, "scripts", script), ...args],
+        {
+          cwd: dir,
+          env: childEnv(),
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      );
+      return Promise.all([p.exited, new Response(p.stderr).text()]);
+    };
+    const [v, a] = await Promise.all([usage("verify.ts", "--nope"), usage("audit.ts", "extra")]);
+    expect(v).toEqual([2, "usage: bun run verify [--base <ref>]\n"]);
+    expect(a).toEqual([2, "usage: bun run audit   (store: $OBM_ARCHIVE_DIR, else ~/open-inflation-archive/)\n"]);
+    for (const name of ["lint", "verify", "audit"])
+      expect(readFileSync(join(ROOT, "scripts", `${name}.ts`), "utf8")).toContain(`\nexitOnCrash("${name}");\n`);
   });
   test("lint outside a git checkout prints one line and exits 2", () => {
     const dir = repo({ "base_money.csv": "date,value,evidence_id\n" });

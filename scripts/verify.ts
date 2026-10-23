@@ -2,16 +2,28 @@
 // Checks the working tree against a base commit: --base; on a GitHub push to any ref but main, merge-base(HEAD,
 // origin/main); else $LINT_BASE (all zeros: none); else HEAD if it exists. See lib/lint-base.ts.
 // L8's link check, the network half moved out of lint: HEAD each archive URL the diff adds (that passes L7), once:
-// web.archive.org, else archive.org availability; archive.today (Archive URL 2), where HTTP 403/429 is its CAPTCHA
-// or rate limit: no verdict, not a failure, listed after "archive.today: N verified, M unverified (rate-limited)";
-// Ghostarchive (Archive URL 3), where HTTP 403/503 is its Cloudflare challenge: no verdict, not a failure, listed
-// after "ghostarchive: N verified, M unverified".
-// A 404/410 is excused only by a "- Re-archive: <url>" note added in the same diff. Committed links are never re-swept.
-// Exit 0 clean, 1 with findings, 2 on usage or base errors. Same base selection as lint (lib/lint-base.ts).
+// web.archive.org, else archive.org availability, asked under each equivalent query form (exact timestamp passes;
+// anything else "unconfirmed", no verdict); archive.today (Archive URL 2), where HTTP 403/429 is its CAPTCHA or rate
+// limit: no verdict, not a failure; Ghostarchive (Archive URL 3, read with a bounded GET), where HTTP 403/503 is its
+// Cloudflare challenge (no verdict), its 200 "Archiving error" page a finding, and a 200 with no capture on it
+// (loading, in progress) "unconfirmed". Each archive's no-verdict URLs are listed after
+// "archive.today: N verified, M unverified (R rate-limited, B blocked[, U unconfirmed])" (the same for ghostarchive).
+// A 404/410 is excused only by a "- Re-archive: <new archive URL>" line added to the same extract in the same diff;
+// the new capture is verified too. Committed links are never re-swept.
+// Paced (lib/pacer.ts): one host's requests serial and spaced (archive.today 30 s; OBM_RATE_<HOST>_MS overrides),
+// hosts in parallel, 429/503 retried with Retry-After or backoff; a challenge/CAPTCHA is "blocked", not retried.
+// The expected time is printed first. Every URL must get a verdict: a run that leaves any URL rate-limited, blocked or unconfirmed
+// is incomplete, not clean.
+// Exit 0 clean, 1 with findings, 2 on usage, base or pacing-setting errors (or any internal error, lib/exit.ts),
+// 3 incomplete (no findings, but some URLs still have no verdict). Same base selection as lint (lib/lint-base.ts).
 import { archiveNet } from "./lib/archive.ts";
+import { exitOnCrash } from "./lib/exit.ts";
 import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, UnknownBase } from "./lib/git.ts";
 import { chooseBase } from "./lib/lint-base.ts";
-import { verify } from "./lib/verify.ts";
+import { createPacer, duration, hostKey, type PaceConfig, paceFromEnv, realClock } from "./lib/pacer.ts";
+import { verify, verifyExit } from "./lib/verify.ts";
+
+exitOnCrash("verify");
 
 const USAGE = "usage: bun run verify [--base <ref>]";
 
@@ -56,12 +68,37 @@ try {
   console.error(`verify: ${e.message}`);
   process.exit(2);
 }
+let pace: PaceConfig;
+try {
+  pace = paceFromEnv(process.env);
+} catch (e) {
+  console.error(`verify: ${(e as Error).message}`);
+  process.exit(2);
+}
+const started = Date.now();
+const unresolved = { "rate-limited": [] as string[], blocked: [] as string[], unconfirmed: [] as string[] };
 const findings = await verify(snapshot, {
   net: archiveNet(fetch, 15_000),
   now: Date.now(),
+  pacer: createPacer(pace, realClock, (url, ms, why) =>
+    console.error(`verify: L8 waiting ${duration(ms)} (${hostKey(url)}: ${why}) before ${url}`),
+  ),
   progress: (line) => console.error(`verify: ${line}`),
   summary: (line) => console.log(line),
+  noVerdict: (url, why) => unresolved[why].push(url),
 });
 for (const f of findings) console.log(`${f.check} ${f.file}: ${f.message}`);
-console.log(findings.length === 0 ? `verify: clean (base ${base ?? "none"})` : `verify: ${findings.length} finding(s)`);
-process.exit(findings.length === 0 ? 0 : 1);
+const open = unresolved["rate-limited"].length + unresolved.blocked.length + unresolved.unconfirmed.length;
+if (open > 0)
+  console.log(
+    `verify: INCOMPLETE: ${open} archive URL(s) have no verdict: ${unresolved["rate-limited"].length} rate-limited (gave up), ${unresolved.blocked.length} blocked (challenge/CAPTCHA), ${unresolved.unconfirmed.length} unconfirmed (capture not seen); open them in a browser or re-run from another network`,
+  );
+console.log(`verify: took ${duration(Date.now() - started)}`);
+console.log(
+  findings.length > 0
+    ? `verify: ${findings.length} finding(s)`
+    : open > 0
+      ? `verify: no findings, but incomplete (base ${base ?? "none"})`
+      : `verify: clean (base ${base ?? "none"})`,
+);
+process.exit(verifyExit(findings.length, open));

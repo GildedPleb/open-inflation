@@ -334,3 +334,10 @@ export const onGood = (patch: Patch): Snapshot => ({
   files: files(goodText(), patch),
   base: files(goodText()),
 });
+
+/** R5-n1: Ghostarchive's failed-capture page, as served (HTTP 200, 475 bytes; /archive/jA3hU, 2026-10-23). */
+export const GHOST_ERROR_PAGE =
+  '<!DOCTYPE html><html><head><title>ghostarchive.org</title></head><body><h1>Archiving error</h1><p>There was an issue trying to archive your webpage or video. Usually, webpages that are bigger than 50 megabytes, or videos longer than 15 minutes, may fail to archive.</p><p>You can try to archive the page again, and if it still doesn\'t work, report it by  <a href="https://forms.gle/h4DdGz6c38Xxct7x7">clicking here </a>and we will try to rectify the issue. </p></body></html>';
+/** The markers of a real Ghostarchive capture page: its title, archive date and replay element. */
+export const GHOST_CAPTURE_PAGE =
+  '<html><head><title>H.4.1 | Ghostarchive</title></head><body><span>Archive date: 22 Oct 2026 17:20:01</span><replay-web-page source="https://ghostarchive.org/chimurai4/AbC12.warc" url="https://example.test/"></replay-web-page></body></html>';
