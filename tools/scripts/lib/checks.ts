@@ -681,6 +681,8 @@ interface Extract {
   readonly fields: Map<Field, string[]>;
   readonly wrongForm: Map<Field, number>;
   quote: boolean;
+  /** The verbatim quote's lines: each `>` line after its marker, and each line of a fenced `text` block. */
+  readonly quoteLines: string[];
   /** The `## YYYYQn` heading this extract sits under, or null. */
   readonly quarter: string | null;
   /** Each `- As of:` value. */
@@ -718,7 +720,9 @@ function parseExtracts(body: string): {
   const strayRecords: number[] = [];
   let cur: Extract | null = null;
   let quarter: string | null = null;
+  let textFence = false;
   for (const l of lines(body)) {
+    if (l.fence === "open") textFence = l.info === "text";
     if (l.fence === "none") {
       const h = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/.exec(l.text);
       if (h?.[1]) {
@@ -731,6 +735,7 @@ function parseExtracts(body: string): {
                 fields: new Map(),
                 wrongForm: new Map(),
                 quote: false,
+                quoteLines: [],
                 quarter,
                 asOf: [],
                 notes: [],
@@ -762,8 +767,14 @@ function parseExtracts(body: string): {
         else cur.fields.set(f[1] as Field, [...(cur.fields.get(f[1] as Field) ?? []), f[2] ?? ""]);
       } else if (near && cur) cur.wrongForm.set(near[1] as Field, l.line);
       else if (cur && AS_OF_LINE.test(l.text)) cur.asOf.push(AS_OF_LINE.exec(l.text)?.[1] ?? "");
-      else if (cur && /^\s*>\s*\S/.test(l.text)) cur.quote = true;
-    } else if (cur && l.fence === "body" && l.text.trim() !== "") cur.quote = true;
+      else if (cur && /^\s*>\s*\S/.test(l.text)) {
+        cur.quote = true;
+        cur.quoteLines.push(l.text.replace(/^\s*>\s?/, ""));
+      }
+    } else if (cur && l.fence === "body" && l.text.trim() !== "") {
+      cur.quote = true;
+      if (textFence) cur.quoteLines.push(l.text);
+    }
   }
   return { blocks, stray, strayNotes, strayRecords };
 }
@@ -1475,7 +1486,16 @@ const fxFile = (q: string) => fxPath(q.slice(0, 4));
 const rowAnchor = (q: string, ccy: string) => `fx-${q.toLowerCase()}-${ccy.toLowerCase()}`;
 const FX_ANCHOR = /<a id="([^"]+)"><\/a>/;
 const FX_ROW_ANCHOR = /^fx-(\d{4}q[1-4])-([a-z]{3})$/;
-const FX_COLUMNS = ["Issuer", "Report count date", "Date rule", "Rate date", "Pair", "Rate", "Source"] as const;
+const FX_COLUMNS = [
+  "Issuer",
+  "Report count date",
+  "Date in report",
+  "Date rule",
+  "Rate date",
+  "Pair",
+  "Rate",
+  "Source",
+] as const;
 const DATE_RULES = ["same day", "month average", "prior close", "last close before"] as const;
 /** A "last close before" rate date is at most this many days before the count date (a long weekend). */
 const LAST_CLOSE_DAYS = 4;
@@ -1486,12 +1506,15 @@ type FxRow = {
   readonly anchor?: string;
   readonly cell: Record<(typeof FX_COLUMNS)[number], string>;
 };
-/** One "## YYYYQn" section of an FX rate table: its rows, or none when it has no table (rows null). */
-type FxSection = { readonly line: number; readonly rows: FxRow[] | null };
+/**
+ * One "## YYYYQn" section of an FX rate table: its rows, or none when it has no table (rows null); `misplaced` when
+ * Date in report is not the column right after Report count date.
+ */
+type FxSection = { readonly line: number; readonly rows: FxRow[] | null; readonly misplaced?: boolean };
 
 /**
  * An FX rate table file (base_money/FX/<YYYY>.md) by quarter: under each level-2 "## YYYYQn" heading, the first
- * table whose header has Issuer, Report count date, Date rule, Rate date, Pair, Rate and Source columns, its rows
+ * table whose header has the FX_COLUMNS, its rows
  * running to the first non-table line. Fenced lines never count.
  */
 const fxTable: (body: string) => ReadonlyMap<string, FxSection> = memoText((body) => {
@@ -1504,7 +1527,9 @@ const fxTable: (body: string) => ReadonlyMap<string, FxSection> = memoText((body
     done: boolean;
   } | null = null;
   const close = () => {
-    if (cur && !out.has(cur.q)) out.set(cur.q, { line: cur.line, rows: cur.rows });
+    if (!cur || out.has(cur.q)) return;
+    const misplaced = cur.col !== null && cur.col[2] !== (cur.col[1] as number) + 1;
+    out.set(cur.q, misplaced ? { line: cur.line, rows: cur.rows, misplaced } : { line: cur.line, rows: cur.rows });
   };
   for (const l of lines(body)) {
     if (l.fence !== "none") continue;
@@ -1642,9 +1667,10 @@ function dateRuleProblem(rule: string, asOf: string, rateCell: string): string |
 /**
  * L9 on the FX rate tables (base_money/FX/<YYYY>.md, supporting data: regenerable, not archived). Under each
  * "## YYYYQn", the table has one row per non-USD currency of that quarter's current machine block (components and
- * reference_values), anchored <a id="fx-<yyyyqn>-<ccy>"></a> in its Issuer cell; the Issuer cell links the adopted
- * extract of the entry's issuer under its quarter heading, whose As of leading date is the Report count date; the Date
- * rule is one of DATE_RULES and the Rate date follows it; Pair names the currency and Rate is a positive plain
+ * reference_values), anchored <a id="fx-<yyyyqn>-<ccy>"></a> in its Issuer cell, which links the README of the
+ * entry's issuer; the Report count date links that issuer's adopted extract under its quarter heading and its text is
+ * the extract's As of value or starts with its leading date; Date in report (right after it) is one quoted string found
+ * in that extract's quote; the Date rule is one of DATE_RULES and the Rate date follows it; Pair names the currency and Rate is a positive plain
  * decimal; Source holds exactly one http(s) link. The machine block's fx_rate equals the row's (fxRateEntry).
  */
 function fxTables(ctx: Ctx, emit: Emit) {
@@ -1661,6 +1687,8 @@ function fxTables(ctx: Ctx, emit: Emit) {
         e(`## ${q} (line ${sec.line}) has no FX table (a table with ${FX_COLUMNS.join(", ")} columns)`);
         continue;
       }
+      if (sec.misplaced)
+        e(`## ${q} (line ${sec.line}): the Date in report column must come right after Report count date`);
       const qBody = ctx.text.get(quarterPath(q));
       const m = qBody === undefined ? undefined : machine(qBody);
       const d = m?.ok && isObj(m.data) ? m.data : null;
@@ -1700,45 +1728,60 @@ function fxTables(ctx: Ctx, emit: Emit) {
         const src = links(r.cell.Source);
         if (src.length !== 1 || !/^https?:\/\//i.test(src[0]?.target ?? ""))
           e(`${at}: the Source cell must hold exactly one http(s) link (it has ${src.length} link(s))`);
-        // The Issuer cell links the adopted extract; its As of is the count date.
-        const link = links(r.cell.Issuer)[0];
+        // The Issuer cell links the README of the issuer reporting the currency in the current block.
+        const readme = links(r.cell.Issuer)[0];
+        const rd = readme ? resolveLink(p, readme.target, false) : null;
+        const iss = rd && !rd.frag ? /^base_money\/issuers\/([A-Z0-9]+)\/README\.md$/.exec(rd.path)?.[1] : undefined;
+        if (iss === undefined) {
+          e(`${at}: the Issuer cell must link ../issuers/<ISS>/README.md of the issuer reporting ${ccy}`);
+          continue;
+        }
+        if (issuers && !issuers.has(iss)) {
+          e(
+            `${at}: the Issuer cell links ${iss}, but ${ccy} is reported by ${[...issuers.keys()].join(", ")} in the current machine block`,
+          );
+          continue;
+        }
+        // The Report count date cell links that issuer's adopted extract; its text is the extract's As of.
+        const countCell = r.cell["Report count date"];
+        const link = links(countCell)[0];
         const got = link ? resolveLink(p, link.target, false) : null;
         const ex = got ? extractOf(got.path) : null;
-        if (!got || !ex || isFxPath(got.path) || ex.year !== year) {
-          e(
-            `${at}: the Issuer cell must link the adopted ${ccy} issuer extract under ## ${q} in base_money/issuers/<ISSUER>/${year}.md`,
-          );
-          continue;
-        }
-        if (issuers && !issuers.has(ex.issuer)) {
-          e(
-            `${at}: the Issuer cell links ${ex.issuer}, but ${ccy} is reported by ${[...issuers.keys()].join(", ")} in the current machine block`,
-          );
-          continue;
-        }
-        const md = ctx.text.get(got.path) ?? "";
-        const reference = issuers?.get(ex.issuer) === true;
-        const adopted = adoptedIn(md, q.toLowerCase(), reference ? REFERENCE_LINE : ADOPTED_LINE).find(
-          (x) => x.slug === got.frag,
-        );
+        const md = got ? (ctx.text.get(got.path) ?? "") : "";
+        const reference = issuers?.get(iss) === true;
+        const adopted =
+          got && ex && ex.issuer === iss && ex.year === year
+            ? adoptedIn(md, q.toLowerCase(), reference ? REFERENCE_LINE : ADOPTED_LINE).find((x) => x.slug === got.frag)
+            : undefined;
         if (!adopted) {
           e(
-            `${at}: the Issuer cell must link an adopted ("- Adopted: yes"${reference ? ' or, for a reference value, "- Adopted: no (reference-only"' : ""}) extract under ## ${q} in ${got.path}, not ${show(link?.target)}`,
+            `${at}: the Report count date cell must link ${iss}'s adopted ("- Adopted: yes"${reference ? ' or, for a reference value, "- Adopted: no (reference-only"' : ""}) extract under ## ${q} in base_money/issuers/${iss}/${year}.md${link ? `, not ${show(link.target)}` : ""}`,
           );
           continue;
         }
         const block = extracts(md).blocks.find((b) => b.line === adopted.line);
-        const asOf = block?.asOf.length === 1 ? leadingDate(block.asOf[0] as string) : undefined;
-        if (asOf === undefined) {
+        const asOfValue = block?.asOf.length === 1 ? (block.asOf[0] as string) : undefined;
+        const asOf = asOfValue === undefined ? undefined : leadingDate(asOfValue);
+        if (asOfValue === undefined || asOf === undefined) {
           e(
-            `${at}: cannot check the count date: the linked extract (${got.path} line ${adopted.line}) has no single "- As of:" date`,
+            `${at}: cannot check the count date: the linked extract (${got?.path} line ${adopted.line}) has no single "- As of:" date`,
           );
           continue;
         }
-        const count = leadingDate(cellText(r.cell["Report count date"]));
-        if (count !== asOf)
+        const count = cellText(countCell);
+        if (count !== asOfValue && !new RegExp(`^${asOf}(?![\\d-])`).test(count))
           e(
-            `${at}: Report count date ${show(cellText(r.cell["Report count date"]))} must be the linked extract's As of ${asOf}`,
+            `${at}: Report count date ${show(count)} must be the linked extract's As of ${show(asOfValue)} or start with ${asOf}`,
+          );
+        // Date in report: one quoted string found verbatim in the extract's quote.
+        const said = /^"([^"]+)"$/.exec(cellText(r.cell["Date in report"]))?.[1];
+        if (said === undefined)
+          e(
+            `${at}: Date in report ${show(cellText(r.cell["Date in report"]))} must be one non-empty double-quoted string`,
+          );
+        else if (!block?.quoteLines.some((l) => l.includes(said)))
+          e(
+            `${at}: Date in report "${said}" does not appear in the linked extract's quote (${got?.path} line ${adopted.line})`,
           );
         const problem = dateRuleProblem(rule, asOf, cellText(r.cell["Rate date"]));
         if (problem) e(`${at}: ${problem}`);

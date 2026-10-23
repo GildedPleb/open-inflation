@@ -66,13 +66,14 @@ export const countDateOf = (q: string): string => {
     : `${q.slice(0, 4)}-${({ 1: "01", 2: "04", 3: "07", 4: "10" } as Record<string, string>)[q.slice(5)]}-01`;
 };
 export const FX_HEADER = [
-  "| Issuer | Report count date | Date rule | Rate date | Pair | Rate | Source |",
-  "| :-- | :-- | :-- | :-- | :-- | --: | :-- |",
+  "| Issuer | Report count date | Date in report | Date rule | Rate date | Pair | Rate | Source |",
+  "| :-- | :-- | :-- | :-- | :-- | :-- | --: | :-- |",
 ].join("\n");
 
 /**
- * One FX table row in the methodology FX table format: the anchored Issuer cell linking the issuer's adopted extract,
- * Report count date, Date rule, Rate date, Pair, Rate and one Source link. Every cell can be overridden.
+ * One FX table row in the methodology FX table format: the anchored Issuer cell linking the issuer's README, the
+ * Report count date linking its adopted extract, Date in report (a string from the fixture quote), Date rule, Rate
+ * date, Pair, Rate and one Source link. Every cell can be overridden.
  */
 export const fxRow = (
   ccy: string,
@@ -81,9 +82,14 @@ export const fxRow = (
     anchor?: string;
     /** The whole Issuer cell (anchor and link). */
     issuerCell?: string;
-    /** The issuer whose adopted extract the Issuer cell links. */
+    /** The issuer whose README the Issuer cell, and whose adopted extract the Report count date cell, links. */
     issuer?: string;
+    /** The Report count date text (still linking the adopted extract). */
     count?: string;
+    /** The whole Report count date cell. */
+    countCell?: string;
+    /** The whole Date in report cell. */
+    said?: string;
     rule?: string;
     rateDate?: string;
     pair?: string;
@@ -96,11 +102,12 @@ export const fxRow = (
   const iss = o.issuer ?? d.issuer;
   const end = countDateOf(q);
   const anchor = o.anchor ?? `fx-${q.toLowerCase()}-${ccy.toLowerCase()}`;
-  const issuerCell =
-    o.issuerCell ??
-    `<a id="${anchor}"></a>[${iss}](${relLink(FX, extractPath(iss, q.slice(0, 4)))}#${slugOf(adoptedTitle(iss, q))})`;
+  const issuerCell = o.issuerCell ?? `<a id="${anchor}"></a>[${iss}](../issuers/${iss}/README.md)`;
+  const countCell =
+    o.countCell ??
+    `[${o.count ?? end}](${relLink(FX, extractPath(iss, q.slice(0, 4)))}#${slugOf(adoptedTitle(iss, q))})`;
   const source = o.source ?? `[Synthetic close](<https://fx.example.test/${ccy}?d=${end}>)`;
-  return `| ${issuerCell} | ${o.count ?? end} | ${o.rule ?? "same day"} | ${o.rateDate ?? end} | ${o.pair ?? d.pair} | ${o.rate ?? d.rate} | ${source} |`;
+  return `| ${issuerCell} | ${countCell} | ${o.said ?? '"synthetic"'} | ${o.rule ?? "same day"} | ${o.rateDate ?? end} | ${o.pair ?? d.pair} | ${o.rate ?? d.rate} | ${source} |`;
 };
 /** A `## <quarter>` FX table section: the header and the given rows. */
 export const fxSection = (q: string, ...rows: string[]): string => `\n## ${q}\n\n${FX_HEADER}\n${rows.join("\n")}\n`;

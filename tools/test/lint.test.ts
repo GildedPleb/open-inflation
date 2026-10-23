@@ -2266,7 +2266,7 @@ describe("L9 reference_values and coverage_pct", () => {
         ),
       }),
       ["L9"],
-      /must link an adopted \("- Adopted: yes" or, for a reference value, "- Adopted: no \(reference-only"\) extract under ## 2026Q3/,
+      /Report count date cell must link BOJ's adopted \("- Adopted: yes" or, for a reference value, "- Adopted: no \(reference-only"\) extract under ## 2026Q3/,
     ));
   test("fx_source_anchor is required when only a reference is non-USD", () =>
     fails(
@@ -2649,25 +2649,42 @@ describe("L9 FX rate tables (base_money/FX/<YYYY>.md)", () => {
   test("a Source linking a repo file fails", () =>
     fails(eur({ source: "[x](../README.md)" }), ["L9"], L9("the Source cell must hold exactly one http\\(s\\) link")));
 
-  // The Issuer cell link and the count date.
-  test("an Issuer cell linking no extract fails", () =>
+  // The Issuer cell links the README of the issuer reporting the currency.
+  const ECB_EXTRACT = "../issuers/ECB/2026.md#ecb-weekly-statement";
+  test("an Issuer cell linking the issuer's extract instead of its README fails", () =>
     fails(
-      eur({ issuerCell: '<a id="fx-2026q3-eur"></a>[ECB](../quarters/2026Q3.md#2026q3)' }),
+      eur({ issuerCell: `<a id="fx-2026q3-eur"></a>[ECB](${ECB_EXTRACT})` }),
+      ["L9"],
+      L9("the Issuer cell must link \\.\\./issuers/<ISS>/README\\.md of the issuer reporting EUR"),
+    ));
+  test("an Issuer cell with no link fails", () =>
+    fails(eur({ issuerCell: '<a id="fx-2026q3-eur"></a>ECB' }), ["L9"], L9("the Issuer cell must link")));
+  test("an Issuer cell linking another issuer's README fails", () =>
+    fails(eur({ issuer: "FED" }), ["L9"], L9("the Issuer cell links FED, but EUR is reported by ECB")));
+
+  // The Report count date cell links the adopted extract; its text is the As of.
+  test("a Report count date with no link fails", () =>
+    fails(
+      eur({ countCell: "2026-09-30" }),
       ["L9"],
       L9(
-        "the Issuer cell must link the adopted EUR issuer extract under ## 2026Q3 in base_money/issuers/<ISSUER>/2026\\.md",
+        `the Report count date cell must link ECB's adopted \\("- Adopted: yes"\\) extract under ## 2026Q3 in base_money/issuers/ECB/2026\\.md$`,
       ),
     ));
-  test("an Issuer cell linking another issuer's extract fails", () =>
-    fails(eur({ issuer: "FED" }), ["L9"], L9("the Issuer cell links FED, but EUR is reported by ECB")));
-  test("an Issuer cell linking a confirming extract fails", () =>
+  test("a Report count date linking another issuer's extract fails", () =>
+    fails(
+      eur({ countCell: "[2026-09-30](../issuers/FED/2026.md#fed-h41)" }),
+      ["L9"],
+      L9('the Report count date cell must link ECB\'s adopted .*, not "\\.\\./issuers/FED/2026\\.md#fed-h41"'),
+    ));
+  test("a Report count date linking a confirming extract fails", () =>
     fails(
       good({
-        ...fxq3(fxRow("EUR", { issuerCell: '<a id="fx-2026q3-eur"></a>[ECB](../issuers/ECB/2026.md#ecb-confirming)' })),
+        ...fxq3(fxRow("EUR", { countCell: "[2026-09-30](../issuers/ECB/2026.md#ecb-confirming)" })),
         [ECB]: `${goodText()[ECB]}\n${extract({ title: "ECB confirming", fields: ["- As of: 2026-09-30", "- Adopted: no, confirming"] })}`,
       }),
       ["L9"],
-      L9('the Issuer cell must link an adopted \\("- Adopted: yes"\\) extract under ## 2026Q3'),
+      L9('the Report count date cell must link ECB\'s adopted \\("- Adopted: yes"\\) extract under ## 2026Q3'),
     ));
   test("a linked extract with no As of fails", () =>
     fails(
@@ -2681,9 +2698,58 @@ describe("L9 FX rate tables (base_money/FX/<YYYY>.md)", () => {
     fails(
       eur({ count: "2026-09-29 (start of day)" }),
       ["L9"],
-      L9(`Report count date "2026-09-29 \\(start of day\\)" must be the linked extract's As of 2026-09-30`),
+      L9(
+        'Report count date "2026-09-29 \\(start of day\\)" must be the linked extract\'s As of "2026-09-30" or start with 2026-09-30',
+      ),
     ));
-  test("a Report count date with a note passes", () => passes(eur({ count: "2026-09-30 (end of day)" })));
+  test("a Report count date that only shares a prefix with the As of fails", () =>
+    fails(eur({ count: "2026-09-301" }), ["L9"], L9('Report count date "2026-09-301" must be')));
+  test("a Report count date with a note after the As of date passes", () =>
+    passes(eur({ count: "2026-09-30 (end of day)" })));
+  test("a Report count date equal to the whole As of value passes", () =>
+    passes(
+      good({
+        [ECB]: (goodText()[ECB] as string).replace("- As of: 2026-09-30", "- As of: 2026-09 (monthly average)"),
+        ...fxq3(fxRow("EUR", { count: "2026-09 (monthly average)", rule: "month average", rateDate: "2026-09" })),
+      }),
+    ));
+
+  // Date in report: one quoted string found verbatim in the linked extract's quote.
+  test("a Date in report found in a fenced text block passes", () =>
+    passes(
+      good({
+        [ECB]: (goodText()[ECB] as string).replace(
+          "- Notes:",
+          "\n```text\nWeek ending 30 September 2026\n```\n\n- Notes:",
+        ),
+        ...fxq3(fxRow("EUR", { said: '"30 September 2026"' })),
+      }),
+    ));
+  test("a Date in report not in the quote fails", () =>
+    fails(
+      eur({ said: '"30 Sep 2026"' }),
+      ["L9"],
+      L9(
+        'Date in report "30 Sep 2026" does not appear in the linked extract\'s quote \\(base_money/issuers/ECB/2026\\.md line \\d+\\)',
+      ),
+    ));
+  test("a Date in report only in the extract's prose (not its quote) fails", () =>
+    fails(eur({ said: '"synthetic fixture"' }), ["L9"], L9('Date in report "synthetic fixture" does not appear')));
+  for (const said of ["synthetic", '""', '"synthetic" "1"', ""])
+    test(`a Date in report ${JSON.stringify(said)} that is not one non-empty double-quoted string fails`, () =>
+      fails(eur({ said }), ["L9"], L9("Date in report .* must be one non-empty double-quoted string")));
+  test("a table whose Date in report is not right after Report count date fails", () =>
+    fails(
+      good({
+        [FXF]: fxFile(
+          fxSection("2026Q3", fxRow("EUR"))
+            .replace("| Report count date | Date in report |", "| Date in report | Report count date |")
+            .replace(/\| (\[2026-09-30\]\([^)]*\)) \| ("synthetic") \|/, "| $2 | $1 |"),
+        ),
+      }),
+      ["L9"],
+      /## 2026Q3 \(line \d+\): the Date in report column must come right after Report count date/,
+    ));
 
   // Sections.
   test("a section for a quarter of another year fails", () =>
@@ -2696,7 +2762,7 @@ describe("L9 FX rate tables (base_money/FX/<YYYY>.md)", () => {
     fails(
       good({ [FXF]: fxFile(fxSection("2026Q3", fxRow("EUR")), "\n## 2026Q2\n\nNo rates yet.\n") }),
       ["L9"],
-      /## 2026Q2 \(line \d+\) has no FX table \(a table with Issuer, Report count date, Date rule, Rate date, Pair, Rate, Source columns\)/,
+      /## 2026Q2 \(line \d+\) has no FX table \(a table with Issuer, Report count date, Date in report, Date rule, Rate date, Pair, Rate, Source columns\)/,
     ));
   test("the FX file is not an extract file: L7 never reads it", () =>
     passes(
