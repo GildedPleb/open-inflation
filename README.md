@@ -40,16 +40,17 @@ US dollars, trillions (T), converted at the market close on each report's count 
 
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
-| 2026 Q2 | $22.13T | —¹ | [Sources](base_money/quarters/2026Q2.md) |
+| 2026 Q2 | $22.13T | -5.5% | [Sources](base_money/quarters/2026Q2.md) |
 | 2026 Q1 | $22.45T | —¹ | [Sources](base_money/quarters/2026Q1.md) |
 | 2025 Q4 | $22.55T | —¹ | [Sources](base_money/quarters/2025Q4.md) |
 | 2025 Q3 | $22.88T | —¹ | [Sources](base_money/quarters/2025Q3.md) |
+| 2025 Q2 | $23.42T | —¹ | [Sources](base_money/quarters/2025Q2.md) |
 
 <!-- END GENERATED table -->
 
 <!-- BEGIN GENERATED yoy-notes -->
 
-¹ No year-ago quarter yet: 2026 Q2, 2026 Q1, 2025 Q4, 2025 Q3.
+¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
 
 <!-- END GENERATED yoy-notes -->
 
