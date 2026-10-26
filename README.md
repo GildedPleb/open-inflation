@@ -4,9 +4,9 @@ Quarterly base money of the world's largest central banks, summed in US dollars,
 
 <!-- BEGIN GENERATED latest -->
 
-**Latest: $22.04 trillion at 30 Jun 2026 (2026 Q2).** Covers 98.78% of the basket; left out: BCB.
+**Latest: $22.13 trillion at 30 Jun 2026 (2026 Q2).** Covers 100.00% of the basket.
 
-Updated 23 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q3
+Updated 26 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q3
 
 <!-- END GENERATED latest -->
 
@@ -40,10 +40,10 @@ US dollars, trillions (T), converted at the market close on each report's count 
 
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
-| 2026 Q2 | $22.04T | —¹ | [Sources](base_money/quarters/2026Q2.md) |
-| 2026 Q1 | $22.37T | —¹ | [Sources](base_money/quarters/2026Q1.md) |
-| 2025 Q4 | $22.47T | —¹ | [Sources](base_money/quarters/2025Q4.md) |
-| 2025 Q3 | $22.80T | —¹ | [Sources](base_money/quarters/2025Q3.md) |
+| 2026 Q2 | $22.13T | —¹ | [Sources](base_money/quarters/2026Q2.md) |
+| 2026 Q1 | $22.45T | —¹ | [Sources](base_money/quarters/2026Q1.md) |
+| 2025 Q4 | $22.55T | —¹ | [Sources](base_money/quarters/2025Q4.md) |
+| 2025 Q3 | $22.88T | —¹ | [Sources](base_money/quarters/2025Q3.md) |
 
 <!-- END GENERATED table -->
 
@@ -77,7 +77,7 @@ The basket is nine of the largest central banks. Together they cover most of the
 - **SNB**: Swiss National Bank
 - **RBI**: Reserve Bank of India
 - **CBR**: Bank of Russia
-- **BCB**: Banco Central do Brasil. It is left out of every quarter so far, because we haven't confirmed from Brazil's own pages how its figure is measured. Each quarter shows how much of the basket it covers.
+- **BCB**: Banco Central do Brasil. Its figure is the BCB's own restricted monetary base, which leaves out some deposits banks hold at the BCB, so it is narrower than the euro-area, Swiss and Russian figures.
 
 More banks will be added over time. Each row keeps the basket it was first published with.
 
