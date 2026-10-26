@@ -306,6 +306,7 @@ bun run check       # Biome format and code lint
 
 - Biome's options are on the command line in `package.json` (`check`), so there is no `biome.json`.
 - Markdown formatting is off (`--md-formatter-enabled=false`). `bun run readme` writes the README table byte for byte, and Biome would realign it.
+- With no `biome.json`, editor Biome extensions and the language server use Biome's defaults, so format-on-save can disagree with `bun run check`. Use `bun run check --write` as the formatter instead.
 
 ## Files at the root and why
 
