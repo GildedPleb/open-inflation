@@ -6,7 +6,7 @@
       "unit": "USD",
       "frequency": "quarterly",
       "methodology": "docs/methodology/base_money.md",
-      "last_updated": "2026-10-23",
+      "last_updated": "2026-10-26",
       "version": "0.1.0",
       "license": "CC-BY-4.0",
       "baskets": [
