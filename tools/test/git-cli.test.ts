@@ -405,12 +405,19 @@ describe("CLI", () => {
     // --base <ref> is accepted and ignored: lint reads no base, so even an unknown ref changes nothing.
     expect(await cli(dir, ["--base", "no-such-ref"])).toEqual(bad);
     // The committed tree, not the live one: an uncommitted extract in the checkout cannot reach this run.
-    expect(await cli(sharedTree(), ["--base", "HEAD"])).toEqual({
+    // L16's notices (grandfathered quarter-file claims, listed for rewording) print but never fail the run.
+    const noNotices = (r: { code: number; stdout: string; out: string }) => {
+      for (const l of r.out.split("\n"))
+        if (l.startsWith("notice ")) expect(l).toMatch(/^notice L16 base_money\/quarters\//);
+      const strip = (t: string) => t.replace(/^notice .*\n/gm, "");
+      return { code: r.code, stdout: strip(r.stdout), out: strip(r.out) };
+    };
+    expect(noNotices(await cli(sharedTree(), ["--base", "HEAD"]))).toEqual({
       code: 0,
       stdout: "lint: clean\n",
       out: "lint: clean\n",
     });
-    expect(await cli(sharedTree())).toEqual({ code: 0, stdout: "lint: clean\n", out: "lint: clean\n" });
+    expect(noNotices(await cli(sharedTree()))).toEqual({ code: 0, stdout: "lint: clean\n", out: "lint: clean\n" });
   });
   test("lint ignores CI's LINT_BASE, GITHUB_EVENT_NAME and GITHUB_REF (lint.yml still sets them)", async () => {
     const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });

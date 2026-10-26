@@ -12,8 +12,9 @@ For contributors. Run every command from the repository root.
 | `bun run readme` | Rewrites the generated README parts | After adding a quarter | Through lint L13 | Never |
 | `bun run verify` | Checks each archive URL your change adds | While archiving new sources | No | Yes |
 | `bun run audit` | Re-checks every link and keeps private copies | When re-checking links | No | Yes |
+| `bun run archive-check` | Checks every cited archive capture replays with its figure; writes `base_money/archive_checks.csv` | Before every merge that touches evidence | Yes, run locally (see [Merge procedure](#merge-procedure)) | Yes |
 
-CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check` and `bun run lint` on every push and pull request. CI never runs `verify` or `audit`.
+CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check` and `bun run lint` on every push and pull request. CI never runs `verify`, `audit` or `archive-check`: archives rate-limit. `archive-check` is a local merge step instead; lint L16 checks its ledger offline in CI.
 
 ## Requirements
 
@@ -218,6 +219,64 @@ Its kinds are rate-limited, blocked, unconfirmed, Ghostarchive error page, offli
 | 2 | Usage, not a git working tree, refused store, or pacing-setting error |
 | 3 | Incomplete: some link has no verdict |
 
+## Archive check
+
+`bun run archive-check` checks every archive link the evidence cites and writes the ledger `base_money/archive_checks.csv`. It is a **required merge step run locally, before merging**: archives rate-limit, so it never runs in CI.
+
+```sh
+git fetch origin main
+OBM_ARCHIVE_DIR=/tmp/scratch bun run archive-check --base origin/main   # every link; writes the ledger
+bun run archive-check --recheck                                          # only rows not yet ok (pending or fail)
+bun run archive-check --no-write                                         # report only
+```
+
+### Merge procedure
+
+1. Run `bun run archive-check --base origin/main` on the PR branch.
+2. Commit the regenerated `base_money/archive_checks.csv`. Never edit it by hand: lint L16 fails on any row that is not in generated form.
+3. Merge only on exit 0. Paste the summary line (`archive-check: N ok, P pending (0 blocking), 0 fail, U unchecked`) into the PR.
+4. Pending links in the new quarter must be re-checked at least 24 h after their capture: run `bun run archive-check --recheck` and commit the ledger in a follow-up PR. Once that quarter is on main, its pending links block.
+
+### Which links
+
+Every Wayback (`web.archive.org`) and Ghostarchive URL in `base_money/**.md`: `- Archive URL:`, `- Archive URL 2:` and `- Archive URL 3:` lines, URLs inside `- Notes:` and other bullets, and prose links in READMEs. `- Archive attempt:`, `- Rejected source:` and `- Link audit` lines record failures and are not citations. One ledger row per link per extract (the extract anchor is `<file>#<heading slug>`).
+
+archive.today links are listed as `unchecked`, never `ok`: its CAPTCHA blocks scripts, and no browser is used.
+
+### What counts
+
+- **Wayback:** only the exact capture. The check asks for the raw `id_` form (`/web/<ts>id_/<url>`) and follows no redirect: a 3xx (often a 302 to another timestamp, meaning there is no capture at the cited one) fails. Only HTTP 200 passes. The availability API and CDX are never asked: an index entry is not a capture.
+- **Ghostarchive:** the capture page must answer 200 with its replay wrapper (not the `Archiving error` page). Then its saved file (the WARC the wrapper names) is fetched; a redirect is followed only to the same `<id>.warc` on ghostarchive.org. The cited page's record is read first.
+- **The figure:** the extract's `- Value (published unit):` must be in the body, as written; each part of a `a + b (no printed total)` sum separately. An HTML or text capture cited on an `- Archive URL` line must show it as written. A binary or JSON capture, or a second snapshot in a Note (often a JSON API without grouping), may show it as a number instead, equal at the precision written (`5,748.6` matches `5748.60`, `447.096.654` matches `447096654`).
+- **Binaries:** xlsx is unzipped and its sheet XML read (a cell holds the unformatted number); PDF is read through its text layer with `pdftotext` (poppler-utils, on `PATH`; without it a PDF fails, never passes); a legacy `.xls` cannot be read and fails. A capture's sha256 is recorded; if it changes on a later check, the link fails.
+- A link outside any extract (a README) passes on replay alone.
+
+### Results
+
+| Result | Meaning |
+|---|---|
+| `ok` | Passed at least 24 h after the capture (`durable` yes; `durable_since_utc` is the first such pass) |
+| `pending` | Passed, but less than 24 h after the capture: re-check later |
+| `fail` | Any redirect, non-200, missing figure, unreadable binary, changed bytes, network error, timeout or 5xx; also a 429 or 503 still there after 12 paced tries |
+| `unchecked` | archive.today |
+
+There is no "no verdict": a network error or timeout is retried 3 times, 15 s apart, then fails. A 429 or 503 slows the host down (see [Tuning and limits](#tuning-and-limits)) and is retried up to 12 times within 12 h, so a rate limit delays the run rather than ending it.
+
+Pending is allowed only in a quarter that is new against `--base` (default `origin/main`): a quarter file not there yet. Anywhere else it blocks.
+
+Output: one `FAIL <url> [<anchor>]: <reason>` line per failing link, then `PENDING` lines (with the time after which a re-check makes it durable, and whether it is allowed or blocks), `ok` and `unchecked` lines, the quarter-file check claims the ledger does not back, a pacing line per host that answered "slow down", and the summary.
+
+Exit `0`: every link ok, or pending only in a new quarter. `1`: a failing link, or a blocking pending one. `2`: usage, an unknown `--base`, or a ledger not in generated form.
+
+### Pacing
+
+One request at a time per host, hosts in parallel, the `OBM_RATE_*` overrides as for verify and audit:
+
+- **Wayback, 2 s apart (30 a minute).** Internet Archive staff give the replay limit (`/web/<timestamp>/`) as 600 a minute over 5 minutes, asking clients to stay at 80% (480); `/cdx/` is 60 a minute and Save Page Now 15 or fewer ([edgi-govdata-archiving/wayback#137](https://github.com/edgi-govdata-archiving/wayback/issues/137)). Since September 2026 its bot protection also sends 429s below those limits, so the check stays far under them and backs off on any 429.
+- **Ghostarchive, 5 s apart.** It publishes no limit and sits behind Cloudflare; each link costs three requests (the page, then its saved file, which usually redirects once to another storage path).
+
+A full run of about 140 URLs takes about 20 minutes; `--recheck` only the links not yet ok.
+
 ## Archive host quirks
 
 Captures are made before verify runs:
@@ -293,7 +352,7 @@ Every script uses the same codes.
 | `2` | Usage or error |
 | `3` | Incomplete: no findings, but some URL got no verdict |
 
-- lint uses 0, 1 and 2; verify uses all four; audit uses 0, 2 and 3.
+- lint and archive-check use 0, 1 and 2; verify uses all four; audit uses 0, 2 and 3.
 - Exit 2 covers a bad argument, a base that cannot be resolved, not a git checkout, a refused store and a bad pacing setting.
 - Any uncaught internal error also exits 2, never 1.
 
@@ -323,4 +382,4 @@ Code lives in `tools/` (`tools/scripts/`, `tools/test/`, `tools/tsconfig.json`).
 - `catalog.json`: the data catalog.
 - `base_money/`: the series CSV, the quarter list, one file per quarter, the quoted sources per central bank, and the exchange-rate sources.
 
-The `base_money/` paths are `base_money/base_money.csv`, `base_money/README.md`, `base_money/quarters/YYYYQn.md`, `base_money/issuers/<ISS>/README.md`, `base_money/issuers/<ISS>/<YYYY>.md`, `base_money/FX/README.md` and `base_money/FX/<YYYY>.md`.
+The `base_money/` paths are `base_money/base_money.csv`, `base_money/README.md`, `base_money/quarters/YYYYQn.md`, `base_money/issuers/<ISS>/README.md`, `base_money/issuers/<ISS>/<YYYY>.md`, `base_money/FX/README.md`, `base_money/FX/<YYYY>.md` and `base_money/archive_checks.csv`.
