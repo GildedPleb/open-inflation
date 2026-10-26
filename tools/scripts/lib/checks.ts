@@ -1,9 +1,11 @@
 // All integrity checks, L1-L15 (docs/lint.md). Pure over a Snapshot: no network, no I/O. L8's link check
 // (HEAD on each new archive URL) is not here; it is `bun run verify` (lib/verify.ts), run locally, never in CI.
 import { posix } from "node:path";
+import { ledgerLint } from "./archive-ledger.ts";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
 import { fencedBlocks, headingSlugs, headings, htmlAnchors, lines, links, memoText, slugs } from "./markdown.ts";
 import {
+  ARCHIVE_LEDGER,
   CSV_PATH,
   EVIDENCE_ROOT,
   extractOf,
@@ -82,6 +84,9 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   generated(ctx, emit);
   docsAgree(ctx, rows, emit);
   evidenceWording(ctx, emit);
+  const ledger = ledgerLint(ctx.text);
+  for (const f of ledger.findings) emit("L16", f.file, f.message);
+  for (const n of ledger.notices) opts.onNotice?.({ check: "L16", ...n });
   const order = (c: CheckId) => Number(c.slice(1));
   return out.sort((a, b) => order(a.check) - order(b.check));
 }
@@ -2077,13 +2082,13 @@ function placement(ctx: Ctx, emit: Emit) {
       );
     else if (p === ROOT_CSV) emit("L12", p, `the CSV lives at ${CSV}`);
     else if (p.startsWith(EVIDENCE_ROOT)) {
-      if (p === CSV || p === QUARTER_LIST || QUARTER_FILE.test(p)) continue;
+      if (p === CSV || p === QUARTER_LIST || p === ARCHIVE_LEDGER || QUARTER_FILE.test(p)) continue;
       const iss = (extractOf(p) ?? folderReadmeOf(p))?.issuer; // upper-case issuer ids; FX in its own folder
       if (iss === undefined)
         emit(
           "L12",
           p,
-          `${EVIDENCE_ROOT} holds only the CSV ${CSV}, the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX rate tables ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
+          `${EVIDENCE_ROOT} holds only the CSV ${CSV}, the archive-link ledger ${ARCHIVE_LEDGER}, the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX rate tables ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
         );
       else if (iss !== FX_ID && basket.size > 0 && !basket.has(iss))
         emit(

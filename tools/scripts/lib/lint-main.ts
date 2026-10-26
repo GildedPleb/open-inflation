@@ -3,7 +3,7 @@
 // alone: it reads no base commit, so `--base <ref>` and $LINT_BASE (CI still sets it) are accepted and ignored.
 import { lint } from "./checks.ts";
 import { isGitCheckout, loadSnapshot, mergeBase, NotGitCheckout, revParse } from "./git.ts";
-import type { Snapshot } from "./types.ts";
+import type { Finding, Snapshot } from "./types.ts";
 
 export const USAGE = "usage: bun run lint";
 
@@ -55,7 +55,9 @@ export async function lintMain(io: LintIo): Promise<number> {
     io.err(`lint: ${e.message}`);
     return 2;
   }
-  const findings = await lint(snapshot, { now: Date.now() });
+  const notices: Finding[] = [];
+  const findings = await lint(snapshot, { now: Date.now(), onNotice: (n) => notices.push(n) });
+  for (const n of notices) io.out(`notice ${n.check} ${n.file}: ${n.message}`);
   for (const f of findings) io.out(`${f.check} ${f.file}: ${f.message}`);
   io.out(findings.length === 0 ? "lint: clean" : `lint: ${findings.length} finding(s)`);
   return findings.length === 0 ? 0 : 1;

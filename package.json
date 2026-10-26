@@ -8,6 +8,7 @@
     "readme": "bun tools/scripts/readme.ts",
     "verify": "bun tools/scripts/verify.ts",
     "audit": "bun tools/scripts/audit.ts",
+    "archive-check": "bun tools/scripts/archive-check.ts",
     "update": "bun tools/scripts/update.ts",
     "backfill": "bun tools/scripts/backfill.ts",
     "typecheck": "tsc -p tools",

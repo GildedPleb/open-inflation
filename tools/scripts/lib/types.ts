@@ -10,7 +10,21 @@ export interface Snapshot {
   readonly base: Files | null;
 }
 
-export type CheckId = "L1" | "L2" | "L5" | "L6" | "L7" | "L8" | "L9" | "L10" | "L11" | "L12" | "L13" | "L14" | "L15";
+export type CheckId =
+  | "L1"
+  | "L2"
+  | "L5"
+  | "L6"
+  | "L7"
+  | "L8"
+  | "L9"
+  | "L10"
+  | "L11"
+  | "L12"
+  | "L13"
+  | "L14"
+  | "L15"
+  | "L16";
 
 export interface Finding {
   readonly check: CheckId;
@@ -75,6 +89,8 @@ export interface Net {
 export interface LintOptions {
   /** The clock, in ms since the epoch: L7 rejects a Retrieved time after now + 10 min. */
   readonly now: number;
+  /** Hears L16's notices: grandfathered quarter-file claims, printed by the CLI but not findings. */
+  readonly onNotice?: (n: Finding) => void;
 }
 /** `bun run verify` (L8's link check, local only): lint and CI never touch the network. */
 export interface VerifyOptions {
