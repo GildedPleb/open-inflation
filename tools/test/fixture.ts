@@ -1,6 +1,16 @@
 // Synthetic, test-only evidence. None of these numbers are real observations.
 import { extractPath, folderReadmePath, fxPath, QUARTER_LIST, quarterPath, relLink } from "../scripts/lib/paths.ts";
-import { BLOCKS, begin, end, fillReadme, freshIndex, generate, hasMarkers, outputs } from "../scripts/lib/readme.ts";
+import {
+  BLOCKS,
+  begin,
+  end,
+  fillReadme,
+  freshIndex,
+  generate,
+  hasMarkers,
+  outputs,
+  ROUNDING_LEAD,
+} from "../scripts/lib/readme.ts";
 import type { Files, Snapshot } from "../scripts/lib/types.ts";
 
 /** Fixture paths, from the one layout module (scripts/lib/paths.ts). */
@@ -339,6 +349,9 @@ const buildRollup = (block: string, tableFrom: string): string =>
     "",
     readerTable(tableFrom),
     "",
+    // The rounding note that closes the generated scope (lib/readme.ts fillQuarterTable).
+    `${ROUNDING_LEAD}, rounded to the nearest dollar.`,
+    "",
     "## Components",
     "",
     `- [FED](${link(FED)}#2026q3)`,
@@ -492,7 +505,7 @@ export const withFields = (
         const asOf = part.includes("- As of:") ? "" : "- As of: 2026-09-30\n";
         return part.replace(
           "- Adopted: yes",
-          `${asOf}- Convention: end of period\n- Status: ${status[iss] ?? "final"}\n- Adopted: yes`,
+          `${asOf}- Convention: end of period\n- Status: ${status[iss] ?? "final"}\n- Adopted: yes\n- Measure (reader): ${iss} monetary base`,
         );
       })
       .join("\n### ");

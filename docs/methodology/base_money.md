@@ -282,6 +282,8 @@ The field names are exact: a hyphen bullet, a space, the field name, a colon. A 
 
 The other bullets below are not parsed by lint but are required by this methodology. Do not start any other bullet with the words "Retrieved", "Original URL" or "Archive URL". Every `###` title in a file must be unique (include the release or vintage date), so its anchor can be cited in `adopted_conflicts`. Lines outside a `###` block are allowed only for the `#` title and the `##` quarter headings.
 
+Every adopted extract also has `- Measure (reader): <text>`, placed right after `- Adopted: yes`: the plain-words description of what was counted, which the quarter table prints in its "What was measured" column.
+
 ### Links
 
 Each figure needs two live links that show the number: the Original URL plus one archive, or two archives when the original is gone.

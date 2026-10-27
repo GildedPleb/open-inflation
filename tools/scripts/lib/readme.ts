@@ -10,9 +10,12 @@ import { headings, lines, slugs } from "./markdown.ts";
 import {
   COMPONENTS_CSV,
   CSV_PATH,
+  EVIDENCE_ROOT,
   extractOf,
+  FX_DIR,
   folderReadmeOf,
   fxPath,
+  ISSUERS_DIR,
   issuerCsvPath,
   QUARTER_LIST,
   relLink,
@@ -304,6 +307,8 @@ export interface Component {
   readonly usd: bigint;
   /** path#slug of the adopted extract (the machine block anchor, without its base_money-relative form changed). */
   readonly evidenceId: string;
+  /** The adopted extract's "- Measure (reader):" text, word for word (the quarter table's What was measured; not in the CSV). */
+  readonly measure?: string;
 }
 
 export const COMPONENTS_HEADER =
@@ -345,7 +350,7 @@ function extractFields(md: string, line: number): Map<string, string> {
   const out = new Map<string, string>();
   for (const l of lines(md)) {
     if (l.line <= line || l.line >= stop || l.fence !== "none") continue;
-    const m = /^\s*[-*]\s+(As of|Convention|Status):\s*(.*?)\s*$/.exec(l.text);
+    const m = /^\s*[-*]\s+(As of|Convention|Status|Measure \(reader\)):\s*(.*?)\s*$/.exec(l.text);
     if (m && !out.has(m[1] as string)) out.set(m[1] as string, m[2] as string);
   }
   return out;
@@ -410,6 +415,7 @@ export function componentRows(
         fxRate: fx,
         usd: wholeUsd(l, r),
         evidenceId: `${path}#${hit.slug}`,
+        ...(f.has("Measure (reader)") ? { measure: f.get("Measure (reader)") as string } : {}),
       });
     }
   }
@@ -646,6 +652,149 @@ export function fillQuarterYoy(
     raw[k] = rowOf(c);
   }
   return withNotes(raw.slice(0, k).join("\n"), `\n${raw.slice(k).join("\n")}`, [QUARTER_YOY_LINE, ...notes.lines()]);
+}
+
+// ---------- quarter files: the opening sentence, the reader table and the rounding note ----------
+
+export const QUARTER_READER_HEADER =
+  "| Issuer | What was measured | Local amount | FX rate (market close) | USD | YoY (local; Total in USD) |";
+export const QUARTER_READER_ALIGN = "| :----- | :---------------- | -----------: | -------------------: | --: | --: |";
+/** The note that closes the generated scope (Form's copy); its FX link names the quarter's FX table. */
+export const ROUNDING_LEAD = "Each USD figure is the local amount × the FX rate";
+const roundingNote = (fx: string, id: string) =>
+  `${ROUNDING_LEAD}, rounded to the nearest dollar (half-to-even); the total is their sum. Click an issuer for the bank's basic facts, a USD figure for the exact quote it comes from, and a rate for the exchange-rate source (each issuer extract carries the original and archived links). FX rates are market closes on each report's count date; see [FX](${fx}#${id.toLowerCase()}).`;
+const LONG_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const NUMBER_WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+  "twenty",
+];
+const groupDecimal = (v: string) => {
+  const [i = "", f] = v.split(".");
+  return f === undefined ? group(i) : `${group(i)}.${f}`;
+};
+const numberWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
+/**
+ * The opening sentence's banks phrase for `n` included banks of a `size`-bank basket: "the nine central banks in the
+ * basket" when full (today's text), else "eight of the nine central banks in the basket" ("one of the nine ..." for one).
+ */
+export function banksPhrase(n: number, size: number): string {
+  return n >= size
+    ? `the ${numberWord(n)} central banks in the basket`
+    : `${numberWord(n)} of the ${numberWord(size)} central banks in the basket`;
+}
+/** An issuer's display name: its README's H1 without the trailing " (<ISS>)" (no catalog field; the bank pages' own title). */
+export function issuerName(text: Texts, issuer: string): string | undefined {
+  const h1 = /^# (.+)$/m.exec(text.get(`${ISSUERS_DIR}/${issuer}/README.md`) ?? "")?.[1];
+  return h1?.endsWith(` (${issuer})`) ? h1.slice(0, -(issuer.length + 3)) : h1;
+}
+/** The FX table row for `currency` in quarter `id`: its `<a id>`, pair and rate, or undefined. */
+function fxRow(text: Texts, id: string, currency: string): { anchor: string; pair: string; rate: string } | undefined {
+  const anchor = `fx-${id.toLowerCase()}-${currency.toLowerCase()}`;
+  const row = (text.get(`${FX_DIR}/${id.slice(0, 4)}.md`) ?? "")
+    .split("\n")
+    .find((l) => l.startsWith(`| <a id="${anchor}"></a>`));
+  if (!row) return undefined;
+  const c = rowCells(row);
+  return c[5] && c[6] ? { anchor, pair: c[5], rate: c[6] } : undefined;
+}
+
+/**
+ * A quarter file's generated scope for quarter `q`: the total sentence, the reader table (one row per components.csv
+ * row of the quarter, in its order (basket order); YoY cells left for fillQuarterYoy) and the rounding note. Problems when an input
+ * a row needs is missing (Measure (reader), the issuer README title, the FX row).
+ */
+function quarterTable(m: Model, q: Quarter): string | { problems: string[] } {
+  const problems: string[] = [];
+  // components.csv order (basket order), as the tables on main are; not USD descending (contract item 3; see PR).
+  const rows = m.rows.filter((r) => r.quarter === q.id);
+  const year = q.id.slice(0, 4);
+  const fxFile = `../FX/${year}.md`;
+  const body = rows.map((r) => {
+    const name = issuerName(m.text, r.issuer);
+    if (!name) problems.push(`${r.issuer}: ${ISSUERS_DIR}/${r.issuer}/README.md has no "# " title for the Issuer cell`);
+    if (r.measure === undefined || r.measure === "")
+      problems.push(
+        `${r.issuer}: the adopted extract ${r.evidenceId} has no "- Measure (reader):" line (the quarter table's What was measured)`,
+      );
+    let fx = "none (already USD)";
+    if (r.currency !== "USD") {
+      const f = fxRow(m.text, q.id, r.currency);
+      if (!f)
+        problems.push(
+          `${r.issuer}: ${FX_DIR}/${year}.md has no row fx-${q.id.toLowerCase()}-${r.currency.toLowerCase()}`,
+        );
+      else fx = `[${f.rate} ${f.pair}](${fxFile}#${f.anchor})`;
+    }
+    return rowOf([
+      `[${name}](../issuers/${r.issuer}/README.md)`,
+      r.measure ?? "",
+      `${r.currency} ${groupDecimal(r.localValue)}`,
+      fx,
+      `[$${group(r.usd.toString())}](../${r.evidenceId.slice(EVIDENCE_ROOT.length)})`,
+      "",
+    ]);
+  });
+  const size = m.cat.baskets.get(q.basket)?.length;
+  if (size === undefined) problems.push(`catalog.json has no basket version ${q.basket}`);
+  if (problems.length || size === undefined) return { problems };
+  const sentence = `On ${Number(q.date.slice(8, 10))} ${LONG_MONTHS[Number(q.date.slice(5, 7)) - 1]} ${year}, base money across ${banksPhrase(rows.length, size)} came to **$${group(q.value.toString())}** (about **$${trillions(q.value)} trillion**), covering ${q.coverage.replace(/\.0+$|(\.\d*?)0+$/, "$1")}% of the basket by value.`;
+  return [
+    sentence,
+    "",
+    QUARTER_READER_HEADER,
+    QUARTER_READER_ALIGN,
+    ...body,
+    rowOf([TOTAL, "", "", "", `**$${group(q.value.toString())}**`, ""]),
+    "",
+    roundingNote(fxFile, q.id),
+  ].join("\n");
+}
+
+/**
+ * A quarter file with its generated scope set to `scope`: from after the "# " title to the end of the
+ * rounding note ("Each USD figure ..."); no markers (QUARTER_TABLE_GENERATOR.md section 2). Every other byte is kept.
+ */
+export function fillQuarterTable(body: string, scope: string): string | { problem: string } {
+  const raw = body.split("\n");
+  const title = raw.findIndex((l) => l.startsWith("# "));
+  const last = raw.findIndex((l, i) => i > title && l.startsWith(ROUNDING_LEAD));
+  if (title < 0 || last < 0)
+    return {
+      problem: `has no "# " title followed by a "${ROUNDING_LEAD}" note around the generated table`,
+    };
+  return [...raw.slice(0, title + 1), "", scope, ...raw.slice(last + 1)].join("\n");
 }
 
 // ---------- issuer READMEs: the quarter table ----------
@@ -930,7 +1079,16 @@ export function outputs(text: Texts, paths: readonly string[]): Outputs | null {
               : `${i} changed currency from ${cause.from} to ${cause.to}`;
       cells.set(i, { yoy: y, item });
     }
-    fill(q.evidenceId, fillQuarterYoy(body, cells, YOY_NOTES.quarter(q.id), quarterLabel(q.id)));
+    const table = quarterTable(m, q);
+    if (typeof table !== "string") {
+      for (const message of table.problems) problems.push({ file: q.evidenceId, message });
+      continue;
+    }
+    const filled = fillQuarterTable(body, table);
+    fill(
+      q.evidenceId,
+      typeof filled === "string" ? fillQuarterYoy(filled, cells, YOY_NOTES.quarter(q.id), quarterLabel(q.id)) : filled,
+    );
   }
   const index = text.get(QUARTER_LIST);
   if (index !== undefined) {

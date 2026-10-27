@@ -2250,7 +2250,7 @@ function evidenceWording(ctx: Ctx, emit: Emit) {
  * (Capture check, Rejected source, Note <date>). captureProblem checks the Capture check form; DATED_NOTE the Note form.
  */
 const LINE_LABEL =
-  /^(?:Retrieved|Original URL|Archive URL(?: [1-9]\d*)?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Notes|Rejected source|Capture check|Note \d{4}-\d{2}-\d{2})$/;
+  /^(?:Retrieved|Original URL|Archive URL(?: [1-9]\d*)?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Measure \(reader\)|Notes|Rejected source|Capture check|Note \d{4}-\d{2}-\d{2})$/;
 /** `- Note <YYYY-MM-DD>: <text>.`: a real date, then non-empty text ending with a period. */
 const DATED_NOTE = /^- Note (\d{4}-\d{2}-\d{2}): \S.*\.$/;
 /** A Notes line that converts at a rate other than the quarter's FX table row. */

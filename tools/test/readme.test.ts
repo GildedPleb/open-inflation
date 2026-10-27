@@ -18,7 +18,19 @@ import {
 } from "../scripts/lib/readme.ts";
 import { REPO_ROOT } from "../scripts/lib/root.ts";
 import type { CheckId, Snapshot } from "../scripts/lib/types.ts";
-import { CSV_HEADER, files, generateAll, goodText, machineBlock, Q3, rollup, withFields } from "./fixture.ts";
+import {
+  CSV_HEADER,
+  FX,
+  files,
+  fxRow,
+  fxSection,
+  generateAll,
+  goodText,
+  machineBlock,
+  Q3,
+  rollup,
+  withFields,
+} from "./fixture.ts";
 
 const NOW = Date.parse("2026-10-22T16:00:00Z");
 
@@ -138,6 +150,7 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
       t["base_money/base_money.csv"] =
         `${CSV_HEADER}2026-03-31,1221,base_money/quarters/2026Q1.md\n2026-09-30,1221,${Q3}\n`;
       t["base_money/quarters/2026Q1.md"] = rollup(machineBlock({ quarter: "2026Q1", asOf: "2026-03-31" }));
+      t[FX] = `${t[FX]}${fxSection("2026Q1", fxRow("EUR", { q: "2026Q1" }))}`;
     };
     const t = goodText();
     gap(t);
