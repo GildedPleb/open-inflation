@@ -20,7 +20,7 @@ import {
 
 export const README = "README.md";
 export { QUARTER_LIST as EVIDENCE_INDEX } from "./paths.ts";
-/** The heading in the quarter list whose bullet list is generated (one line per quarter, newest first; gaps listed). */
+/** The heading in the quarter list whose table is generated (one row per quarter, newest first; gaps listed). */
 export const QUARTERS_HEADING = "## Quarters";
 export const BLOCKS = ["latest", "table", "yoy-notes"] as const;
 export type BlockName = (typeof BLOCKS)[number];
@@ -43,21 +43,8 @@ export interface Quarter {
   readonly coverage: string;
 }
 
-const FULL_MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const DASH = "—";
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 /** 2026Q2 -> "2026 Q2". */
@@ -431,7 +418,7 @@ export function componentRows(
 
 export interface Generated {
   readonly blocks: Readonly<Record<BlockName, string>>;
-  /** The generated quarter list (the lines under "## Quarters"). */
+  /** The generated quarter table (the lines under "## Quarters"). */
   readonly index: string;
   /** The footnotes under the quarter list: the README's yoy-notes, one per paragraph. */
   readonly indexNotes: readonly string[];
@@ -516,10 +503,6 @@ function generated(m: Model): Generated {
   };
 }
 
-/** 2026-06-30 -> "30 June 2026". */
-const longDay = (iso: string) =>
-  `${Number(iso.slice(8, 10))} ${FULL_MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
-
 /** A quarter's excluded issuers, in basket order (any outside the basket last). */
 function leftOut(q: Quarter, cat: Catalog): string[] {
   const basketOrder = cat.baskets.get(q.basket) ?? cat.order;
@@ -527,28 +510,44 @@ function leftOut(q: Quarter, cat: Catalog): string[] {
   return [...basketOrder.filter((i) => out.includes(i)), ...out.filter((i) => !basketOrder.includes(i))];
 }
 
+/** The quarter table's columns and alignment (Form, YOY_LAYOUT.md section 2); Coverage only when a quarter leaves a bank out. */
+export const QUARTER_TABLE_HEADER = "| Quarter | Count date | Total (USD) | YoY (USD) | Exact total (USD) |";
+export const QUARTER_TABLE_ALIGN = "| :------ | :--------- | ----------: | --------: | ----------------: |";
+const COVERAGE_HEADER = " Coverage |";
+const COVERAGE_ALIGN = " :------- |";
+
 /**
- * The quarter list: every CSV row newest first (the rounded total and its YoY, the same cell as the front page, then
- * the exact total and date; when issuers are left out, the coverage and who), with any gap quarter listed. (Form owns
- * the line's wording, YOY_LAYOUT.md section 2.)
+ * The quarter table: every CSV row newest first (the linked quarter, its ISO count date, the rounded total as the bank
+ * tables show USD, its YoY, the same cell as the front page, and the exact total), with any gap quarter as a row of
+ * dashes. A last Coverage column only when a listed quarter leaves issuers out. (Form owns the layout, YOY_LAYOUT.md
+ * section 2.)
  */
 function quarterList(m: Model): string {
   const { qs, cat } = m;
+  const coverage = qs.some((q) => leftOut(q, cat).length > 0);
   const out: string[] = [];
   for (let i = qs.length - 1; i >= 0; i--) {
     const q = qs[i] as Quarter;
-    const link = relLink(QUARTER_LIST, q.evidenceId);
     const left = leftOut(q, cat);
-    const cover = left.length ? ` · covers ${q.coverage}% of the basket; left out: ${left.join(", ")}` : "";
-    out.push(
-      `- [${quarterLabel(q.id)}](${link}): about $${trillions(q.value)} trillion, YoY ${yoyCell(m.total.get(q.id) as Yoy)} · exactly $${group(q.value.toString())} on ${longDay(q.date)}${cover}`,
-    );
+    const cells = [
+      `[${quarterLabel(q.id)}](${relLink(QUARTER_LIST, q.evidenceId)})`,
+      q.date,
+      usdShort(q.value),
+      yoyCell(m.total.get(q.id) as Yoy),
+      group(q.value.toString()),
+    ];
+    if (coverage) cells.push(left.length ? `${q.coverage}%; left out: ${left.join(", ")}` : "all banks");
+    out.push(`| ${cells.join(" | ")} |`);
     const prev = qs[i - 1];
     if (prev)
       for (let g = shiftQuarter(q.id, -1); g > prev.id; g = shiftQuarter(g, -1))
-        out.push(`- ${quarterLabel(g)}: no row; a missing quarter is never estimated.`);
+        out.push(`| ${[quarterLabel(g), ...cells.slice(1).map(() => DASH)].join(" | ")} |`);
   }
-  return out.length ? out.join("\n") : "No quarters yet.";
+  if (!out.length) return "No quarters yet.";
+  const extra = (s: string) => (coverage ? s : "");
+  return [QUARTER_TABLE_HEADER + extra(COVERAGE_HEADER), QUARTER_TABLE_ALIGN + extra(COVERAGE_ALIGN), ...out].join(
+    "\n",
+  );
 }
 
 /**
@@ -644,7 +643,6 @@ export function fillQuarterYoy(
 // ---------- issuer READMEs: the quarter table ----------
 
 export const ISSUER_QUARTERS_HEADING = "## Quarters";
-const DASH = "—";
 
 /**
  * An issuer README with its "## Quarters" section set to `section`, placed right after the facts list: before the

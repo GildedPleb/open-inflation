@@ -112,15 +112,15 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     expect(await ids(s)).toEqual(["L17", "L6"].sort() as CheckId[]);
   });
   test("a hand-edited quarter list line fails L17; prose around the list is free", async () => {
-    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "30 September 2026", "1 October 2026")))).toEqual(["L17"]);
+    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "| 2026-09-30 |", "| 2026-10-01 |")))).toEqual(["L17"]);
     expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "newest first.", "newest first. Edited.")))).toEqual([]);
   });
   test("the quarter list names each quarter's coverage and the issuers left out", async () => {
     const t = generated();
-    expect(t[EVIDENCE_INDEX]).toContain(" · covers 99.92% of the basket; left out: BOJ");
-    expect(
-      await ids(snap((t) => edit(t, EVIDENCE_INDEX, " · covers 99.92% of the basket; left out: BOJ", ""))),
-    ).toEqual(["L17"]);
+    expect(t[EVIDENCE_INDEX]).toContain(" | 99.92%; left out: BOJ |");
+    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, " 99.92%; left out: BOJ |", " all banks |")))).toEqual([
+      "L17",
+    ]);
   });
   test("a coverage figure in front-page prose must be the latest quarter's coverage_pct", async () => {
     const prose = (pct: string) => (t: Record<string, string>) =>
@@ -133,7 +133,7 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     expect(await ids(snap(prose("99.92")))).toEqual([]);
     expect(await ids(snap(prose("99.91")))).toEqual(["L13"]);
   });
-  test("a gap between present quarters is a generated plain-text line, and L17 checks it", async () => {
+  test("a gap between present quarters is a generated row of dashes, and L17 checks it", async () => {
     const gap = (t: Record<string, string>) => {
       t["base_money/base_money.csv"] =
         `${CSV_HEADER}2026-03-31,1221,base_money/quarters/2026Q1.md\n2026-09-30,1221,${Q3}\n`;
@@ -142,7 +142,7 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     const t = goodText();
     gap(t);
     const g = generate(new Map(Object.entries(t)), Object.keys(t));
-    expect(g?.index.split("\n")[1]).toBe("- 2026 Q2: no row; a missing quarter is never estimated.");
+    expect(g?.index.split("\n")[3]).toBe("| 2026 Q2 | — | — | — | — | — |");
     const withGap = (edit: (t: Record<string, string>) => void): Snapshot => {
       const { [EVIDENCE_INDEX]: _, ...v } = goodText();
       gap(v);
@@ -154,10 +154,7 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     expect(await l17(withGap(() => {}))).toEqual([]);
     const dropped = await l17(
       withGap((u) => {
-        u[EVIDENCE_INDEX] = (u[EVIDENCE_INDEX] as string).replace(
-          "- 2026 Q2: no row; a missing quarter is never estimated.\n",
-          "",
-        );
+        u[EVIDENCE_INDEX] = (u[EVIDENCE_INDEX] as string).replace("| 2026 Q2 | — | — | — | — | — |\n", "");
       }),
     );
     expect(dropped.map((f) => f.file)).toEqual([EVIDENCE_INDEX]);
@@ -201,5 +198,73 @@ describe("bun run readme: each issuer and FX folder README's ## Years list", () 
     expect(fillList("# FED\n", YEARS_HEADING, "x", "year list")).toEqual({
       problem: expect.stringContaining("## Years"),
     });
+  });
+});
+
+describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section 2), on this repository's data", () => {
+  /** Every input the generator reads: catalog.json and the CSV, roll-ups and extracts under base_money/. */
+  const repoText = (): Map<string, string> => {
+    const t = new Map<string, string>();
+    const walk = (dir: string) => {
+      for (const e of readdirSync(join(REPO_ROOT, dir), { withFileTypes: true }))
+        if (e.isDirectory()) walk(`${dir}/${e.name}`);
+        else if (/\.(md|csv)$/.test(e.name))
+          t.set(`${dir}/${e.name}`, readFileSync(join(REPO_ROOT, dir, e.name), "utf8"));
+    };
+    walk("base_money");
+    t.set("catalog.json", readFileSync(join(REPO_ROOT, "catalog.json"), "utf8"));
+    return t;
+  };
+  const tableOf = (text: Map<string, string>) => generate(text, [...text.keys()])?.index.split("\n") ?? [];
+  const yoyByQuarter = (rows: readonly string[], col: number) =>
+    new Map(
+      rows
+        .filter((r) => /^\| \[?\d{4} Q\d/.test(r))
+        .map((r) => {
+          const c = r.split(" | ");
+          return [(/\d{4} Q\d/.exec(c[0] as string) as RegExpExecArray)[0], c[col]];
+        }),
+    );
+
+  test("header, alignment and the 2025 Q2 to 2026 Q2 rows are section 2's, byte for byte", () => {
+    // Section 2's exact section (2026-10-27). Newer quarters add rows above; these stay the oldest five.
+    const rows = tableOf(repoText());
+    expect(rows.slice(0, 2)).toEqual([
+      "| Quarter | Count date | Total (USD) | YoY (USD) | Exact total (USD) |",
+      "| :------ | :--------- | ----------: | --------: | ----------------: |",
+    ]);
+    expect(rows.slice(-5)).toEqual([
+      "| [2026 Q2](quarters/2026Q2.md) | 2026-06-30 | $22.13T | -5.5%ᵖ | 22,125,479,242,256 |",
+      "| [2026 Q1](quarters/2026Q1.md) | 2026-03-31 | $22.45T | —¹ | 22,449,782,815,379 |",
+      "| [2025 Q4](quarters/2025Q4.md) | 2025-12-31 | $22.55T | —¹ | 22,554,451,077,005 |",
+      "| [2025 Q3](quarters/2025Q3.md) | 2025-09-30 | $22.88T | —¹ | 22,882,534,748,618 |",
+      "| [2025 Q2](quarters/2025Q2.md) | 2025-06-30 | $23.42T | —¹ | 23,418,246,247,929 |",
+    ]);
+  });
+  test("each YoY cell is the front page's, byte for byte", () => {
+    const text = repoText();
+    const g = generate(text, [...text.keys()]);
+    const front = yoyByQuarter(g?.blocks.table.split("\n") ?? [], 2);
+    expect(front.size).toBeGreaterThan(0);
+    expect(yoyByQuarter(g?.index.split("\n") ?? [], 3)).toEqual(front);
+  });
+  test("a Coverage column only when a listed quarter leaves a bank out", () => {
+    const text = repoText();
+    expect(tableOf(text)[0]).not.toContain("Coverage");
+    const q = "base_money/quarters/2025Q2.md";
+    const body = text.get(q) as string;
+    text.set(
+      q,
+      body
+        .replace("exclusions: []", 'exclusions:\n  - issuer: BCB\n    reason: "not evidenced"')
+        .replace('coverage_pct: "100.00"', 'coverage_pct: "98.79"'),
+    );
+    const rows = tableOf(text);
+    expect(rows.slice(0, 2)).toEqual([
+      "| Quarter | Count date | Total (USD) | YoY (USD) | Exact total (USD) | Coverage |",
+      "| :------ | :--------- | ----------: | --------: | ----------------: | :------- |",
+    ]);
+    expect(rows.at(-1)).toEndWith(" | 23,418,246,247,929 | 98.79%; left out: BCB |");
+    expect(rows.slice(2, -1).every((r) => r.endsWith(" | all banks |"))).toBe(true);
   });
 });
