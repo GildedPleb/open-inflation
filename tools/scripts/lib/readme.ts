@@ -6,7 +6,7 @@
 // quarter table, base_money/components.csv and each base_money/issuers/<ISS>/<ISS>.csv.
 import { adoptedIn, fxQuote, machines } from "./checks.ts";
 import { type Decimal, parseDecimal, ratioHalfEven, roundHalfEven, wholeUsd } from "./decimal.ts";
-import { headings, lines } from "./markdown.ts";
+import { headings, lines, slugs } from "./markdown.ts";
 import {
   COMPONENTS_CSV,
   CSV_PATH,
@@ -229,6 +229,8 @@ export interface Catalog {
   readonly baskets: ReadonlyMap<number, readonly string[]>;
   /** Every issuer in basket order (first appearance). */
   readonly order: readonly string[];
+  /** The series' methodology file, repo-relative (catalog `methodology`). */
+  readonly methodology: string;
 }
 
 function catalogOf(text: Texts): Catalog | null {
@@ -245,7 +247,8 @@ function catalogOf(text: Texts): Catalog | null {
       for (const i of ids) if (!order.includes(i)) order.push(i);
     }
     const lastUpdated = typeof s.last_updated === "string" ? s.last_updated : null;
-    return { lastUpdated, version: s.version, baskets, order };
+    const methodology = typeof s.methodology === "string" ? s.methodology : "";
+    return { lastUpdated, version: s.version, baskets, order, methodology };
   } catch {
     return null;
   }
@@ -572,8 +575,14 @@ export function fillIndex(index: string, list: string, notes: readonly string[] 
 
 // ---------- quarter files: the YoY column ----------
 
-/** The YoY column's header in a quarter file's reader table (Form owns the copy and placement). */
-export const YOY_HEADER = "YoY";
+/**
+ * The YoY column's header in a quarter file's reader table (Form owns the copy and placement). It names each bank's
+ * basis (local currency) and the Total's (US dollars), as the YoY note line under the table does (QUARTER_YOY_LINE),
+ * so the column can't be read as USD.
+ */
+export const YOY_HEADER = "YoY (local; Total in USD)";
+/** Any YoY header a quarter file may carry (an older one is replaced in place). */
+const YOY_HEADER_RE = /^YoY\b/;
 /** A reader-table row's cells (the line split on unescaped pipes, trimmed, the outer two dropped). */
 const rowCells = (row: string) =>
   row
@@ -613,7 +622,7 @@ export function fillQuarterYoy(
       problem: "has no reader table (Issuer, Local amount, FX rate, USD) for the YoY column",
     };
   const header = rowCells(raw[head] as string);
-  let col = header.indexOf(YOY_HEADER);
+  let col = header.findIndex((h) => YOY_HEADER_RE.test(h));
   const issuerCol = header.indexOf("Issuer");
   if (col < 0) col = header.length;
   let k = head;
@@ -667,19 +676,107 @@ export function usdShort(v: bigint): string {
   return `$${group(s.slice(0, -1))}.${s.slice(-1)}B`;
 }
 
+/** An issuer table's YoY header (Form, YOY_LAYOUT.md section 3): always the bank's own currency. */
+export const ISSUER_YOY_HEADER = "YoY (local)";
+/** The methodology headings the bank pages link: the Status note and the Download line. */
+export const STATUS_ANCHOR = "status-and-vintages";
+export const COMPONENTS_ANCHOR = "components-csv";
+/** The bank page's Download line link to the CSV contract (Form's copy); the front page (README.md) uses the same words. */
+export const COLUMNS_LEAD = "What each column means, with units:";
+export const COLUMNS_LINK_TEXT = "CSV columns and units";
+const FULL_DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** What a YYYY-MM count date stands for at a bank: its average for the month, or its month-end figure. */
+export type MonthBasis = "average" | "month-end";
+/**
+ * The Count date definition under a bank table (Assay's ruling on Probe NF1): the lead, then the meaning of YYYY-MM
+ * for that bank's basis (MONTH_BASIS). Shown when a count date is a month (YYYY-MM). Swap the wording here.
+ */
+export const COUNT_DATE_LEAD = "Count date: the date the bank's figure counts, as the bank gives it.";
+export const MONTH_BASIS_TEXT: Readonly<Record<MonthBasis, string>> = {
+  average: "YYYY-MM means the figure is the bank's average for that month.",
+  "month-end": "YYYY-MM means the bank's month-end figure, published without a day.",
+};
+/**
+ * Each bank's basis for a YYYY-MM count date. Source of every assignment: the Convention column of the adopted-series
+ * table in docs/methodology/base_money.md (quoted per line), which each extract's `- Convention:` repeats. ECB (weekly
+ * stock at the Friday close) and CBR (stock at the beginning of the reporting date) have no monthly basis, so a
+ * YYYY-MM count date there, or at any bank not listed, is a generator problem, never a guess.
+ */
+export const MONTH_BASIS: Readonly<Record<string, MonthBasis>> = {
+  PBOC: "month-end", // "End-of-month stock (a balance sheet)"
+  FED: "average", // "Monthly average, NSA" (H.6 Table 1)
+  BOJ: "month-end", // "End-of-month stock" (the end-of-period block, not the average block)
+  BOE: "average", // "Monthly average (notes and coin: daily average; reserves: average of Wednesdays)"
+  SNB: "average", // "Monthly average (inferred; see below)": the methodology's SNB note gives the evidence
+  RBI: "month-end", // "Stock outstanding on the last day of the month"
+  BCB: "month-end", // "End-of-month stock" (SGS 1788 "saldo em final de período")
+};
+/** The extract Conventions that name a monthly basis: a YYYY-MM row whose Convention contradicts MONTH_BASIS fails. */
+const CONVENTION_BASIS: Readonly<Record<string, MonthBasis>> = {
+  "monthly average": "average",
+  "end-of-month stock": "month-end",
+};
+/**
+ * The Count date note for `issuer`'s page, given the conventions of its YYYY-MM rows: null when there are none, a
+ * problem when the bank has no known basis or a row's Convention says otherwise.
+ */
+export function countDateNote(issuer: string, conventions: ReadonlySet<string>): string | null | { problem: string } {
+  if (conventions.size === 0) return null;
+  const basis = MONTH_BASIS[issuer];
+  if (basis === undefined)
+    return {
+      problem: `${issuer} has a YYYY-MM count date but no month basis (average or month-end) in MONTH_BASIS (tools/scripts/lib/readme.ts); add it from the methodology's Convention`,
+    };
+  const off = [...conventions].find((c) => CONVENTION_BASIS[c] !== undefined && CONVENTION_BASIS[c] !== basis);
+  if (off !== undefined)
+    return { problem: `${issuer}'s MONTH_BASIS is "${basis}" but a YYYY-MM extract's Convention is "${off}"` };
+  return `${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT[basis]}`;
+}
+/**
+ * The Status definition's meanings (Assay's wording, YOY_LAYOUT.md section 3; "as published" per Assay's ruling on
+ * Probe NF2), in display order, each shown after its term in code formatting (Probe NF3). Swap a meaning here; the
+ * note lists only the statuses the table shows, then STATUS_NOTE_END once.
+ */
+export const STATUS_TERMS: Readonly<Record<Status, string>> = {
+  final: "the bank marks it final.",
+  provisional: "the bank marks it provisional or preliminary and may revise it.",
+  revised: "the bank marks it as revised.",
+  "as published":
+    "the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none.",
+};
+export const STATUS_NOTE_END = "Later changes are added as revisions, never overwritten.";
+/** One status term as the note shows it: `` `final`: the bank marks it final. `` */
+export const statusTerm = (t: Status): string => `\`${t}\`: ${STATUS_TERMS[t]}`;
+/** The Status definition under a bank table: one paragraph, linking the methodology's Status and vintages. */
+export const statusNote = (link: string, shown: ReadonlySet<Status>): string =>
+  [
+    `[Status](${link}): the bank's own label.`,
+    ...(Object.keys(STATUS_TERMS) as Status[]).filter((t) => shown.has(t)).map(statusTerm),
+    STATUS_NOTE_END,
+  ].join(" ");
+
 /** The line above an issuer's quarter table (Form's copy). */
 export const ISSUER_INTRO =
   "Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.";
 
 /**
  * An issuer's `## Quarters` section (Form's layout, YOY_LAYOUT.md section 3): the intro line; a table of every CSV
- * quarter, newest first: Quarter | Count date | Amount (<CCY>) | Status | <PAIR> | USD | YoY (<CCY>), headed by the
+ * quarter, newest first: Quarter | Count date | Amount (<CCY>) | Status | <PAIR> | USD | YoY (local), headed by the
  * newest counted row's currency and FX pair (no pair or USD column when every counted row is in USD, as at the FED,
  * where Amount is already US dollars); a left-out quarter
  * says why, with dashes; then the footnotes its cells need and the Download line for the bank's CSV. A rate with no
  * single FX row is a dash (L9 reports the missing row).
  */
-function issuerSection(m: Model, issuer: string, readme: string): string {
+function issuerSection(m: Model, issuer: string, readme: string): string | { problem: string } {
+  const doc = m.text.get(m.cat.methodology);
+  const docLink = (anchor: string) =>
+    doc !== undefined && slugs(doc).has(anchor) ? `${relLink(readme, m.cat.methodology)}#${anchor}` : null;
+  const statusLink = docLink(STATUS_ANCHOR);
+  const csvLink = docLink(COMPONENTS_ANCHOR);
+  if (!statusLink || !csvLink)
+    return {
+      problem: `the methodology ${m.cat.methodology || "(catalog has none)"} has no "#${statusLink ? COMPONENTS_ANCHOR : STATUS_ANCHOR}" heading for this page's link`,
+    };
   const notes = new Notes(YOY_NOTES.bank);
   const newest = [...m.qs].reverse();
   const counted = newest.map((q) => m.comp(issuer, q.id)).filter((c): c is Component => !!c);
@@ -693,6 +790,7 @@ function issuerSection(m: Model, issuer: string, readme: string): string {
   const showFx = firstForeign !== undefined;
   const pair = firstForeign ? (quoteOf(firstForeign)?.pair ?? "FX rate") : "";
   const unit = (s: string) => (ccy ? `${s} (${ccy})` : s);
+  const statuses = new Set(counted.map((c) => c.status));
   const rows = newest.map((q) => {
     const prevId = shiftQuarter(q.id, -4);
     const label = quarterLabel(q.id);
@@ -736,14 +834,24 @@ function issuerSection(m: Model, issuer: string, readme: string): string {
     ]);
   });
   const table = [
-    `| Quarter | Count date | ${unit("Amount")} | Status |${showFx ? ` ${pair} | USD |` : ""} ${unit("YoY")} |`,
+    `| Quarter | Count date | ${unit("Amount")} | Status |${showFx ? ` ${pair} | USD |` : ""} ${ISSUER_YOY_HEADER} |`,
     `| :------ | :--------- | -----------: | :----- |${showFx ? " ----------: | ----: |" : ""} --: |`,
     ...rows,
   ].join("\n");
   const csv = relLink(readme, issuerCsvPath(issuer));
-  return [ISSUER_INTRO, table, ...notes.lines(), `**Download:** [${csv}](${csv}), this bank's rows as data.`].join(
-    "\n\n",
+  const countDate = countDateNote(
+    issuer,
+    new Set(counted.filter((c) => !FULL_DATE.test(c.asOf)).map((c) => c.convention)),
   );
+  if (countDate !== null && typeof countDate !== "string") return countDate;
+  const defs = [...(countDate ? [countDate] : []), ...(statuses.size ? [statusNote(statusLink, statuses)] : [])];
+  return [
+    ISSUER_INTRO,
+    table,
+    ...notes.lines(),
+    ...defs,
+    `**Download:** [${csv}](${csv}), this bank's rows as data. ${COLUMNS_LEAD} [${COLUMNS_LINK_TEXT}](${csvLink}).`,
+  ].join("\n\n");
 }
 
 // ---------- every L17 output ----------
@@ -803,7 +911,8 @@ export function outputs(text: Texts, paths: readonly string[]): Outputs | null {
     const r = folderReadmeOf(p);
     const body = text.get(p);
     if (!r || r.issuer === "FX" || body === undefined) continue;
-    fill(p, fillIssuerQuarters(body, issuerSection(m, r.issuer, p)));
+    const section = issuerSection(m, r.issuer, p);
+    fill(p, typeof section === "string" ? fillIssuerQuarters(body, section) : section);
   }
   return { want, problems };
 }

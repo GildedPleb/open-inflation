@@ -11,7 +11,7 @@
 
 Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.
 
-| Quarter | Count date | Amount (EUR) | Status | USD per EUR | USD | YoY (EUR) |
+| Quarter | Count date | Amount (EUR) | Status | USD per EUR | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-26 | [3,980,253,000,000](2026.md#ecb-liability-items-1--21--22-statement-2026-06-26-published-2026-06-30) | as published | [1.138952](../../FX/2026.md#fx-2026q2-eur) | $4.53T | -10.2% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-27 | [4,148,672,000,000](2026.md#ecb-liability-items-1--21--22-statement-2026-03-27-published-2026-03-31) | as published | [1.151013](../../FX/2026.md#fx-2026q1-eur) | $4.78T | —¹ |
@@ -21,7 +21,9 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
 
-**Download:** [ECB.csv](ECB.csv), this bank's rows as data.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
+
+**Download:** [ECB.csv](ECB.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](../../../docs/methodology/base_money.md#components-csv).
 
 ## What we measure
 

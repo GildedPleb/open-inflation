@@ -386,6 +386,10 @@ export const catalog = (series?: unknown): string =>
 export const index = (...extra: string[]): string =>
   ["# Quarters", "", "## Quarters", "", `- [2026 Q3](${relLink(INDEX, Q3)})`, ...extra, ""].join("\n");
 
+/** The fixture catalog's methodology file, with the two headings the bank pages link. */
+export const METHODOLOGY_PATH = "methodology/base_money.md";
+export const METHODOLOGY_STUB = "# Methodology\n\n## Status and vintages\n\n### Components CSV\n";
+
 /** A complete, valid one-quarter repo. Every check must pass on it. Built once; each call returns a fresh copy. */
 export const goodText = (): Record<string, string> => {
   GOOD_TEXT ??= buildGoodText();
@@ -397,7 +401,7 @@ const buildGoodText = (): Record<string, string> => ({
   "catalog.json": catalog(),
   "base_money/base_money.csv": `${CSV_HEADER}2026-09-30,1221,${Q3}\n`,
   [INDEX]: index(),
-  "methodology/base_money.md": "# Methodology\n",
+  [METHODOLOGY_PATH]: METHODOLOGY_STUB,
   [Q3]: rollup(),
   [FED]: issuerFile("FED", "2026Q3", extract({ title: "FED H.4.1" })),
   [ECB]: issuerFile("ECB", "2026Q3", extract({ title: "ECB weekly statement", fields: ["- As of: 2026-09-30"] })),
