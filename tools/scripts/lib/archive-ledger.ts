@@ -344,40 +344,9 @@ export function claimsIn(p: string, body: string): Claim[] {
  * still in its file; an entry whose sentence is gone is a finding (drop it here), and any other claim is a finding
  * unless the ledger shows every link it speaks for as ok. Never add to this list.
  */
-export const GRANDFATHERED_CLAIMS: readonly { readonly file: string; readonly sentence: string }[] = [
-  [
-    "2025Q2",
-    "New sources were read and saved to the Wayback Machine on 26 Oct 2026 (11:35–11:43 AM PT), and each snapshot was checked to show the figure used.",
-  ],
-  [
-    "2025Q2",
-    "archive.today and Ghostarchive copies were made in a browser the same day, with each CAPTCHA solved (11:48 AM–12:05 PM PT), and each copy was opened to confirm its content;",
-  ],
-  ["2025Q2", "each Ghostarchive copy's saved file was also checked for the figure it backs."],
-  [
-    "2025Q3",
-    "New sources were read and saved to the Wayback Machine on 23 Oct 2026 (6:31–6:36 PM ET), and each snapshot was checked to show the figure used.",
-  ],
-  [
-    "2025Q3",
-    "archive.today and Ghostarchive copies were made in a browser the same evening, with each CAPTCHA solved (Ghostarchive 6:37–7:01 PM ET), and each copy was opened to confirm its content;",
-  ],
-  ["2025Q3", "each Ghostarchive copy's saved file was also checked for the figure it backs."],
-  [
-    "2025Q4",
-    "New sources were read and saved to the Wayback Machine on 23 Oct 2026 (5:25–5:27 PM ET), and each snapshot was checked to show the figure used.",
-  ],
-  [
-    "2026Q1",
-    "New sources were read and saved to the Wayback Machine on 23 Oct 2026 (10:23–10:26 AM ET), and each snapshot was checked to show the figure used.",
-  ],
-  ["2026Q1", "Every archive link in the extracts was checked and opened on 23 October 2026."],
-  [
-    "2026Q2",
-    "Every source was read and saved to the Wayback Machine on 22 Oct 2026 (1:13–1:40 PM ET), and each snapshot was checked to show the figure used.",
-  ],
-  ["2026Q2", "Every archive link in the extracts was checked and opened on 23 October 2026."],
-].map(([q, sentence]) => ({ file: `${QUARTERS_DIR}/${q}.md`, sentence: sentence as string }));
+export const GRANDFATHERED_CLAIMS: readonly { readonly file: string; readonly sentence: string }[] = (
+  [] as string[][]
+).map(([q, sentence]) => ({ file: `${QUARTERS_DIR}/${q}.md`, sentence: sentence as string }));
 
 /** Why a claim is not backed by the ledger: the links it speaks for that are not ok; [] when it is backed. */
 export function unbacked(claim: Claim, cites: readonly Citation[], rows: ReadonlyMap<string, LedgerRow>): string[] {

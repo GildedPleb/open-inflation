@@ -587,19 +587,14 @@ describe("L16: ledger and claims (R5)", () => {
       ["wayback", "ghostarchive", "archive.today"],
     ]);
   });
-  test("grandfathered claims (written before the ledger) are notices, not findings; a gone one is a finding", async () => {
-    const g = GRANDFATHERED_CLAIMS.find((x) => x.file === Q2) as { sentence: string };
+  test("the grandfathered list is empty: a claim written before the ledger is a finding like any other", async () => {
+    expect(GRANDFATHERED_CLAIMS).toEqual([]);
     const ledger = await ledgerFor({ ...healthy(), [raw(WB_GONE)]: { status: 404 } });
-    const l = ledgerLint(texts({ [Q2]: quarter("2026Q2", g.sentence), [ARCHIVE_LEDGER]: ledger }));
-    expect(l.findings).toEqual([]);
-    expect(l.notices.map((n) => n.file)).toEqual([Q2, Q2]);
-    expect(l.notices.every((n) => /listed for rewording/.test(n.message))).toBe(true);
-    const gone = ledgerLint(texts({ [Q2]: "# 2026Q2\n\nSources.\n", [ARCHIVE_LEDGER]: ledger })).findings.map(
-      (f) => f.message,
-    );
-    expect(gone).toEqual([
-      expect.stringMatching(/^grandfathered claim .* is gone/),
-      expect.stringMatching(/^grandfathered claim .* is gone/),
+    const sentence = "Every archive link in the extracts was checked and opened on 23 October 2026.";
+    const l = ledgerLint(texts({ [Q2]: quarter("2026Q2", sentence), [ARCHIVE_LEDGER]: ledger }));
+    expect(l.notices).toEqual([]);
+    expect(l.findings).toEqual([
+      expect.objectContaining({ file: Q2, message: expect.stringMatching(/claims a check .*: fail/) }),
     ]);
   });
   test("format round-trips: parse(format(rows)) is the rows, and quoting survives commas", () => {

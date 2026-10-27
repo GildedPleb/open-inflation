@@ -1,6 +1,6 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
 2025-06-30,2025Q2,BOE,2025-06,monthly average,as published,GBP,776370000000,1.356310,1052998394700,base_money/issuers/BOE/2025.md#boe-lpmavaa--lpmbl22-2025-06-retrieved-2026-10-26
-2025-09-30,2025Q3,BOE,2025-09,monthly average,as published,GBP,760985000000,1.350336,1027585440960,base_money/issuers/BOE/2025.md#boe-lpmavaa--lpmbl22-2025-09-retrieved-2026-10-23
-2025-12-31,2025Q4,BOE,2025-12,monthly average,as published,GBP,761900000000,1.339579,1020625240100,base_money/issuers/BOE/2025.md#boe-lpmavaa--lpmbl22-2025-12-retrieved-2026-10-23
-2026-03-31,2026Q1,BOE,2026-03,monthly average,as published,GBP,747579000000,1.334998,998016469842,base_money/issuers/BOE/2026.md#boe-lpmavaa--lpmbl22-2026-03-retrieved-2026-10-23
-2026-06-30,2026Q2,BOE,2026-06,monthly average,as published,GBP,756193000000,1.332387,1007541722691,base_money/issuers/BOE/2026.md#boe-lpmavaa--lpmbl22-2026-06-retrieved-2026-10-22
+2025-09-30,2025Q3,BOE,2025-09,monthly average,as published,GBP,760985000000,1.350336,1027585440960,base_money/issuers/BOE/2025.md#boe-lpmavaa--lpmbl22-2025-09-retrieved-2026-10-26
+2025-12-31,2025Q4,BOE,2025-12,monthly average,as published,GBP,761900000000,1.339579,1020625240100,base_money/issuers/BOE/2025.md#boe-lpmavaa--lpmbl22-2025-12-retrieved-2026-10-26
+2026-03-31,2026Q1,BOE,2026-03,monthly average,as published,GBP,747579000000,1.334998,998016469842,base_money/issuers/BOE/2026.md#boe-lpmavaa--lpmbl22-2026-03-retrieved-2026-10-26
+2026-06-30,2026Q2,BOE,2026-06,monthly average,as published,GBP,756193000000,1.332387,1007541722691,base_money/issuers/BOE/2026.md#boe-lpmavaa--lpmbl22-2026-06-retrieved-2026-10-26

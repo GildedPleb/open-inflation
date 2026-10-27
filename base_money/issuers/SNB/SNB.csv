@@ -1,6 +1,6 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
 2025-06-30,2025Q2,SNB,2025-06,monthly average,as published,CHF,498169000000,1.22993363278117512779,612714807909,base_money/issuers/SNB/2025.md#snb-snbmoba-n2-monetary-base-2025-06-retrieved-2026-10-26
-2025-09-30,2025Q3,SNB,2025-09,monthly average,as published,CHF,513730000000,1.25622617095981960592,645361070807,base_money/issuers/SNB/2025.md#snb-snbmoba-n2-monetary-base-2025-09-retrieved-2026-10-23
-2025-12-31,2025Q4,SNB,2025-12,monthly average,as published,CHF,511648000000,1.25634927514928570262,642808593932,base_money/issuers/SNB/2025.md#snb-snbmoba-n2-monetary-base-2025-12-retrieved-2026-10-23
+2025-09-30,2025Q3,SNB,2025-09,monthly average,as published,CHF,513730000000,1.25622617095981960592,645361070807,base_money/issuers/SNB/2025.md#snb-snbmoba-n2-monetary-base-2025-09-retrieved-2026-10-26
+2025-12-31,2025Q4,SNB,2025-12,monthly average,as published,CHF,511648000000,1.25634927514928570262,642808593932,base_money/issuers/SNB/2025.md#snb-snbmoba-n2-monetary-base-2025-12-retrieved-2026-10-26
 2026-03-31,2026Q1,SNB,2026-03,monthly average,as published,CHF,502514000000,1.27173393291349157095,639064105564,base_money/issuers/SNB/2026.md#snb-snbmoba-n2-monetary-base-2026-03-retrieved-2026-10-23
-2026-06-30,2026Q2,SNB,2026-06,monthly average,as published,CHF,507312000000,1.25060185214134302133,634445326814,base_money/issuers/SNB/2026.md#snb-snbmoba-n2-monetary-base-2026-06-retrieved-2026-10-22
+2026-06-30,2026Q2,SNB,2026-06,monthly average,as published,CHF,507312000000,1.25060185214134302133,634445326814,base_money/issuers/SNB/2026.md#snb-snbmoba-n2-monetary-base-2026-06-retrieved-2026-10-26
