@@ -1,5 +1,5 @@
 // Every evidence path in one place. Lint (checks.ts), the README/quarter-list generator (readme.ts), the base
-// snapshot (git.ts), the audit report and the test fixtures read these; re-pointing the layout is an edit here.
+// snapshot (git.ts) and the test fixtures read these; re-pointing the layout is an edit here.
 import { posix } from "node:path";
 
 /** The folder holding all evidence: the quarter list, the quarter files and the extracts. */
@@ -27,12 +27,6 @@ export const CSV_PATH = "base_money/base_money.csv";
 export const COMPONENTS_CSV = "base_money/components.csv";
 /** Not a place for the CSV (L12): the repository root. */
 export const ROOT_CSV = posix.basename(CSV_PATH);
-
-/**
- * The archive-link ledger: one row per cited archive link with its last live check (bun run archive-check writes
- * it; never hand-edited). Lint L16 checks its form, its coverage and the quarter files' check claims against it.
- */
-export const ARCHIVE_LEDGER = "base_money/archive_checks.csv";
 
 /** Top-level folders of earlier layouts: any file there now is misplaced (L12). */
 export const RETIRED_ROOTS = ["issuers/", "evidence/", "research/"];

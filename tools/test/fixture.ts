@@ -13,20 +13,17 @@ export const FX = fxPath("2026");
 
 const enc = new TextEncoder();
 
-/** The fixture's default Archive URL 2: a dated record of an archive.today attempt (never fetched). */
-export const ARCHIVE2_ATTEMPT = "attempted 2026-10-02: archive.today returned a CAPTCHA (synthetic fixture)";
-/** The fixture's default Archive URL 3: a dated record of a Ghostarchive attempt (never fetched). */
-export const ARCHIVE3_ATTEMPT = "attempted 2026-10-02: Ghostarchive showed a Cloudflare challenge (synthetic fixture)";
-
 export const extract = (o: {
   title: string;
   retrieved?: string;
   original?: string;
   archive?: string;
-  /** The Archive URL 2 value; null drops the line. Default: a dated attempt, so no fixture HEADs archive.today. */
+  /** An Archive URL 2 value; none by default (the original and one archive are the two links). */
   archive2?: string | null;
-  /** The Archive URL 3 value; null drops the line. Default: a dated attempt, so no fixture HEADs Ghostarchive. */
+  /** A further Archive URL value (numbered after the others given); none by default. */
   archive3?: string | null;
+  /** The Capture check value; null drops the line. Default: the Retrieved date. */
+  capture?: string | null;
   quote?: string;
   /** Extra field lines, e.g. "- As of: 2026-09-30". */
   fields?: string[];
@@ -38,9 +35,11 @@ export const extract = (o: {
     `### ${o.title}`,
     `- Retrieved: ${retrieved}`,
     `- Original URL: ${original}`,
-    `- Archive URL: ${archive}`,
-    ...(o.archive2 === null ? [] : [`- Archive URL 2: ${o.archive2 ?? ARCHIVE2_ATTEMPT}`]),
-    ...(o.archive3 === null ? [] : [`- Archive URL 3: ${o.archive3 ?? ARCHIVE3_ATTEMPT}`]),
+    // Numbered in order (Archive URL, Archive URL 2, ...) over the ones given.
+    ...[archive, o.archive2, o.archive3]
+      .filter((a): a is string => a != null)
+      .map((a, i) => `- ${i === 0 ? "Archive URL" : `Archive URL ${i + 1}`}: ${a}`),
+    ...(o.capture === null ? [] : [`- Capture check: ${o.capture ?? retrieved.slice(0, 10)}`]),
     ...(o.fields ?? []),
     // Adopted by default (the reader table's USD and FX cells link the adopted extract); fields can override it.
     ...((o.fields ?? []).some((f) => f.startsWith("- Adopted:")) ? [] : ["- Adopted: yes"]),
@@ -519,5 +518,36 @@ export const generateAll = (text: Record<string, string>): Record<string, string
   if (!o) throw new Error("fixture outputs do not generate");
   if (o.problems.length) throw new Error(o.problems.map((p) => `${p.file}: ${p.message}`).join("; "));
   for (const [p, t] of o.want) out[p] = t;
-  return out;
+  return withCatalogedCsvs(out);
+};
+
+/**
+ * `text` with catalog.json listing every CSV in it (L18, L19): the first series stays, and each other CSV gets a
+ * copy of it with its own id and path, as the repository's catalog does. Unchanged when catalog.json is not JSON.
+ */
+export const withCatalogedCsvs = (text: Record<string, string>): Record<string, string> => {
+  let c: { series?: Record<string, unknown>[] };
+  try {
+    c = JSON.parse(text["catalog.json"] ?? "");
+  } catch {
+    return text;
+  }
+  const [base] = c.series ?? [];
+  if (!base) return text;
+  const extra = Object.keys(text)
+    .filter((p) => p.endsWith(".csv") && p !== base.path)
+    .sort()
+    .map((p) => {
+      const { issuers: _, ...rest } = base;
+      return {
+        ...rest,
+        id: `base_money_${p
+          .split("/")
+          .pop()
+          ?.replace(/\.csv$/, "")
+          .toLowerCase()}`,
+        path: p,
+      };
+    });
+  return { ...text, "catalog.json": catalog([base, ...extra]) };
 };

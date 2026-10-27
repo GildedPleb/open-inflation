@@ -11,10 +11,9 @@ For contributors. Run every command from the repository root.
 | `bun run lint` | Checks the data files in the working tree | Before every push | Yes | Never |
 | `bun run readme` | Rewrites the generated README parts | After adding a quarter | Through lint L13 | Never |
 | `bun run verify` | Checks each archive URL your change adds | While archiving new sources | No | Yes |
-| `bun run audit` | Re-checks every link and keeps private copies | When re-checking links | No | Yes |
-| `bun run archive-check` | Checks every cited archive capture replays with its figure; writes `base_money/archive_checks.csv` | Before every merge that touches evidence | Yes, run locally (see [Merge procedure](#merge-procedure)) | Yes |
+| `bun run link-check` | Checks each figure has two live links that show its number; `--write` drops dead archives and dates the Capture check | One day to one week after a new quarter whose links were not confirmed at build time, and on the whole repository quarterly (mid January, April, July and October) | No | Yes |
 
-CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check` and `bun run lint` on every push and pull request. CI never runs `verify`, `audit` or `archive-check`: archives rate-limit. `archive-check` is a local merge step instead; lint L16 checks its ledger offline in CI.
+CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check` and `bun run lint` on every push and pull request. CI never runs `verify` or `link-check`: archives rate-limit. Lint L16 checks the two-link rule offline in CI; whether the links are live is `link-check`'s job, and a slow archive never blocks publishing.
 
 ## Requirements
 
@@ -36,22 +35,16 @@ Every command below reports in these words.
 |---|---|---|
 | finding | A real problem. The run fails with exit 1. | lint, verify |
 | verified | The archive answered with the capture. Progress lines say `ok`. | verify |
-| excused | A dead snapshot covered by a Re-archive note. Not a finding. | verify |
-| ok | Resolves, with the same content as the last saved copy. On a first run, any resolving URL is ok. | audit |
-| changed | Resolves, but its sha256 differs from the last saved copy, or it redirects to a different final URL than last time. | audit |
-| lost | HTTP 404 or 410, or the host name does not exist (DNS ENOTFOUND) while a canary host still answers. | audit |
-| no verdict | The check could not decide. Not a failure, but the run is incomplete and exits 3. | verify, audit |
+| no verdict | The check could not decide. Not a failure, but the run is incomplete and exits 3. | verify, link-check |
 
 A no verdict always says why, in one of these kinds:
 
 | Kind | When |
 |---|---|
 | rate-limited | a 429 or 503 still there when pacing gives up; a 429 is never a verdict. |
-| blocked | A challenge or CAPTCHA: a 403 from archive.today or Ghostarchive, a Cloudflare `cf-mitigated: challenge` header, or a CAPTCHA page. In audit, a 403 from any host. Never retried. |
+| blocked | A challenge or CAPTCHA: a 403 from archive.today or Ghostarchive, a Cloudflare `cf-mitigated: challenge` header, or a CAPTCHA page. Never retried. |
 | unconfirmed | The capture was not seen. See [Archive host quirks](#archive-host-quirks). |
 | offline | No HTTP answer, and no canary host (`www.gstatic.com` or `one.one.one.one`) answers either. The network itself is down. |
-| error page | Audit only: Ghostarchive's `Archiving error` page. In verify this page is a finding. |
-| other | Audit only: any other HTTP status, or a timeout, reset, redirect loop, oversized body or DNS error other than ENOTFOUND while a canary answers. |
 
 For a no-verdict URL, open it in a browser, or re-run later or from another network.
 
@@ -140,7 +133,6 @@ A GitHub push means `GITHUB_EVENT_NAME=push`, and `GITHUB_REF` is not `refs/head
 Verify prints the base it chose and why on stderr, except for `--base` and a lone root commit. An explicit base (`--base` or `$LINT_BASE`) that resolves to `HEAD`, such as `--base origin/main` on `main`, compares the tree with its own commit, so only uncommitted changes count; verify says so on stderr.
 
 - It checks each archive URL added since the base that passes L7, once.
-- It also checks each `- Re-archive:` note URL added since the base, even one already committed elsewhere.
 - It never re-checks any other committed link.
 - Every count is of distinct URLs. A URL cited by several extracts is checked, and counted, once.
 - It applies the network half of [L8](lint.md#l8). What it asks each archive is in [Archive host quirks](#archive-host-quirks).
@@ -163,139 +155,83 @@ The summaries read:
 
 Rules:
 
-- A dead snapshot (HTTP 404 or 410) is a finding.
-- It is excused only by a `- Re-archive: <new archive URL>` line added to the same extract in the same diff.
-- Verify checks that new capture too. A Re-archive note excuses nothing but a dead snapshot.
-- A Ghostarchive `Archiving error` page is a finding: that URL will never hold a capture.
-- For it, record `attempted <YYYY-MM-DD>: <reason>` instead. A Re-archive note does not excuse it.
+- A dead snapshot (HTTP 404 or 410) is a finding. Cite another capture instead.
+- A Ghostarchive `Archiving error` page is a finding: that URL will never hold a capture. Drop the line; nothing records the failure.
 - A redirect is followed only to the same capture, at most 5 hops. Any other redirect is a finding.
 - An archive.today or Ghostarchive network error is a finding while a canary host answers, and offline when none does.
 - Any other failure is a finding.
 
 | Exit | Meaning |
 |---|---|
-| 0 | Clean: every URL verified or excused |
+| 0 | Clean: every URL verified |
 | 1 | Findings |
 | 2 | Usage, base or pacing-setting error |
 | 3 | Incomplete: no findings, but some URL has no verdict |
 
-## Audit
+## Link check
 
-Re-checks every link in the repository and keeps private copies of what still resolves.
-
-```sh
-bun run audit
-```
-
-- It is a local script. It is not a merge gate and never runs in CI. It takes no arguments.
-- It checks every Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the repository, once per URL.
-- It fetches each link and classes it ok, changed, lost or no verdict, by HTTP status and content (sha256).
-- Wayback captures are fetched raw, as `https://web.archive.org/web/<timestamp>id_/<url>`, for hashing.
-- Originals are hashed as served, so a dynamic original may show as changed. It needs a human look.
-- The script does not judge whether a figure is still shown.
-- When no canary answers, requests go out without pacing waits until a link answers again. An offline run ends at once.
-
-Where it saves:
-
-- The store is `~/open-inflation-archive/` by default, or `$OBM_ARCHIVE_DIR`.
-- A store inside the repository is refused, symlinks resolved.
-- It saves each link that got a verdict and still resolves. No-verdict pages are not saved.
-- It writes `manifest.json`, with each URL's sha256 and final URL.
-- It writes dated reports, `reports/audit-<YYYY-MM-DD>.md` and `.json`.
-- The store is private. Never commit or publish it.
-- Append each finding as a `- Link audit <YYYY-MM-DD>: ...` line under that link's extract in `base_money/issuers/<ISS>/<YYYY>.md`. Quarter files get nothing.
-
-What it prints:
-
-- A summary: `audit <date>: N links: ok A, changed C, lost L, no verdict V`.
-- One row per changed, lost or no-verdict link. Each carries its HTTP status or error code.
-- A paced row reads, e.g., `HTTP 429 (rate-limited: gave up after K tries over T)` or `HTTP 429 (blocked: challenge/CAPTCHA)`.
-- The two report paths.
-- An `audit: INCOMPLETE:` line when any link has no verdict, counted by kind.
-
-Its kinds are rate-limited, blocked, unconfirmed, Ghostarchive error page, offline and other. Changed and lost are a report for the researcher, not findings, so audit never exits 1. In short, audit exits 3 when any link has no verdict.
-
-| Exit | Meaning |
-|---|---|
-| 0 | Every link got a verdict |
-| 2 | Usage, not a git working tree, refused store, or pacing-setting error |
-| 3 | Incomplete: some link has no verdict |
-
-## Archive check
-
-`bun run archive-check` checks every archive link the evidence cites and writes the ledger `base_money/archive_checks.csv`. It is a **required merge step run locally, before merging**: archives rate-limit, so it never runs in CI.
+`bun run link-check` checks the two-live-links rule against the network: every figure (each extract with a `- Value (published unit):`) needs two live links that show its number, the Original URL plus one archive, or two archives when the original is gone. It is local only, not a merge gate: archives rate-limit, so it never runs in CI.
 
 ```sh
-git fetch origin main
-OBM_ARCHIVE_DIR=/tmp/scratch bun run archive-check --base origin/main   # every link; writes the ledger
-bun run archive-check --recheck                                          # only rows not yet ok (pending or fail)
-bun run archive-check --no-write                                         # report only
+bun run link-check                         # every figure; report only
+bun run link-check --quarter 2026Q3        # only the extracts under ## 2026Q3
+bun run link-check --write                 # also drop dead archive lines and date the Capture checks
 ```
 
-### Merge procedure
+### What counts as live
 
-1. Run `bun run archive-check --base origin/main` on the PR branch.
-2. Commit the regenerated `base_money/archive_checks.csv`. Never edit it by hand: lint L16 fails on any row that is not in generated form.
-3. Merge only on exit 0. Paste the summary line (`archive-check: N ok, P pending (0 blocking), 0 fail, U unchecked`) into the PR.
-4. Pending links in the new quarter must be re-checked at least 24 h after their capture: run `bun run archive-check --recheck` and commit the ledger in a follow-up PR. Once that quarter is on main, its pending links block.
+- **Original URL:** fetched live, following up to 5 redirects. A 404 or 410 is dead. A 403, a 5xx, a network error or a rate limit is no verdict.
+- **Wayback:** only the exact capture. The check asks for the raw `id_` form (`/web/<ts>id_/<url>`) and follows no redirect: a 3xx (often a 302 to another timestamp, meaning there is no capture at the cited one) is dead. Only HTTP 200 can be live. The availability API and CDX are never asked: an index entry is not a capture.
+- **Ghostarchive:** the capture page must answer 200 with its replay wrapper (not the `Archiving error` page). Then its saved file (the WARC the wrapper names) is fetched; a redirect is followed only to the same `<id>.warc` on ghostarchive.org (it moves storage paths under the same id).
+- **archive.today:** never fetched (its CAPTCHA blocks scripts, and no browser is used to get around it). Its links are `unchecked`: they neither count as live nor block a Capture check date.
+- **The number:** a link is live only when it also shows the extract's `- Value (published unit):`, as written; each part of a `a + b (no printed total)` sum separately. An HTML or text capture must show it as written. A binary or JSON body may show it as a number instead, equal at the precision written (`5,748.6` matches `5748.60`). xlsx is unzipped and its sheet XML read; PDF is read through its text layer with `pdftotext` (poppler-utils, on `PATH`; without it a PDF gets no verdict). A 200 that does not show the number is dead.
 
-### Which links
+### Verdicts
 
-Every Wayback (`web.archive.org`) and Ghostarchive URL in `base_money/**.md`: `- Archive URL:`, `- Archive URL 2:` and `- Archive URL 3:` lines, URLs inside `- Notes:` and other bullets, and prose links in READMEs. `- Archive attempt:`, `- Rejected source:` and `- Link audit` lines record failures and are not citations. One ledger row per link per extract (the extract anchor is `<file>#<heading slug>`).
+| Verdict | Meaning | `--write` |
+|---|---|---|
+| `ok` | Two or more links live with the number | Sets the Capture check to today (UTC) when every link is live or unchecked |
+| `drop` | Two or more live, and some Archive URL dead | Deletes the dead Archive URL lines, renumbers the rest and dates the Capture check |
+| `repair` | Fewer than two live, or the original is dead with no Capture check note | Nothing: archive the original, archive the surviving archive, or re-find the original |
+| `unknown` | Fewer than two confirmed live, and some link got no verdict | Nothing: re-run |
 
-archive.today links are listed as `unchecked`, never `ok`: its CAPTCHA blocks scripts, and no browser is used.
+- `--write` never adds a link and never deletes the Original URL. Extra live links stay. `- Retrieved:` never changes.
+- When the original is gone for good, add a note to the Capture check giving the evidence that it cannot be re-found (`- Capture check: 2026-10-27; <evidence>.`). With a note, the dead original no longer counts, and two live archives are enough.
+- Output: a start line with the URL count and expected time, a progress line per URL, then one line per figure (`<verdict> <file>#<slug>: <action>; N live (<labels>)`, repairs first) with its links that are not live, and a summary: `link-check: adopted A ok, D drop, R repair, U unknown; T archive.today link(s) unchecked`.
+- Only adopted figures (`- Adopted: yes`) set the exit: 0 clean (a `drop` counts as clean with `--write`), 1 a drop or repair, 2 usage or error, 3 some figure unknown.
 
-### What counts
+### Save order
 
-- **Wayback:** only the exact capture. The check asks for the raw `id_` form (`/web/<ts>id_/<url>`) and follows no redirect: a 3xx (often a 302 to another timestamp, meaning there is no capture at the cited one) fails. Only HTTP 200 passes. The availability API and CDX are never asked: an index entry is not a capture.
-- **Ghostarchive:** the capture page must answer 200 with its replay wrapper (not the `Archiving error` page). Then its saved file (the WARC the wrapper names) is fetched; a redirect is followed only to the same `<id>.warc` on ghostarchive.org. The cited page's record is read first.
-- **The figure:** the extract's `- Value (published unit):` must be in the body, as written; each part of a `a + b (no printed total)` sum separately. An HTML or text capture cited on an `- Archive URL` line must show it as written. A binary or JSON capture, or a second snapshot in a Note (often a JSON API without grouping), may show it as a number instead, equal at the precision written (`5,748.6` matches `5748.60`, `447.096.654` matches `447096654`).
-- **Binaries:** xlsx is unzipped and its sheet XML read (a cell holds the unformatted number); PDF is read through its text layer with `pdftotext` (poppler-utils, on `PATH`; without it a PDF fails, never passes); a legacy `.xls` cannot be read and fails. A capture's sha256 is recorded; if it changes on a later check, the link fails.
-- A link outside any extract (a README) passes on replay alone.
+When a figure needs a link (a new figure, or a `repair`), save captures in this order and stop as soon as the figure has two live links:
 
-### Results
+1. Wayback Save Page Now. If it fails, retry once.
+2. Ghostarchive.
+3. archive.today.
 
-| Result | Meaning |
-|---|---|
-| `ok` | Passed at least 24 h after the capture (`durable` yes; `durable_since_utc` is the first such pass) |
-| `pending` | Passed, but less than 24 h after the capture: re-check later |
-| `fail` | Any redirect, non-200, missing figure, unreadable binary, changed bytes, network error, timeout or 5xx; also a 429 or 503 still there after 12 paced tries |
-| `unchecked` | archive.today |
-
-There is no "no verdict": a network error or timeout is retried 3 times, 15 s apart, then fails. A 429 or 503 slows the host down (see [Tuning and limits](#tuning-and-limits)) and is retried up to 12 times within 12 h, so a rate limit delays the run rather than ending it.
-
-Pending is allowed only in a quarter that is new against `--base` (default `origin/main`): a quarter file not there yet. Anywhere else it blocks.
-
-Output: one `FAIL <url> [<anchor>]: <reason>` line per failing link, then `PENDING` lines (with the time after which a re-check makes it durable, and whether it is allowed or blocks), `ok` and `unchecked` lines, the quarter-file check claims the ledger does not back, a pacing line per host that answered "slow down", and the summary.
-
-Exit `0`: every link ok, or pending only in a new quarter. `1`: a failing link, or a blocking pending one. `2`: usage, an unknown `--base`, or a ledger not in generated form.
+Cite each capture that worked as the next `- Archive URL <n>:` line; record nothing about the ones that failed. A slow or failing archive never blocks publishing: lint (L16) needs two cited links, and the next link check confirms them.
 
 ### Pacing
 
-One request at a time per host, hosts in parallel, the `OBM_RATE_*` overrides as for verify and audit:
+One request at a time per host, hosts in parallel, the `OBM_RATE_*` overrides as for verify (see [Tuning and limits](#tuning-and-limits)). link-check is patient: up to 12 tries per URL within 12 h, so a rate limit delays the run rather than ending it. Each request times out after 60 s (`OBM_ARCHIVE_TIMEOUT_MS`).
 
 - **Wayback, 2 s apart (30 a minute).** Internet Archive staff give the replay limit (`/web/<timestamp>/`) as 600 a minute over 5 minutes, asking clients to stay at 80% (480); `/cdx/` is 60 a minute and Save Page Now 15 or fewer ([edgi-govdata-archiving/wayback#137](https://github.com/edgi-govdata-archiving/wayback/issues/137)). Since September 2026 its bot protection also sends 429s below those limits, so the check stays far under them and backs off on any 429.
-- **Ghostarchive, 5 s apart.** It publishes no limit and sits behind Cloudflare; each link costs three requests (the page, then its saved file, which usually redirects once to another storage path).
-
-A full run of about 140 URLs takes about 20 minutes; `--recheck` only the links not yet ok.
+- **Ghostarchive, 5 s apart.** It publishes no limit and sits behind Cloudflare; each link costs two or three requests (the page, then its saved file, which may redirect to another storage path).
 
 ## Archive host quirks
 
 Captures are made before verify runs:
 
 - archive.today and Ghostarchive captures are made in a browser, with any CAPTCHA solved.
-- A capture counts as failed only after a real browser attempt. A scripted submission that meets a CAPTCHA or challenge is not an attempt.
-- The browser confirms each snapshot's content at capture, recorded as a `- Capture check:` line under its extract.
-- See [Third and fourth links](methodology/base_money.md#third-and-fourth-links).
+- The order is in [Save order](#save-order). Nothing records a failed capture.
 
-What verify asks each archive. Audit fetches every link with a GET and applies the same Ghostarchive page test.
+What verify asks each archive.
 
 | Host | What we check | Verified when | No verdict when |
 |---|---|---|---|
-| web.archive.org (Archive URL) | HEAD `https://web.archive.org/web/<timestamp>/<url>` | It answers 2xx for that exact timestamp | A 429 remains after retries: rate-limited. Unreachable: ask the availability API (next row). |
+| web.archive.org | HEAD `https://web.archive.org/web/<timestamp>/<url>` | It answers 2xx for that exact timestamp | A 429 remains after retries: rate-limited. Unreachable: ask the availability API (next row). |
 | archive.org availability API, `https://archive.org/wayback/available` | Only when web.archive.org is unreachable. Asks for the exact timestamp. | The answer lists that exact timestamp | Any other answer: unconfirmed |
-| archive.today (Archive URL 2) | HEAD the capture | It answers 2xx | 403: blocked (CAPTCHA). 429: rate-limited, or blocked when a challenge is detected. |
-| Ghostarchive (Archive URL 3) | GET the capture, reading at most the first 256 KiB | A 200 page with its `<replay-web-page>` player or `Archive date:` line | 403: blocked (Cloudflare challenge). 429 or 503: rate-limited, or blocked only when a challenge page or header is detected. Any other 200 page (loading, in progress): unconfirmed. |
+| archive.today | HEAD the capture | It answers 2xx | 403: blocked (CAPTCHA). 429: rate-limited, or blocked when a challenge is detected. |
+| Ghostarchive | GET the capture, reading at most the first 256 KiB | A 200 page with its `<replay-web-page>` player or `Archive date:` line | 403: blocked (Cloudflare challenge). 429 or 503: rate-limited, or blocked only when a challenge page or header is detected. Any other 200 page (loading, in progress): unconfirmed. |
 
 Notes:
 
@@ -308,7 +244,7 @@ Notes:
 
 ## Tuning and limits
 
-Verify and audit pace their requests the same way:
+Verify and link-check pace their requests the same way:
 
 - One host's requests are serial, at least its interval apart.
 - Different hosts run in parallel.
@@ -333,15 +269,14 @@ Verify and audit pace their requests the same way:
 | Slow-down | Each 429 or 503 multiplies that host's interval by 1.5 for the rest of the run, up to 5 min | None |
 | Tries per URL | 5, the first included | `OBM_RATE_MAX_TRIES`, at least 1 |
 | Run budget | 60 min. No wait that would end past it is started. | `OBM_RATE_BUDGET_MS` |
-| Request timeout | 15 s in verify, 30 s in audit | None |
-| Redirects | Verify: 5 hops, same capture only. Audit: 10. | None |
+| Request timeout | 15 s in verify | None |
+| Redirects | Verify: 5 hops, same capture only. | None |
 | Page read | Ghostarchive: 256 KiB. Challenge check: 512 KiB. | None |
-| Audit body | 100 MiB. A larger body is not saved and gets no verdict. | None |
 | Canary check | One answer is reused for 60 s | None |
 
 - A URL given up at the try cap or the budget is logged `rate-limited (gave up after K tries over T; ...)`.
 - The availability API's 429s and 503s always use the backoff; its Retry-After is not read.
-- Each request sends a User-Agent: `open-inflation-verify` or `open-inflation-audit`, with the repository URL.
+- Each request sends a User-Agent: `open-inflation-verify`, with the repository URL.
 
 ## Exit codes
 
@@ -354,8 +289,8 @@ Every script uses the same codes.
 | `2` | Usage or error |
 | `3` | Incomplete: no findings, but some URL got no verdict |
 
-- lint and archive-check use 0, 1 and 2; verify uses all four; audit uses 0, 2 and 3.
-- Exit 2 covers a bad argument, a base that cannot be resolved, not a git checkout, a refused store and a bad pacing setting.
+- lint uses 0, 1 and 2; verify and link-check use all four.
+- Exit 2 covers a bad argument, a base that cannot be resolved, not a git checkout and a bad pacing setting.
 - Any uncaught internal error also exits 2, never 1.
 
 ## Code checks
@@ -384,4 +319,4 @@ Code lives in `tools/` (`tools/scripts/`, `tools/test/`, `tools/tsconfig.json`).
 - `catalog.json`: the data catalog.
 - `base_money/`: the series CSV, the quarter list, one file per quarter, the quoted sources per central bank, and the exchange-rate sources.
 
-The `base_money/` paths are `base_money/base_money.csv`, `base_money/components.csv`, `base_money/README.md`, `base_money/quarters/YYYYQn.md`, `base_money/issuers/<ISS>/README.md`, `base_money/issuers/<ISS>/<YYYY>.md`, `base_money/issuers/<ISS>/<ISS>.csv`, `base_money/FX/README.md`, `base_money/FX/<YYYY>.md` and `base_money/archive_checks.csv`.
+The `base_money/` paths are `base_money/base_money.csv`, `base_money/components.csv`, `base_money/README.md`, `base_money/quarters/YYYYQn.md`, `base_money/issuers/<ISS>/README.md`, `base_money/issuers/<ISS>/<YYYY>.md`, `base_money/issuers/<ISS>/<ISS>.csv`, `base_money/FX/README.md` and `base_money/FX/<YYYY>.md`.

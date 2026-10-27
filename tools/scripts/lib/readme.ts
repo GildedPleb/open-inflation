@@ -517,6 +517,14 @@ const COVERAGE_HEADER = " Coverage |";
 const COVERAGE_ALIGN = " :------- |";
 
 /**
+ * A cell kept on one line at phone width: GitHub strips CSS (no `white-space: nowrap`), so spaces become `&nbsp;`.
+ * Hyphens stay ASCII `-`: a U+2011 survives GitHub's render and a copy, so a search for the date would not match.
+ */
+const nowrap = (s: string) => s.replaceAll(" ", "&nbsp;");
+/** The note under the quarter table (README copy is Form's). */
+export const QUARTER_TABLE_NOTE = "Total is rounded for easy reading; Exact total is the full figure, to the dollar.";
+
+/**
  * The quarter table: every CSV row newest first (the linked quarter, its ISO count date, the rounded total as the bank
  * tables show USD, its YoY, the same cell as the front page, and the exact total), with any gap quarter as a row of
  * dashes. A last Coverage column only when a listed quarter leaves issuers out. (Form owns the layout, YOY_LAYOUT.md
@@ -530,8 +538,8 @@ function quarterList(m: Model): string {
     const q = qs[i] as Quarter;
     const left = leftOut(q, cat);
     const cells = [
-      `[${quarterLabel(q.id)}](${relLink(QUARTER_LIST, q.evidenceId)})`,
-      q.date,
+      `[${nowrap(quarterLabel(q.id))}](${relLink(QUARTER_LIST, q.evidenceId)})`,
+      nowrap(q.date),
       usdShort(q.value),
       yoyCell(m.total.get(q.id) as Yoy),
       group(q.value.toString()),
@@ -541,7 +549,7 @@ function quarterList(m: Model): string {
     const prev = qs[i - 1];
     if (prev)
       for (let g = shiftQuarter(q.id, -1); g > prev.id; g = shiftQuarter(g, -1))
-        out.push(`| ${[quarterLabel(g), ...cells.slice(1).map(() => DASH)].join(" | ")} |`);
+        out.push(`| ${[nowrap(quarterLabel(g)), ...cells.slice(1).map(() => DASH)].join(" | ")} |`);
   }
   if (!out.length) return "No quarters yet.";
   const extra = (s: string) => (coverage ? s : "");
@@ -555,7 +563,7 @@ function quarterList(m: Model): string {
  * note paragraphs that used to follow (each starting "¹ ", "² ", "ᵖ " or a quarter file's "YoY: " line) removed.
  */
 function withNotes(head: string, rest: string, notes: readonly string[]): string {
-  const NOTE = /^\n\n(?:[¹²ᵖ] |YoY: )[^\n]*/;
+  const NOTE = /^\n\n(?:[¹²ᵖ] |YoY: |Total is rounded)[^\n]*/;
   let r = rest;
   for (let m = NOTE.exec(r); m; m = NOTE.exec(r)) r = r.slice(m[0].length);
   return head + notes.map((n) => `\n\n${n}`).join("") + r;
@@ -566,10 +574,10 @@ function withNotes(head: string, rest: string, notes: readonly string[]): string
  * "## Quarters" heading is missing.
  */
 export function fillIndex(index: string, list: string, notes: readonly string[] = []): string | { problem: string } {
-  const f = fillList(index, QUARTERS_HEADING, list, "quarter list");
+  const f = fillList(index, QUARTERS_HEADING, list, "quarter table");
   if (typeof f !== "string") return f;
   const at = f.indexOf(`\n${QUARTERS_HEADING}\n`) + QUARTERS_HEADING.length + 3 + list.length;
-  return withNotes(f.slice(0, at), f.slice(at), notes);
+  return withNotes(f.slice(0, at), f.slice(at), list.startsWith("|") ? [QUARTER_TABLE_NOTE, ...notes] : notes);
 }
 
 // ---------- quarter files: the YoY column ----------

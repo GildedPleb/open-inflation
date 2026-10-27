@@ -55,7 +55,7 @@ export async function canaryOnline(
   return false;
 }
 
-/** `online`, asked at most once per CANARY_TTL_MS of `now` (verify and audit ask only after a network error). */
+/** `online`, asked at most once per CANARY_TTL_MS of `now` (verify asks only after a network error). */
 export function networkCheck(online: () => Promise<boolean>, now: () => number): () => Promise<boolean> {
   let last: { at: number; up: Promise<boolean> } | null = null;
   return () => {
@@ -68,7 +68,7 @@ export function networkCheck(online: () => Promise<boolean>, now: () => number):
 const SNAPSHOT = /^https?:\/\/web\.archive\.org\/web\/(\d{14})(?:[a-z]{2}_)?\//;
 /** archive.today under any of its three hosts. Its captures redirect between them (and between the dated form and the short id). */
 const TODAY = /^https?:\/\/archive\.(?:ph|today|is)\//;
-/** A Ghostarchive capture (Archive URL 3). A hop is followed only to another ghostarchive.org/archive/ URL. */
+/** A Ghostarchive capture. A hop is followed only to another ghostarchive.org/archive/ URL. */
 const GHOST = /^https?:\/\/ghostarchive\.org\/archive\//;
 export const MAX_HOPS = 5;
 /** Sent on every request by `bun run verify`, so an archive can see who is asking. */

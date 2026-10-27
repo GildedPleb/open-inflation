@@ -4,6 +4,8 @@ import {
   AVAILABILITY_FORMS,
   archiveNet,
   bounded,
+  CANARIES,
+  canaryOnline,
   errorText,
   ghostPage,
   httpAvailable,
@@ -11,7 +13,7 @@ import {
   PAGE_READ_BYTES,
   USER_AGENT,
 } from "../scripts/lib/archive.ts";
-import { archive2Problem, extracts, machines } from "../scripts/lib/checks.ts";
+import { archiveProblem, captureProblem, extracts, machines } from "../scripts/lib/checks.ts";
 import { parseDecimal, roundHalfEven, sumOfProducts, usdPerUnit, wholeUsd } from "../scripts/lib/decimal.ts";
 import { EXIT, exitOnCrash } from "../scripts/lib/exit.ts";
 import { chooseBase } from "../scripts/lib/lint-base.ts";
@@ -363,8 +365,6 @@ describe("SNB: availability asked under each query form (archiveNet over a fake 
       original: ORIG,
       archive: WB,
       retrieved: "2026-10-22T17:17:00Z",
-      archive2: "attempted 2026-10-22: the page showed a CAPTCHA challenge",
-      archive3: "attempted 2026-10-22: the page showed a CAPTCHA challenge",
     });
   const API = "https://archive.org/wayback/available?url=";
   const run = async (stale: (query: string) => boolean) => {
@@ -534,34 +534,23 @@ describe("verify over an injected fetch", () => {
     });
     return { fs, urls, progress, summary };
   };
-  // m-B: the note names the new capture, which verify HEADs too (here it answers 200).
-  const NEWCAP = "https://ghostarchive.org/archive/NeW01";
-  const note = `- Re-archive: ${NEWCAP} (capture gone; recaptured)\n`;
   test("200 on both archives: clean, with the summary line", async () => {
     const r = await run(added, { [WB]: [200], [TODAY]: [200] });
     expect(r.fs).toEqual([]);
     expect(r.summary).toEqual(["archive.today (distinct URLs): 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
   for (const status of [404, 410]) {
-    test(`Wayback ${status} without a Re-archive note fails and asks for one`, async () => {
+    test(`Wayback ${status} fails and asks for another capture`, async () => {
       const r = await run(added, { [WB]: [status], [TODAY]: [200] });
       expect(r.fs.map((x) => [x.check, x.message])).toEqual([
         [
           "L8",
-          `archive URL ${WB} failed HEAD: HTTP ${status}; recapture it and add "- Re-archive: <new archive URL>" to this extract in the same commit`,
+          `archive URL ${WB} failed HEAD: HTTP ${status}; recapture it (another archive) and cite that capture instead`,
         ],
       ]);
     });
-    test(`Wayback ${status} with a Re-archive note in the same diff is excused`, async () => {
-      const r = await run(added + note, { [WB]: [status], [TODAY]: [200], [NEWCAP]: [200] });
-      expect(r.fs).toEqual([]);
-      expect(r.progress).toContain(`L8 [1/3] excused (HTTP ${status}, Re-archive note) ${WB}`);
-      expect(r.urls).toContain(NEWCAP);
-    });
-    test(`archive.today ${status} with and without a Re-archive note`, async () => {
-      expect((await run(added, { [WB]: [200], [TODAY]: [status] })).fs.length).toBe(1);
-      expect((await run(added + note, { [WB]: [200], [TODAY]: [status], [NEWCAP]: [200] })).fs).toEqual([]);
-    });
+    test(`archive.today ${status} fails`, async () =>
+      expect((await run(added, { [WB]: [200], [TODAY]: [status] })).fs.map((x) => x.check)).toEqual(["L8"]));
   }
   for (const status of [403, 429])
     test(`archive.today ${status}: no verdict, not a failure; counted unverified and listed`, async () => {
@@ -729,186 +718,86 @@ describe("wholeUsd (one entry's USD, rounded half-to-even to $1, exact)", () => 
 });
 
 // Assay (3): "2 is 1 and 1 is none": a second archive on archive.today, or a dated record of the attempt.
-describe("archive2Problem (Archive URL 2 value)", () => {
+describe("archiveProblem (an Archive URL value)", () => {
   const ORIG = "https://example.test/FED-H.4.1";
-  const ok = (v: string) => expect(archive2Problem(v, ORIG)).toBeNull();
-  const bad = (v: string, why: RegExp) => expect(archive2Problem(v, ORIG) ?? "").toMatch(why);
-  test("archive.today short ids on each of its hosts pass", () => {
+  const GHOST = "https://ghostarchive.org/archive/AbC12";
+  const ok = (v: string, captured: string[] = [ORIG]) => expect(archiveProblem("Archive URL", v, captured)).toBeNull();
+  const bad = (v: string, why: RegExp, captured: string[] = [ORIG]) =>
+    expect(archiveProblem("Archive URL", v, captured) ?? "").toMatch(why);
+  test("a Wayback snapshot, archive.today short ids on each host, and Ghostarchive pass", () => {
+    ok(`https://web.archive.org/web/20261002140500/${ORIG}`);
     for (const h of ["archive.ph", "archive.today", "archive.is"]) ok(`https://${h}/AbC12`);
+    ok(GHOST);
   });
-  test("the dated form for the same original passes", () => ok(`https://archive.ph/20261002140500/${ORIG}`));
-  test("the dated form for another original fails", () =>
-    bad("https://archive.ph/20261002140500/https://example.test/other", /not the Original URL/));
-  test("the dated form with an impossible timestamp fails", () =>
-    bad(`https://archive.ph/20261302140500/${ORIG}`, /timestamp/));
-  test("other hosts and self-hosted copies fail", () => {
+  test("a dated archive.today capture and a Wayback snapshot of the original or another archive URL pass", () => {
+    ok(`https://archive.ph/20261002140500/${ORIG}`);
+    ok(`https://web.archive.org/web/20261002140500/${GHOST}`, [ORIG, GHOST]);
+    ok(`https://archive.ph/20261002140500/${GHOST}`, [ORIG, GHOST]);
+  });
+  test("a capture of another page fails", () => {
+    bad("https://archive.ph/20261002140500/https://example.test/other", /not the Original URL/);
+    bad("https://web.archive.org/web/20261002140500/https://example.test/other", /not the Original URL/);
+  });
+  test("an impossible or short timestamp fails", () => {
+    for (const ts of ["20261302140500", "20260230140500", "20261002250000"]) {
+      bad(`https://archive.ph/${ts}/${ORIG}`, /is not a real time/);
+      bad(`https://web.archive.org/web/${ts}/${ORIG}`, /is not a real time/);
+    }
+    bad(`https://web.archive.org/web/2026100214050/${ORIG}`, /14-digit timestamp/);
+  });
+  test("other hosts, self-hosted copies, attempt records and blanks fail", () => {
     for (const v of [
-      "https://web.archive.org/web/20261002140500/https://example.test/FED-H.4.1",
       "https://archive.org/details/x",
       "https://archive.ph.evil.test/AbC12",
       "https://mirror.example.test/FED-H.4.1.html",
       "https://www.archive.ph/AbC12",
-    ])
-      bad(v, /archive\.today/);
-  });
-  test("http, a trailing path, an empty id or a query fail", () => {
-    for (const v of [
       "http://archive.ph/AbC12",
       "https://archive.ph/AbC12/extra",
       "https://archive.ph/",
       "https://archive.ph/AbC12?x=1",
+      "attempted 2026-10-02: archive.today returned a CAPTCHA",
+      "",
+      "none",
     ])
-      bad(v, /archive\.today/);
+      bad(v, /is not an archive capture/);
   });
-  test("a dated attempt with a reason passes", () => ok("attempted 2026-10-02: archive.today returned a CAPTCHA"));
-  test("an attempt needs a real ISO date", () => {
-    for (const v of ["attempted 2026-02-30: blocked", "attempted 2026-1-02: blocked", "attempted: blocked"])
-      bad(v, /YYYY-MM-DD/);
-  });
-  test("an attempt needs a reason", () => {
-    for (const v of ["attempted 2026-10-02:", "attempted 2026-10-02"])
-      bad(v, /must read "attempted YYYY-MM-DD: <reason>"/);
-    bad("attempted 2026-10-02:   ", /needs a reason after the date/);
-  });
-  // Assay: the attempt date is on or after the UTC date of Retrieved, and not after the UTC date of now + 10 min.
+});
+
+describe("captureProblem (a Capture check value)", () => {
   const R = "2026-10-02T14:03:00Z";
   const NOW = Date.parse("2026-10-22T16:00:00Z");
-  const at = (day: string, retrieved: string | undefined = R, now: number | undefined = NOW) =>
-    archive2Problem(`attempted ${day}: blocked by CAPTCHA`, ORIG, retrieved, now);
-  test("an attempt before Retrieved's UTC date fails; the same day and later days up to today pass", () => {
+  const at = (v: string, retrieved: string | undefined = R, now = NOW) => captureProblem(v, retrieved, now);
+  test("a date, or a date with a note ending in a period, passes", () => {
+    expect(at("2026-10-22")).toBeNull();
+    expect(at("2026-10-22; the release page is gone and the issuer's search finds no copy.")).toBeNull();
+  });
+  test("anything but a real ISO date fails", () => {
+    for (const v of ["2026-02-30", "2026-1-02", "checked", "", "2026-10-22 ok"])
+      expect(at(v) ?? "").toMatch(/YYYY-MM-DD/);
+  });
+  test("a note must be non-empty text ending with a period", () => {
+    for (const v of ["2026-10-22;", "2026-10-22;  ", "2026-10-22; gone"])
+      expect(at(v) ?? "").toMatch(/non-empty text ending with a period/);
+  });
+  test("a date before Retrieved's UTC date fails; the same day and later days up to today pass", () => {
     expect(at("2026-10-01") ?? "").toMatch(/before Retrieved 2026-10-02T14:03:00Z \(UTC date 2026-10-02\)/);
     expect(at("2026-10-02")).toBeNull();
     expect(at("2026-10-22")).toBeNull();
   });
-  test("an attempt after today's UTC date fails", () => {
+  test("a date after today's UTC date fails, with 10 min skew past UTC midnight", () => {
     expect(at("2026-10-23") ?? "").toMatch(/in the future \(now 2026-10-22T16:00:00.000Z/);
     expect(at("2099-01-01") ?? "").toMatch(/2099-01-01 is in the future/);
-  });
-  test("the 10 min skew past UTC midnight allows tomorrow's date, and no more", () => {
     expect(at("2026-10-23", R, Date.parse("2026-10-22T23:50:00Z"))).toBeNull();
     expect(at("2026-10-23", R, Date.parse("2026-10-22T23:49:59.999Z")) ?? "").toMatch(/in the future/);
-    expect(at("2026-10-24", R, Date.parse("2026-10-23T00:05:00Z")) ?? "").toMatch(/in the future/);
   });
-  test("a Retrieved with a UTC offset is compared by its UTC date (both sides of midnight)", () => {
-    // 2026-10-02T23:30-02:00 is 2026-10-03T01:30Z: an attempt on the 2nd is before it, the 3rd is the same day.
+  test("a Retrieved with a UTC offset is compared by its UTC date", () => {
     expect(at("2026-10-02", "2026-10-02T23:30:00-02:00") ?? "").toMatch(/before .*UTC date 2026-10-03/);
     expect(at("2026-10-03", "2026-10-02T23:30:00-02:00")).toBeNull();
-    // 2026-10-03T00:30+02:00 is 2026-10-02T22:30Z: an attempt on the 2nd is the same UTC day.
     expect(at("2026-10-02", "2026-10-03T00:30:00+02:00")).toBeNull();
-    expect(at("2026-10-01", "2026-10-03T00:30:00+02:00") ?? "").toMatch(/UTC date 2026-10-02/);
   });
   test("an unreadable Retrieved skips the ordering (L7 reports Retrieved itself)", () => {
     expect(at("2026-01-01", "soon")).toBeNull();
-    expect(at("2026-01-01", "2026-10-02T14:03:00+24:00")).toBeNull();
     expect(at("2026-01-01", "2026-02-30T14:03:00Z")).toBeNull();
-  });
-  test("an attempt reason needs at least 3 whitespace-separated words", () => {
-    for (const r of ["-", "blocked", "blocked  by", "- -"]) bad(`attempted 2026-10-02: ${r}`, /too short/);
-    ok("attempted 2026-10-02: blocked by\tCAPTCHA");
-  });
-  // #16 n-1: a word counts toward the 3 only if it has a letter or a digit.
-  test("only words with a letter or digit count toward the 3", () => {
-    for (const r of ["- - -", "blocked - -", "... !! ??", "blocked by —", "« » blocked"])
-      bad(`attempted 2026-10-02: ${r}`, /too short/);
-    ok("attempted 2026-10-02: blocked - by - CAPTCHA");
-    ok("attempted 2026-10-02: HTTP 403 twice");
-    ok("attempted 2026-10-02: Zugriff verweigert (Ärger)");
-  });
-  test("an attempt reason may not contain a URL (any http(s) scheme, any case, or a bare www.)", () => {
-    for (const r of [
-      "see https://raw.githubusercontent.com/a/b/x.html for it",
-      "see http://example.test for it",
-      "see HTTPS://EXAMPLE.TEST for it",
-      "see Www.example.test for it",
-      // A scheme:// with no dotted host is caught by the scheme alone, in any case.
-      "see HTTPS://INTRANET/X for it",
-      "see ftp://intranet/x for it",
-    ])
-      bad(`attempted 2026-10-02: ${r}`, /contains a URL/);
-    ok("attempted 2026-10-02: archive.today returned a CAPTCHA (aawww is not a host)");
-  });
-  // #16 m-1: any scheme://, and bare host or host/path words, are links too.
-  test("an attempt reason may not contain any scheme:// or a bare host or host/path", () => {
-    for (const r of [
-      "see ftp://example.test/x for it",
-      "see file:///tmp/x for it",
-      "see ipfs://bafy for it",
-      "captured as archive.ph/abc instead",
-      "captured as archive.today/AbC12 instead",
-      "the page example.com was blocked",
-      "example.com returned a CAPTCHA page",
-      "fetch raw.githubusercontent.com/x/y failed twice",
-      "the host (example.com) was blocked",
-      "mirror at sub.example.co.uk, blocked",
-      "see aawww.example for details",
-      "fetch example.zip/download failed",
-    ])
-      bad(`attempted 2026-10-02: ${r}`, /contains a URL/);
-  });
-  // m-D (Probe): a malformed URL, a host:port or an IP address is a link too; archive.today's bare names stay prose.
-  test("an attempt reason may not contain a malformed URL, localhost:port or an IP address", () => {
-    for (const r of [
-      "copy at x/example.com failed",
-      "copy at http//example.com failed",
-      "copy at https:example.com failed",
-      "copy at http:/example.com failed",
-      "copy at localhost:8080 failed",
-      "copy at http:localhost failed",
-      "copy at 1.2.3.4 failed",
-      "copy at 1.2.3.4:8080 failed",
-      "copy at x/1.2.3.4 failed",
-      "copy at user@example.com failed",
-      "copy at x\\example.com failed",
-      "copy at x/archive.ph failed",
-    ])
-      bad(`attempted 2026-10-02: ${r}`, /contains a URL .*malformed URL such as x\/example\.com or localhost:8080/);
-  });
-  test("prose with slashes, colons and numbers still passes (m-D)", () => {
-    for (const r of [
-      "HTTP/1.1 403 and/or CAPTCHA",
-      "blocked at 10:30 twice, N/A",
-      "localhost was not used",
-      "the data/file.xlsx was blocked",
-      "version 1.2.3 then 256.1.1.1 blocked",
-      "blocked: archive.ph, archive.is and archive.today",
-    ])
-      ok(`attempted 2026-10-02: ${r}`);
-  });
-  test("prose with dots still passes: sentence ends, abbreviations, numbers, file types, archive.today's names", () => {
-    for (const r of [
-      "archive.today returned a CAPTCHA, blocked.",
-      "archive.today returned a CAPTCHA page",
-      "archive.ph returned a CAPTCHA page",
-      "archive.is returned a CAPTCHA page",
-      "blocked by CAPTCHA, e.g. twice",
-      "the U.S. mirror was blocked",
-      "H.4.1 release blocked, i.e. CAPTCHA",
-      "the xlsx (data.xlsx) was blocked",
-      "blocked at 3.5 seconds",
-      "archive.ph and archive.is both blocked",
-      'archive.today returned capture ids k7pXR and ieC3W for the xlsx, both showing "Not Found (yet?)" with no content, after two tries',
-    ])
-      ok(`attempted 2026-10-02: ${r}`);
-  });
-  // Assay M-3: the dated form's timestamp is a real time, and its UTC date has the attempt window.
-  const datedAt = (ts: string, retrieved: string | undefined = R, now: number | undefined = NOW) =>
-    archive2Problem(`https://archive.ph/${ts}/${ORIG}`, ORIG, retrieved, now);
-  test("a dated capture's date is on or after Retrieved's UTC date and not after today", () => {
-    expect(datedAt("20261001235959") ?? "").toMatch(/date 2026-10-01 is before Retrieved/);
-    expect(datedAt("20261002000000")).toBeNull();
-    expect(datedAt("20261022235959")).toBeNull();
-    expect(datedAt("20261023000000") ?? "").toMatch(/date 2026-10-23 is in the future/);
-    expect(datedAt("20271231000000") ?? "").toMatch(/in the future/);
-    expect(datedAt("20261023000000", R, Date.parse("2026-10-22T23:50:00Z"))).toBeNull();
-    expect(datedAt("20261002000000", "2026-10-02T23:30:00-02:00") ?? "").toMatch(/UTC date 2026-10-03/);
-  });
-  test("a dated capture with an impossible timestamp fails", () => {
-    for (const ts of ["20261302140500", "20260230140500", "20261002250000", "20261002146000"])
-      expect(datedAt(ts) ?? "").toMatch(/is not a real time/);
-  });
-  test("blank or free text fails", () => {
-    bad("", /archive\.today URL or "attempted/);
-    bad("none", /archive\.today URL or "attempted/);
   });
 });
 
@@ -1015,5 +904,35 @@ describe("exit codes", () => {
       "verify: internal error: plain",
       "verify: internal error: no stack",
     ]);
+  });
+});
+
+describe("canaryOnline (verify's network check)", () => {
+  test("canaryOnline: any HTTP answer from any canary is online; none is offline", async () => {
+    const seen: string[] = [];
+    const f = (answer: (u: string) => Response | Error) =>
+      (async (u: string) => {
+        seen.push(u);
+        const a = answer(u);
+        if (a instanceof Error) throw a;
+        return a;
+      }) as unknown as typeof fetch;
+    expect(
+      await canaryOnline(
+        f(() => new Response(null, { status: 503 })),
+        1000,
+      ),
+    ).toBe(true);
+    expect(seen).toEqual([CANARIES[0]]);
+    seen.length = 0;
+    const second = (u: string) => (u === CANARIES[1] ? new Response(null, { status: 200 }) : new Error("ETIMEOUT"));
+    expect(await canaryOnline(f(second), 1000)).toBe(true);
+    expect(seen).toEqual([...CANARIES]);
+    expect(
+      await canaryOnline(
+        f(() => new Error("ENOTFOUND")),
+        1000,
+      ),
+    ).toBe(false);
   });
 });

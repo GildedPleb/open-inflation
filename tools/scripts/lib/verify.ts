@@ -1,11 +1,11 @@
 // L8's link check, run locally by `bun run verify`: HEAD each archive URL added since the base, once.
 // Never part of lint or CI: those make no network call. The only I/O is the injected Net.
 import { AVAILABILITY_FORMS, MAX_HOPS, networkCheck, pacedNet } from "./archive.ts";
-import { type ArchiveRef, archiveRefs, blockKey, decodeAll } from "./checks.ts";
+import { type ArchiveRef, archiveRefs, decodeAll } from "./checks.ts";
 import { duration, hostKey, realClock } from "./pacer.ts";
 import type { CheckId, Finding, HeadResult, Net, NoVerdict, Snapshot, VerifyOptions } from "./types.ts";
 
-/** HTTP statuses that confirm a dead snapshot. Only these can be excused by a Re-archive note. */
+/** HTTP statuses that confirm a dead snapshot. */
 const DEAD = [404, 410];
 const CONCURRENCY = 4;
 
@@ -143,9 +143,9 @@ async function todayVerdict(net: Net, url: string): Promise<Verdict> {
 const GHOST_BLOCKED = [403, RATE_LIMITED, 503];
 
 /**
- * Read a Ghostarchive capture (Archive URL 3; a bounded GET, see httpHead). No availability fallback. R5-n1: its
+ * Read a Ghostarchive capture (a bounded GET, see httpHead). No availability fallback. R5-n1: its
  * "Archiving error" page (HTTP 200) is a finding: the URL holds no capture and never will (the attempt failed), so
- * it belongs in an `attempted <date>: <reason>` record. Any other 200 without the capture wrapper (a loading or
+ * it is not cited. Any other 200 without the capture wrapper (a loading or
  * in-progress page) is unconfirmed: no verdict, the capture may still appear.
  */
 async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
@@ -154,7 +154,7 @@ async function ghostVerdict(net: Net, url: string): Promise<Verdict> {
     return {
       problem: {
         dead: false,
-        message: `is Ghostarchive's "Archiving error" page (HTTP ${r.status}), not a capture; record the attempt as "attempted <YYYY-MM-DD>: <reason>" instead`,
+        message: `is Ghostarchive's "Archiving error" page (HTTP ${r.status}), not a capture; cite another archive instead`,
       },
     };
   if (r.kind === "ok" && r.page === "other")
@@ -214,19 +214,8 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
   const net = opts.pacer ? pacedNet(opts.net, opts.pacer, opts.clock ?? realClock) : opts.net;
   const now = archiveRefs(decodeAll(snap.files), opts.now);
   const was = archiveRefs(snap.base && decodeAll(snap.base));
-  // N-c (Probe): a Re-archive note's URL is in `urls` like any archive URL, so a note naming a capture committed
-  // elsewhere (another extract's Archive URL) was skipped as "not new". Every note URL added in this diff is checked.
-  const notedNow = new Set<string>();
-  for (const [k, set] of now.notes) for (const u of set) if (!was.notes.get(k)?.has(u)) notedNow.add(u);
-  const todo = [...now.urls].filter(([url]) => !was.urls.has(url) || notedNow.has(url));
+  const todo = [...now].filter(([url]) => !was.has(url));
   const results: Problem[] = [];
-  // m-B: a `- Re-archive: <new archive URL>` line added to the same extract in this diff names the new capture, so it
-  // excuses a dead archive URL of that extract (methodology: "names the new archive URL"), never the note's own URL.
-  const noted = (url: string, ref: ArchiveRef) => {
-    const k = blockKey(ref.file, ref.block);
-    const before = was.notes.get(k);
-    return [...(now.notes.get(k) ?? [])].some((n) => n !== url && !before?.has(n));
-  };
   // m-A: every count is of distinct URLs: one cited by several extracts is checked, and counted, once.
   if (todo.length > 0) progress?.(`L8 checking ${todo.length} distinct new archive URL${todo.length === 1 ? "" : "s"}`);
   if (todo.length > 0 && opts.pacer) {
@@ -235,7 +224,7 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
     progress?.(`L8 pacing: about ${duration(e.ms)} before any retry (hosts in parallel: ${hosts})`);
   }
   // N-d: archive.today or Ghostarchive not answering at all is a finding only while the network is up (a canary host
-  // answers, as audit's m-G); with no canary answering it is no verdict, "offline", and the run is incomplete.
+  // answers); with no canary answering it is no verdict, "offline", and the run is incomplete.
   const up = opts.online && networkCheck(opts.online, () => (opts.clock ?? realClock).now());
   const offline = async (url: string, v: Verdict): Promise<Verdict> =>
     v.network !== undefined && up && !(await up())
@@ -269,9 +258,7 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
             : `rate-limited (${v.limited})`
         : !p
           ? `ok (${v.ok})`
-          : p.dead && noted(url, ref)
-            ? `excused (HTTP ${p.status}, Re-archive note)`
-            : "fail";
+          : "fail";
       progress?.(`L8 [${++done}/${todo.length}] ${word} ${url}`);
     }
   };
@@ -307,12 +294,7 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
   for (const [i, [url, ref]] of todo.entries()) {
     const p = results[i];
     if (!p) continue;
-    if (p.dead && noted(url, ref)) continue;
-    const fix = p.dead
-      ? `; recapture it and add "- Re-archive: <new archive URL>" to this extract in the same commit`
-      : noted(url, ref)
-        ? `; a Re-archive note excuses only a dead snapshot (HTTP ${DEAD.join("/")})`
-        : "";
+    const fix = p.dead ? "; recapture it (another archive) and cite that capture instead" : "";
     emit("L8", ref.file, `archive URL ${url} ${p.message}${fix}`);
   }
   return out;
