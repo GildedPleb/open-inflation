@@ -711,6 +711,19 @@ export const MONTH_BASIS: Readonly<Record<string, MonthBasis>> = {
   RBI: "month-end", // "Stock outstanding on the last day of the month"
   BCB: "month-end", // "End-of-month stock" (SGS 1788 "saldo em final de período")
 };
+/**
+ * A bank's own YYYY-MM sentence where it differs from MONTH_BASIS_TEXT, linking a methodology heading (`anchor`; the
+ * generator reports a problem when the heading is missing). SNB: Assay's ruling N-a, since its basis is inferred. The
+ * SNB note is a bullet under "Per-issuer definitions" with no anchor of its own, so the link is that heading's, as the
+ * methodology itself links its BCB and CBR notes.
+ */
+export const MONTH_BASIS_OVERRIDE: Readonly<Record<string, { anchor: string; text: (link: string) => string }>> = {
+  SNB: {
+    anchor: "per-issuer-definitions",
+    text: (link) =>
+      `YYYY-MM means the figure is the bank's average for that month (inferred; see [the SNB note in the methodology](${link})).`,
+  },
+};
 /** The extract Conventions that name a monthly basis: a YYYY-MM row whose Convention contradicts MONTH_BASIS fails. */
 const CONVENTION_BASIS: Readonly<Record<string, MonthBasis>> = {
   "monthly average": "average",
@@ -718,9 +731,14 @@ const CONVENTION_BASIS: Readonly<Record<string, MonthBasis>> = {
 };
 /**
  * The Count date note for `issuer`'s page, given the conventions of its YYYY-MM rows: null when there are none, a
- * problem when the bank has no known basis or a row's Convention says otherwise.
+ * problem when the bank has no known basis, a row's Convention says otherwise, or an override's heading is missing.
+ * `docLink` resolves a methodology heading for this page (null when the heading is missing).
  */
-export function countDateNote(issuer: string, conventions: ReadonlySet<string>): string | null | { problem: string } {
+export function countDateNote(
+  issuer: string,
+  conventions: ReadonlySet<string>,
+  docLink: (anchor: string) => string | null = () => null,
+): string | null | { problem: string } {
   if (conventions.size === 0) return null;
   const basis = MONTH_BASIS[issuer];
   if (basis === undefined)
@@ -730,7 +748,12 @@ export function countDateNote(issuer: string, conventions: ReadonlySet<string>):
   const off = [...conventions].find((c) => CONVENTION_BASIS[c] !== undefined && CONVENTION_BASIS[c] !== basis);
   if (off !== undefined)
     return { problem: `${issuer}'s MONTH_BASIS is "${basis}" but a YYYY-MM extract's Convention is "${off}"` };
-  return `${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT[basis]}`;
+  const override = MONTH_BASIS_OVERRIDE[issuer];
+  if (override === undefined) return `${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT[basis]}`;
+  const link = docLink(override.anchor);
+  if (link === null)
+    return { problem: `the methodology has no "#${override.anchor}" heading for ${issuer}'s Count date link` };
+  return `${COUNT_DATE_LEAD} ${override.text(link)}`;
 }
 /**
  * The Status definition's meanings (Assay's wording, YOY_LAYOUT.md section 3; "as published" per Assay's ruling on
@@ -842,6 +865,7 @@ function issuerSection(m: Model, issuer: string, readme: string): string | { pro
   const countDate = countDateNote(
     issuer,
     new Set(counted.filter((c) => !FULL_DATE.test(c.asOf)).map((c) => c.convention)),
+    docLink,
   );
   if (countDate !== null && typeof countDate !== "string") return countDate;
   const defs = [...(countDate ? [countDate] : []), ...(statuses.size ? [statusNote(statusLink, statuses)] : [])];
