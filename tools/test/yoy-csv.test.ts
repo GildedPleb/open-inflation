@@ -18,8 +18,11 @@ import {
   COMPONENTS_HEADER,
   type Component,
   csvProblems,
+  fillIssuerQuarters,
   outputs,
   PROVISIONAL_MARK,
+  QUARTER_YOY_LINE,
+  usdShort,
   YOY_NOTES,
   yoyCell,
   yoyText,
@@ -94,10 +97,16 @@ describe("G7 YoY: one bank, in its local currency", () => {
     expect(yoyCell(bankYoy(undefined, undefined, false))).toBe("—¹");
     expect(yoyCell(bankYoy(c(), undefined, false))).toBe("—¹");
   });
-  test("—² when the bank is left out at either end, or its currency changed", () => {
+  test("—² when the bank is left out at either end, or its currency changed, with the cause for the ² note", () => {
     expect(yoyCell(bankYoy(undefined, c(), true))).toBe("—²");
     expect(yoyCell(bankYoy(c(), undefined, true))).toBe("—²");
     expect(yoyCell(bankYoy(c({ currency: "USD" }), c(), true))).toBe("—²");
+    expect(bankYoy(undefined, c(), true)).toEqual({ kind: "change", cause: { out: "now" } });
+    expect(bankYoy(c(), undefined, true)).toEqual({ kind: "change", cause: { out: "then" } });
+    expect(bankYoy(c({ currency: "VED" }), c({ currency: "VES" }), true)).toEqual({
+      kind: "change",
+      cause: { from: "VES", to: "VED" },
+    });
   });
   test("ᵖ when either end is provisional; never on a dash", () => {
     expect(yoyCell(bankYoy(c({ status: "provisional" }), c(), true))).toBe(`0.0%${PROVISIONAL_MARK}`);
@@ -185,22 +194,31 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
     expect(cell(t[Q27], "[FED]")).toBe("+10.0%");
     expect(cell(t[Q27], "[ECB]")).toBe("-10.0%");
     expect(cell(t[Q27], "**Total**")).toBe("+7.9%");
-    expect(t[QUARTER_LIST]).toContain("(about $0.00 trillion), YoY +7.9%;");
+    expect(t[QUARTER_LIST]).toContain(
+      "(quarters/2027Q3.md): about $0.00 trillion, YoY +7.9% · exactly $1,316 on 30 September 2027 · covers",
+    );
     expect(cell(t[ECB_README], "[2027 Q3]")).toBe("-10.0%");
+    expect(t[ECB_README]).toContain("| Quarter | Count date | Amount (EUR) | Status | FX rate | USD | YoY (EUR) |");
+    expect(t[ECB_README]).toMatch(
+      /\n\| \[2027 Q3\]\(\.\.\/\.\.\/quarters\/2027Q3\.md\) \| 2027-09-30 \| \[180\]\(2027\.md#[a-z0-9-]+\) \| final \| — \| \$0\.0B \| -10\.0% \|\n/,
+    );
   });
   test("FED (USD) has fx_rate 1 and its local YoY equals its USD YoY", () => {
     const t = base();
     expect(t[COMPONENTS_CSV]).toContain("2027-09-30,2027Q3,FED,2027-09-30,end of period,final,USD,1100,1,1100,");
     expect(cell(t[folderReadmePath("FED")], "[2027 Q3]")).toBe("+10.0%");
+    expect(t[folderReadmePath("FED")]).toContain("| Quarter | Count date | Amount (USD) | Status | YoY (USD) |\n");
   });
   test("—¹ and its footnote on the first year; no ² or ᵖ note when no cell needs one", () => {
     const t = base();
     for (const r of ["[FED]", "[ECB]", "**Total**"]) expect(cell(t[Q26], r)).toBe("—¹");
-    expect(t[Q26]).toContain(`\n\n${YOY_NOTES.none(["2026 Q3"])}\n`);
+    expect(t[Q26]).toContain(`|\n\n${QUARTER_YOY_LINE}\n\n¹ No year-ago quarter yet: the series has no 2025 Q3.\n`);
+    expect(t[Q27]).toContain(`|\n\n${QUARTER_YOY_LINE}\n\n## `); // the YoY line is always there
     expect(t[Q26]).not.toContain("² ");
     expect(t[Q27]).not.toContain("¹ ");
-    expect(t[QUARTER_LIST]).toContain(YOY_NOTES.none(["2026 Q3"]));
+    expect(t[QUARTER_LIST]).toContain("\n\n¹ No year-ago quarter yet: 2026 Q3.\n");
     expect(cell(t[ECB_README], "[2026 Q3]")).toBe("—¹");
+    expect(t[ECB_README]).toContain(`|\n\n${YOY_NOTES.bank.none(["2026 Q3"])}\n\n**Download:** [ECB.csv](ECB.csv)`);
   });
   test("ᵖ at either end marks the bank and the total, with its footnote once", () => {
     for (const [a, b] of [
@@ -214,21 +232,32 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
       expect(cell(t[Q27], "[ECB]")).toBe("-10.0%ᵖ");
       expect(cell(t[Q27], "[FED]")).toBe("+10.0%");
       expect(cell(t[Q27], "**Total**")).toBe("+7.9%ᵖ");
-      expect(t[Q27]?.split(YOY_NOTES.provisional).length).toBe(2);
-      expect(t[QUARTER_LIST]).toContain("YoY +7.9%ᵖ;");
-      expect(t[QUARTER_LIST]).toContain(YOY_NOTES.provisional);
+      const qp = "ᵖ Uses a provisional bank figure, from this quarter or a year earlier, that may be revised.";
+      expect(t[Q27]?.split(qp).length).toBe(2);
+      expect(t[QUARTER_LIST]).toContain("YoY +7.9%ᵖ · exactly");
+      expect(t[QUARTER_LIST]).toContain("ᵖ Uses a provisional bank figure that may be revised: 2027 Q3.");
       expect(cell(t[ECB_README], "[2027 Q3]")).toBe("-10.0%ᵖ");
-      expect(t[Q26]).not.toContain(YOY_NOTES.provisional); // only dashes there
+      expect(t[ECB_README]).toContain(
+        "ᵖ This quarter's or the year-ago figure is provisional, so the bank may revise it.",
+      );
+      expect(t[ECB_README]).not.toMatch(/ᵖ\]/); // never on Amount
+      expect(t[ECB_README]?.match(/ᵖ/g)?.length).toBe(2); // the one YoY cell and its note
+      for (const p of [Q26, Q27]) expect(t[p]).not.toContain("**ᵖ"); // never on a dollar total
+      expect(t[Q26]).not.toContain("ᵖ "); // only dashes there
     }
   });
   test("a bank left out now: its row says so, its YoY and the total are —²", () => {
     const t = twoYears([FED("1000"), ECB("200", "1.1", 220)], [FED("1100")]);
     expect(cell(t[Q27], "**Total**")).toBe("—²");
-    expect(t[Q27]).toContain(YOY_NOTES.change(["2027 Q3"]));
+    expect(t[Q27]).toContain("\n\n² Not like for like with 2026 Q3: Total: different basket or set of banks.\n");
+    expect(t[QUARTER_LIST]).toContain(
+      "\n\n² Not like for like: a year earlier used a different basket or set of banks: 2027 Q3.\n",
+    );
     const row = t[ECB_README]?.split("\n").find((l) => l.startsWith("| [2027 Q3]"));
-    expect(row).toContain("left out: not evidenced this quarter");
-    expect(row?.endsWith("| —² |")).toBe(true);
-    expect(t[ECB_README]).toContain(YOY_NOTES.change(["2027 Q3"]));
+    expect(row).toBe(
+      "| [2027 Q3](../../quarters/2027Q3.md) | — | left out: not evidenced this quarter | — | — | — | —² |",
+    );
+    expect(t[ECB_README]).toContain("\n\n² Not like for like with a year earlier: 2027 Q3 (left out this quarter).\n");
   });
   test("a bank left out a year ago: —² now; that first year stays —¹ (¹ over ²)", () => {
     const t = twoYears([FED("1000")], [FED("1100"), ECB("180", "1.2", 216)]);
@@ -236,11 +265,33 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
     expect(cell(t[Q27], "**Total**")).toBe("—²");
     expect(cell(t[Q27], "[FED]")).toBe("+10.0%");
     expect(cell(t[ECB_README], "[2026 Q3]")).toBe("—¹");
+    expect(t[ECB_README]).toContain(
+      "| [2026 Q3](../../quarters/2026Q3.md) | — | left out: not evidenced this quarter | — | — | — | —¹ |",
+    );
+    expect(t[ECB_README]).toContain("² Not like for like with a year earlier: 2027 Q3 (left out in 2026 Q3).");
+    expect(t[Q27]).toContain(
+      "² Not like for like with 2026 Q3: ECB left out in 2026 Q3; Total: different basket or set of banks.",
+    );
   });
   test("a bank whose local currency changed: —² for the bank; the total keeps its value", () => {
     const t = twoYears([FED("1000"), ECB("200", "1.1", 220)], [FED("1100"), ECB("216", "1", 216, { ccy: "USD" })]);
     expect(cell(t[Q27], "[ECB]")).toBe("—²");
     expect(cell(t[Q27], "**Total**")).toBe("+7.9%");
+    expect(t[Q27]).toContain("² Not like for like with 2026 Q3: ECB changed currency from EUR to USD.");
+    expect(t[ECB_README]).toContain(
+      "² Not like for like with a year earlier: 2027 Q3 (currency changed from EUR to USD).",
+    );
+    // headed by the newest row's currency; an older row in another currency carries its unit in the cell
+    expect(t[ECB_README]).toContain("| Amount (USD) |");
+    expect(t[ECB_README]).toContain("| [EUR 200](2026.md#");
+  });
+  test("USD short form: $X.XXT from $1 trillion, else $X.XB, half-to-even", () => {
+    expect(usdShort(555_311_674_000n)).toBe("$555.3B");
+    expect(usdShort(84_050_000_000n)).toBe("$84.0B"); // a tie goes to the even tenth
+    expect(usdShort(84_150_000_000n)).toBe("$84.2B");
+    expect(usdShort(1_234_560_000_000n - 1n)).toBe("$1.23T");
+    expect(usdShort(999_960_000_000n)).toBe("$1,000.0B");
+    expect(usdShort(220n)).toBe("$0.0B");
   });
   test("G1 idempotent: generating the generated repo changes nothing; base_money.csv is never written", () => {
     const t = base();
@@ -350,7 +401,9 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
   });
   test("a YoY cell or footnote in a quarter file", async () => {
     await l17(edit(Q3, "| **$1,221** | —¹ |", "| **$1,221** | +1.0% |"), Q3);
-    await l17(edit(Q3, "¹ No year-ago quarter yet: 2026 Q3.", "¹ No year-ago quarter yet."), Q3);
+    await l17(edit(Q3, "the series has no 2025 Q3.", "the series has no 2025 Q2."), Q3);
+    await l17(edit(Q3, `${QUARTER_YOY_LINE}\n\n`, ""), Q3); // the YoY line removed
+    await l17(edit(Q3, "so exchange rates don't move it;", "so FX doesn't move it;"), Q3); // or reworded
   });
   test("a field, a row order or a missing file in components.csv", async () => {
     await l17(edit(COMPONENTS_CSV, "end of period,final,USD", "month end,final,USD"), COMPONENTS_CSV);
@@ -362,13 +415,27 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
   test("an issuer CSV edited, missing or stray", async () => {
     const fed = "base_money/issuers/FED/FED.csv";
     await l17(edit(fed, ",1001,1,1001,", ",1001,1.0,1001,"), fed);
-    await l17({ [fed]: null }, fed);
+    const gone = await lint(snap({ [fed]: null }), { now: NOW }); // the bank page's Download link breaks too
+    expect(gone.map((f) => `${f.check} ${f.file}`).sort()).toEqual([
+      `L17 ${fed}`,
+      "L5 base_money/issuers/FED/README.md",
+    ]);
     const fs = await lint(snap({ "base_money/issuers/FX/FX.csv": gen[fed] as string }), { now: NOW });
     expect(fs.map((f) => f.check)).toContain("L12");
   });
   test("an issuer README quarter table or the quarter list", async () => {
-    await l17(edit(ECB_README, "| EUR 200.25 | final |", "| EUR 200.25 | provisional |"), ECB_README);
+    await l17(edit(ECB_README, "| final |", "| provisional |"), ECB_README);
+    await l17(edit(ECB_README, "[1.1](../../FX/2026.md#fx-2026q3-eur)", "1.1"), ECB_README); // the FX link
+    await l17(edit(ECB_README, "[200.25](2026.md#", "[200.25ᵖ](2026.md#"), ECB_README); // a mark on Amount
+    await l17(edit(ECB_README, "so exchange rates don't move it.", "so FX doesn't."), ECB_README); // the intro
+    await l17(edit(ECB_README, "[ECB.csv](ECB.csv), this bank's rows as data.", "[ECB.csv](ECB.csv)."), ECB_README);
+    const section = /## Quarters\n[\s\S]*?(?=## Years)/.exec(gen[ECB_README] as string)?.[0] ?? "";
+    await l17(
+      { [ECB_README]: `${(gen[ECB_README] as string).replace(section, "")}\n${section.trimEnd()}\n` },
+      ECB_README,
+    ); // moved last
     await l17(edit(QUARTER_LIST, "YoY —¹", "YoY +0.0%"), QUARTER_LIST);
+    await l17(edit(QUARTER_LIST, " · exactly $1,221 on", ", exactly $1,221 on"), QUARTER_LIST);
   });
   test("an extract that lost its Status line", async () => {
     const fs = await l17(edit(extractPath("ECB", "2026"), "- Status: final\n", ""), Q3);
@@ -448,5 +515,49 @@ describe("real data: this checkout's committed outputs", () => {
     expect(issuers.length).toBeGreaterThan(0);
     const each = issuers.flatMap((i) => (text.get(`base_money/issuers/${i}/${i}.csv`) ?? "").split("\n").slice(1, -1));
     expect(each.sort()).toEqual(csv.split("\n").slice(1, -1).sort());
+  });
+  test("Form's RBI example: the bank page's Quarters section, right after the facts, Years last", () => {
+    const rbi = text.get(folderReadmePath("RBI")) ?? "";
+    expect(rbi).toContain(
+      [
+        "## Quarters",
+        "",
+        "Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.",
+        "",
+        "| Quarter | Count date | Amount (INR) | Status | INR per USD | USD | YoY (INR) |",
+        "| :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |",
+        "| [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [52,563,650,000,000](2026.md#rbi-reserve-money-2026-06-30-wss-2026-07-10) | final | [94.65](../../FX/2026.md#fx-2026q2-inr) | $555.3B | +6.8% |",
+        "| [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [51,078,310,000,000](2026.md#rbi-reserve-money-2026-03-31-wss-2026-06-26) | final | [93.437](../../FX/2026.md#fx-2026q1-inr) | $546.7B | —¹ |",
+      ].join("\n"),
+    );
+    expect(rbi).toContain(
+      "\n\n¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.\n\n**Download:** [RBI.csv](RBI.csv), this bank's rows as data.\n\n## What we measure\n",
+    );
+    const heads = rbi.split("\n").filter((l) => l.startsWith("## "));
+    expect([heads[0], heads.at(-1)]).toEqual(["## Quarters", "## Years"]);
+  });
+  test("the front page: the Per bank line under Download, and each basket bank linked to its page", () => {
+    const readme = text.get("README.md") ?? "";
+    expect(readme).toContain(
+      "base_money.csv`\n\n**Per bank:** [base_money/components.csv](base_money/components.csv) · [raw CSV](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/components.csv): one row per quarter and central bank, with the bank's own figure and currency, count date, status, exchange rate, US-dollar amount and source link. Each bank's page has a CSV of just its rows.\n\n<details>",
+    );
+    for (const i of ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"])
+      expect(readme).toContain(`\n- **[${i}](base_money/issuers/${i}/README.md)**: `);
+  });
+});
+
+describe("the bank page's Quarters section goes right after the facts", () => {
+  const S = "Table.";
+  test("before the first other heading; an existing section is replaced or moved there", () => {
+    const want = `# X\n\nFacts.\n\n## Quarters\n\n${S}\n\n## What we measure\n\nW.\n\n## Years\n\n- y\n`;
+    expect(fillIssuerQuarters("# X\n\nFacts.\n\n## What we measure\n\nW.\n\n## Years\n\n- y\n", S)).toBe(want);
+    expect(fillIssuerQuarters(want.replace(S, "Old."), S)).toBe(want);
+    expect(
+      fillIssuerQuarters(`# X\n\nFacts.\n\n## What we measure\n\nW.\n\n## Quarters\n\nOld.\n\n## Years\n\n- y\n`, S),
+    ).toBe(want);
+    expect(
+      fillIssuerQuarters(`# X\n\nFacts.\n\n## What we measure\n\nW.\n\n## Years\n\n- y\n\n## Quarters\n\nOld.\n`, S),
+    ).toBe(want);
+    expect(fillIssuerQuarters("# X\n\nFacts.\n", S)).toEqual({ problem: expect.stringContaining('no "## " heading') });
   });
 });

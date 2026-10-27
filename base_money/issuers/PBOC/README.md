@@ -7,21 +7,25 @@
 - **Official website:** [pbc.gov.cn, English](http://www.pbc.gov.cn/en/3688006/index.html) · [pbc.gov.cn, Chinese](https://www.pbc.gov.cn/)
 - **Data pages used here:** the Balance Sheet of Monetary Authority (货币当局资产负债表), published on pbc.gov.cn as a new file each month; each file has its own address, so the addresses are in the year files' extracts rather than here
 
+## Quarters
+
+Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.
+
+| Quarter | Count date | Amount (CNY) | Status | CNY per USD | USD | YoY (CNY) |
+| :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [40,594,501,000,000](2026.md#pboc-reserve-money-2026-06-file-2026101417430649497) | as published | [6.7783](../../FX/2026.md#fx-2026q2-cny) | $5.99T | +7.1% |
+| [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [40,874,566,000,000](2026.md#pboc-reserve-money-2026-03-file-2026101417430649497) | as published | [6.8975](../../FX/2026.md#fx-2026q1-cny) | $5.93T | —¹ |
+| [2025 Q4](../../quarters/2025Q4.md) | 2025-12-31 | [39,920,483,000,000](2025.md#pboc-reserve-money-2025-12-file-2026011515582620291) | as published | [6.9926](../../FX/2025.md#fx-2025q4-cny) | $5.71T | —¹ |
+| [2025 Q3](../../quarters/2025Q3.md) | 2025-09-30 | [38,617,016,000,000](2025.md#pboc-reserve-money-2025-09-file-2026011515582620291) | as published | [7.1185](../../FX/2025.md#fx-2025q3-cny) | $5.42T | —¹ |
+| [2025 Q2](../../quarters/2025Q2.md) | 2025-06-30 | [37,915,942,000,000](2025.md#pboc-reserve-money-2025-06-file-2026011515582620291) | as published | [7.1631](../../FX/2025.md#fx-2025q2-cny) | $5.29T | —¹ |
+
+¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
+
+**Download:** [PBOC.csv](PBOC.csv), this bank's rows as data.
+
 ## What we measure
 
 货币当局资产负债表 "Balance Sheet of Monetary Authority", line 储备货币 "Reserve Money"; end-of-month stock. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
-
-## Quarters
-
-| Quarter | Count date | Local amount | Status | FX rate | USD | YoY (local) |
-| :------ | :--------- | -----------: | :----- | ------: | --: | ----------: |
-| [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | CNY 40,594,501,000,000 | as published | [0.14752961657052653320](../../FX/2026.md#fx-2026q2-cny) | [$5,988,891,167,402](2026.md#pboc-reserve-money-2026-06-file-2026101417430649497) | +7.1% |
-| [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | CNY 40,874,566,000,000 | as published | [0.14498006524102935846](../../FX/2026.md#fx-2026q1-cny) | [$5,925,997,245,379](2026.md#pboc-reserve-money-2026-03-file-2026101417430649497) | —¹ |
-| [2025 Q4](../../quarters/2025Q4.md) | 2025-12-31 | CNY 39,920,483,000,000 | as published | [0.14300832308440351228](../../FX/2025.md#fx-2025q4-cny) | [$5,708,961,330,549](2025.md#pboc-reserve-money-2025-12-file-2026011515582620291) | —¹ |
-| [2025 Q3](../../quarters/2025Q3.md) | 2025-09-30 | CNY 38,617,016,000,000 | as published | [0.14047903350424949076](../../FX/2025.md#fx-2025q3-cny) | [$5,424,881,084,498](2025.md#pboc-reserve-money-2025-09-file-2026011515582620291) | —¹ |
-| [2025 Q2](../../quarters/2025Q2.md) | 2025-06-30 | CNY 37,915,942,000,000 | as published | [0.13960436124024514526](../../FX/2025.md#fx-2025q2-cny) | [$5,293,230,863,732](2025.md#pboc-reserve-money-2025-06-file-2026011515582620291) | —¹ |
-
-¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
 
 ## Years
 

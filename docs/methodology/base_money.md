@@ -232,7 +232,7 @@ FX is supporting data: it only translates each central bank's figure into US dol
 - There is no unit column: `usd_value` is whole US dollars, `fx_rate` is US dollars per one unit of `local_currency` (`1` for USD) and `local_value` is in `local_currency`.
 - `local_currency`, `local_value` and `fx_rate` are the machine block's; `usd_value` is their product rounded half-to-even to a whole dollar, so each quarter's `usd_value` sum is its `value` in `base_money/base_money.csv`.
 - `evidence_id` is the adopted extract (`path#slug`). `as_of`, `convention` and `status` come from its `- As of:` (the leading date, `YYYY-MM-DD`, or `YYYY-MM` for a month average or month-end figure), `- Convention:` and `- Status:` (`final`, `provisional`, `revised` or `as published`) lines.
-- YoY anywhere in the repository is (value / value four quarters earlier − 1) × 100, half-to-even to 1 dp: the total on the [CSV values](#quarter-inclusion), a bank in its own currency on its `local_value`. A figure from a provisional component (either quarter) is marked `ᵖ`.
+- YoY anywhere in the repository is (value / value four quarters earlier − 1) × 100, half-to-even to 1 dp: the total on the [CSV values](#quarter-inclusion), a bank in its own currency on its `local_value`. A YoY figure that uses a provisional component (either quarter; for the total, any component) is marked `ᵖ`; amounts, dashes and dollar totals never are. A bank's YoY is in its own currency, so exchange rates don't move it; the total's is in US dollars.
 
 ## Revisions
 
@@ -413,7 +413,7 @@ The template below shows a quarter with every basket issuer evidenced, as every 
 
 **What a quarter file holds.** Only overall research notes: the one-sentence total, the three-link table, short notes on what's left out and why, cross-issuer conflicts and checks, quarter-level judgement calls (rejected sources, the basket sentence), one short archiving note, and the machine block. Outside the machine block it contains **no source or archive URLs**: it reaches every source through the USD and FX links. There is no Sources table and no supporting-sources table. Anything about a specific source (its URLs, archive links, capture checks, per-source caveats such as encoding issues or failed loads, link-audit findings) lives under that source's extract in the issuer year file (failed archive attempts as `- Archive attempt` lines, rejected sources as `- Rejected source` lines; FX rows in `base_money/FX/<YYYY>.md` are not archived). A rejected source with no issuer extract (for example a secondary aggregator) is one line under the quarter file's Sources considered and rejected. A confirming, alternative-definition or reference-only source is an extract there too, and a note in the quarter file links its anchor.
 
-**Issuer README.** Each issuer folder has `base_money/issuers/<ISS>/README.md` with only static facts that are not expected to change: the official name (and native-language name where relevant), the country or currency area, the currency and its ISO code, a one-line description, labelled links to the official website and to the stable data pages the extracts use, the adopted series with a link to [Per-issuer definitions](#per-issuer-definitions), then a generated `## Quarters` table and a final `## Years` list linking every year file. No officials' names, and no figures or balances outside the Quarters table, which `bun run readme` writes from the CSVs and extracts (one row per CSV quarter). Only the generated parts change: the Quarters table with each quarter, and the Years list when a year file is added. `base_money/FX/README.md` is the same, minimal: the FX sources and the Years list.
+**Issuer README.** Each issuer folder has `base_money/issuers/<ISS>/README.md` with only static facts that are not expected to change: the official name (and native-language name where relevant), the country or currency area, the currency and its ISO code, a one-line description, labelled links to the official website and to the stable data pages the extracts use, then a generated `## Quarters` section right after the facts list (each CSV quarter's count date, the bank's own amount and status, the exchange rate linked to its FX row, the US-dollar amount and the YoY in the bank's currency, then a link to the bank's CSV), the adopted series under `## What we measure` with a link to [Per-issuer definitions](#per-issuer-definitions), and a final `## Years` list linking every year file. No officials' names, and no figures or balances outside the Quarters table, which `bun run readme` writes from the CSVs and extracts (one row per CSV quarter). Only the generated parts change: the Quarters table with each quarter, and the Years list when a year file is added. `base_money/FX/README.md` is the same, minimal: the FX sources and the Years list.
 
 <!-- template: issuer README -->
 
@@ -426,6 +426,10 @@ The template below shows a quarter with every basket issuer evidenced, as every 
 - **What it is:** <one line, from the bank's own site or its founding law>
 - **Official website:** [<label>](<homepage URL>)
 - **Data pages used here:** [<label>](<stable data page URL>), …
+
+## Quarters
+
+<generated by `bun run readme`>
 
 ## What we measure
 

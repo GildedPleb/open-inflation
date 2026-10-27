@@ -12,7 +12,7 @@ Updated 26 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q3
 
 **Download:** [base_money/base_money.csv](base_money/base_money.csv) · [Raw CSV (for loaders)](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/base_money.csv): `https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/base_money.csv`
 
-**Per bank:** [base_money/components.csv](base_money/components.csv): one row per quarter and central bank (count date, status, local amount, FX rate, USD, source).
+**Per bank:** [base_money/components.csv](base_money/components.csv) · [raw CSV](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/components.csv): one row per quarter and central bank, with the bank's own figure and currency, count date, status, exchange rate, US-dollar amount and source link. Each bank's page has a CSV of just its rows.
 
 <details>
 <summary>Load it in a spreadsheet or Python</summary>
@@ -54,7 +54,7 @@ US dollars, trillions (T), converted at the market close on each report's count 
 
 ¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
 
-ᵖ One or both figures are provisional and may be revised.
+ᵖ Uses a provisional bank figure that may be revised: 2026 Q2.
 
 <!-- END GENERATED yoy-notes -->
 
@@ -74,15 +74,15 @@ Base money is the money a central bank issues directly: the currency in circulat
 
 The basket is nine of the largest central banks. Together they cover most of the world's base money, but this is not a global total.
 
-- **PBOC**: People's Bank of China
-- **FED**: Federal Reserve (United States)
-- **ECB**: Eurosystem (euro area)
-- **BOJ**: Bank of Japan
-- **BOE**: Bank of England
-- **SNB**: Swiss National Bank
-- **RBI**: Reserve Bank of India
-- **CBR**: Bank of Russia
-- **BCB**: Banco Central do Brasil. Its figure is the BCB's own restricted monetary base, which leaves out some deposits banks hold at the BCB, so it is narrower than the euro-area, Swiss and Russian figures.
+- **[PBOC](base_money/issuers/PBOC/README.md)**: People's Bank of China
+- **[FED](base_money/issuers/FED/README.md)**: Federal Reserve (United States)
+- **[ECB](base_money/issuers/ECB/README.md)**: Eurosystem (euro area)
+- **[BOJ](base_money/issuers/BOJ/README.md)**: Bank of Japan
+- **[BOE](base_money/issuers/BOE/README.md)**: Bank of England
+- **[SNB](base_money/issuers/SNB/README.md)**: Swiss National Bank
+- **[RBI](base_money/issuers/RBI/README.md)**: Reserve Bank of India
+- **[CBR](base_money/issuers/CBR/README.md)**: Bank of Russia
+- **[BCB](base_money/issuers/BCB/README.md)**: Banco Central do Brasil. Its figure is the BCB's own restricted monetary base, which leaves out some deposits banks hold at the BCB, so it is narrower than the euro-area, Swiss and Russian figures.
 
 More banks will be added over time. Each row keeps the basket it was first published with.
 

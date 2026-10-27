@@ -117,10 +117,10 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
   });
   test("the quarter list names each quarter's coverage and the issuers left out", async () => {
     const t = generated();
-    expect(t[EVIDENCE_INDEX]).toContain("; covers 99.92% of the basket, left out: BOJ");
-    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "; covers 99.92% of the basket, left out: BOJ", "")))).toEqual(
-      ["L17"],
-    );
+    expect(t[EVIDENCE_INDEX]).toContain(" · covers 99.92% of the basket; left out: BOJ");
+    expect(
+      await ids(snap((t) => edit(t, EVIDENCE_INDEX, " · covers 99.92% of the basket; left out: BOJ", ""))),
+    ).toEqual(["L17"]);
   });
   test("a coverage figure in front-page prose must be the latest quarter's coverage_pct", async () => {
     const prose = (pct: string) => (t: Record<string, string>) =>

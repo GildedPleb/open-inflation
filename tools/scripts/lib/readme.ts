@@ -4,7 +4,7 @@
 // committed file differs from what this would produce: L13 the README's blocks (latest, table, yoy-notes) and the
 // folder year lists, L17 the quarter list, each quarter file's YoY column and footnotes, each issuer README's
 // quarter table, base_money/components.csv and each base_money/issuers/<ISS>/<ISS>.csv.
-import { adoptedIn, machines } from "./checks.ts";
+import { adoptedIn, fxQuote, machines } from "./checks.ts";
 import { type Decimal, parseDecimal, ratioHalfEven, roundHalfEven, wholeUsd } from "./decimal.ts";
 import { headings, lines } from "./markdown.ts";
 import {
@@ -87,7 +87,17 @@ export type Yoy =
       readonly text: string;
       readonly provisional?: boolean;
     }
-  | { readonly kind: "none" | "change" };
+  | { readonly kind: "none" }
+  | { readonly kind: "change"; readonly cause?: Cause };
+
+/**
+ * Why a bank's YoY is not like for like (—²): it is not a counted component this quarter or a year earlier (left out,
+ * or not in the basket), its currency changed, or its year-ago value is zero.
+ */
+export type Cause =
+  | { readonly out: "now" | "then" }
+  | { readonly from: string; readonly to: string }
+  | { readonly zero: true };
 
 /**
  * The one YoY formula: (cur / prev - 1) x 100, exact, half-to-even to 1 dp, signed (+3.2%, -1.4%); a result that
@@ -126,11 +136,13 @@ export function yoy(cur: Quarter, prev: Quarter | undefined): Yoy {
  */
 export function bankYoy(cur: Component | undefined, prev: Component | undefined, yearAgo: boolean): Yoy {
   if (!yearAgo) return { kind: "none" };
-  if (!cur || !prev || cur.currency !== prev.currency) return { kind: "change" };
+  if (!cur) return { kind: "change", cause: { out: "now" } };
+  if (!prev) return { kind: "change", cause: { out: "then" } };
+  if (cur.currency !== prev.currency) return { kind: "change", cause: { from: prev.currency, to: cur.currency } };
   const a = parseDecimal(cur.localValue);
   const b = parseDecimal(prev.localValue);
   const text = a && b ? yoyText(a, b) : null;
-  if (text === null) return { kind: "change" };
+  if (text === null) return { kind: "change", cause: { zero: true } };
   return {
     kind: "value",
     text,
@@ -144,34 +156,69 @@ export const PROVISIONAL_MARK = "ᵖ";
 export const yoyCell = (y: Yoy): string =>
   y.kind === "value" ? `${y.text}${y.provisional ? PROVISIONAL_MARK : ""}` : y.kind === "none" ? "—¹" : "—²";
 
+/** One page's footnote wording: each takes the items its dashes or marks explain, in table order. */
+export interface Wording {
+  readonly none: (labels: readonly string[]) => string;
+  readonly change: (items: readonly string[]) => string;
+  readonly provisional: (labels: readonly string[]) => string;
+}
+
 /**
- * The YoY footnotes, worded as on the front page (Form owns the copy): each shown once, under its table, only when a
- * cell on that page needs it. `none` and `change` list the quarters whose dash it explains.
+ * The YoY footnotes per page (Form's copy, YOY_LAYOUT.md section 5): each its own paragraph, in the order ¹ ² ᵖ, only
+ * when a cell on that page needs it. The front page and the quarter list share `total`.
  */
 export const YOY_NOTES = {
-  none: (labels: readonly string[]) => `¹ No year-ago quarter yet: ${labels.join(", ")}.`,
-  change: (labels: readonly string[]) => `² Basket or coverage change from a year earlier: ${labels.join(", ")}.`,
-  provisional: `${PROVISIONAL_MARK} One or both figures are provisional and may be revised.`,
-} as const;
+  total: {
+    none: (labels) => `¹ No year-ago quarter yet: ${labels.join(", ")}.`,
+    change: (labels) =>
+      `² Not like for like: a year earlier used a different basket or set of banks: ${labels.join(", ")}.`,
+    provisional: (labels) =>
+      `${PROVISIONAL_MARK} Uses a provisional bank figure that may be revised: ${labels.join(", ")}.`,
+  },
+  /** A quarter file's, for quarter `id` (its year-ago quarter is named). */
+  quarter: (id: string): Wording => {
+    const ago = quarterLabel(shiftQuarter(id, -4));
+    return {
+      none: () => `¹ No year-ago quarter yet: the series has no ${ago}.`,
+      change: (items) => `² Not like for like with ${ago}: ${items.join("; ")}.`,
+      provisional: () =>
+        `${PROVISIONAL_MARK} Uses a provisional bank figure, from this quarter or a year earlier, that may be revised.`,
+    };
+  },
+  bank: {
+    none: (labels) => `¹ No year-ago quarter yet: ${labels.join(", ")}.`,
+    change: (items) => `² Not like for like with a year earlier: ${items.join(", ")}.`,
+    provisional: () =>
+      `${PROVISIONAL_MARK} This quarter's or the year-ago figure is provisional, so the bank may revise it.`,
+  },
+} as const satisfies Record<string, Wording | ((id: string) => Wording)>;
+
+/** The always-present first note under a quarter file's table (Form's copy). */
+export const QUARTER_YOY_LINE =
+  "YoY: each bank's change is in its own currency, so exchange rates don't move it; the Total's is in US dollars.";
 
 /** Collects the cells of one page and gives the footnotes they need, in order (¹, ², ᵖ). */
 class Notes {
   private readonly none: string[] = [];
   private readonly change: string[] = [];
-  private provisional = false;
-  add(y: Yoy, label: string): string {
-    if (y.kind === "value") this.provisional ||= y.provisional === true;
-    else {
-      const l = this[y.kind];
-      if (!l.includes(label)) l.push(label);
-    }
+  private readonly provisional: string[] = [];
+  constructor(private readonly w: Wording) {}
+  /** The cell for `y`; `label` names its row in ¹ and ᵖ, `item` (default `label`) in ². */
+  add(y: Yoy, label: string, item = label): string {
+    const push = (l: string[], x: string) => {
+      if (!l.includes(x)) l.push(x);
+    };
+    if (y.kind === "value") {
+      if (y.provisional) push(this.provisional, label);
+    } else if (y.kind === "none") push(this.none, label);
+    else push(this.change, item);
     return yoyCell(y);
   }
   lines(): string[] {
     return [
-      ...(this.none.length ? [YOY_NOTES.none(this.none)] : []),
-      ...(this.change.length ? [YOY_NOTES.change(this.change)] : []),
-      ...(this.provisional ? [YOY_NOTES.provisional] : []),
+      ...(this.none.length ? [this.w.none(this.none)] : []),
+      ...(this.change.length ? [this.w.change(this.change)] : []),
+      ...(this.provisional.length ? [this.w.provisional(this.provisional)] : []),
     ];
   }
 }
@@ -389,6 +436,7 @@ export interface Generated {
 
 /** The inputs every output is built from, or null when one cannot be read (other checks report why). */
 interface Model {
+  readonly text: Texts;
   readonly cat: Catalog;
   readonly qs: readonly Quarter[];
   readonly byId: ReadonlyMap<string, Quarter>;
@@ -415,6 +463,7 @@ function model(text: Texts): Model | null {
     total.set(q.id, y.kind === "value" ? { ...y, provisional: prov.has(q.id) || prov.has(before) } : y);
   }
   return {
+    text,
     cat,
     qs,
     byId,
@@ -434,7 +483,7 @@ export function generate(text: Texts, _paths: readonly string[]): Generated | nu
 function generated(m: Model): Generated {
   const { cat, qs } = m;
   const newest = [...qs].reverse();
-  const notes = new Notes();
+  const notes = new Notes(YOY_NOTES.total);
   const rows = newest.map((q) => {
     const cell = notes.add(m.total.get(q.id) as Yoy, quarterLabel(q.id));
     return `| ${quarterLabel(q.id)} | $${trillions(q.value)}T | ${cell} | [Sources](${q.evidenceId}) |`;
@@ -476,8 +525,9 @@ function leftOut(q: Quarter, cat: Catalog): string[] {
 }
 
 /**
- * The quarter list: every CSV row newest first (date, total and YoY, the same cell as the front page; when issuers
- * are left out, the coverage and who), with any gap quarter listed. (Form owns the line's wording.)
+ * The quarter list: every CSV row newest first (the rounded total and its YoY, the same cell as the front page, then
+ * the exact total and date; when issuers are left out, the coverage and who), with any gap quarter listed. (Form owns
+ * the line's wording, YOY_LAYOUT.md section 2.)
  */
 function quarterList(m: Model): string {
   const { qs, cat } = m;
@@ -486,9 +536,9 @@ function quarterList(m: Model): string {
     const q = qs[i] as Quarter;
     const link = relLink(QUARTER_LIST, q.evidenceId);
     const left = leftOut(q, cat);
-    const cover = left.length ? `; covers ${q.coverage}% of the basket, left out: ${left.join(", ")}` : "";
+    const cover = left.length ? ` · covers ${q.coverage}% of the basket; left out: ${left.join(", ")}` : "";
     out.push(
-      `- [${quarterLabel(q.id)}](${link}): ${longDay(q.date)}, $${group(q.value.toString())} (about $${trillions(q.value)} trillion), YoY ${yoyCell(m.total.get(q.id) as Yoy)}${cover}`,
+      `- [${quarterLabel(q.id)}](${link}): about $${trillions(q.value)} trillion, YoY ${yoyCell(m.total.get(q.id) as Yoy)} · exactly $${group(q.value.toString())} on ${longDay(q.date)}${cover}`,
     );
     const prev = qs[i - 1];
     if (prev)
@@ -500,10 +550,10 @@ function quarterList(m: Model): string {
 
 /**
  * `head` (ending at a table's or list's last line) followed by `notes`, each its own paragraph, then `rest` with the
- * footnote paragraphs that used to follow (each starting "¹ ", "² " or "ᵖ ") removed.
+ * note paragraphs that used to follow (each starting "¹ ", "² ", "ᵖ " or a quarter file's "YoY: " line) removed.
  */
 function withNotes(head: string, rest: string, notes: readonly string[]): string {
-  const NOTE = /^\n\n[¹²ᵖ] [^\n]*/;
+  const NOTE = /^\n\n(?:[¹²ᵖ] |YoY: )[^\n]*/;
   let r = rest;
   for (let m = NOTE.exec(r); m; m = NOTE.exec(r)) r = r.slice(m[0].length);
   return head + notes.map((n) => `\n\n${n}`).join("") + r;
@@ -537,13 +587,20 @@ const TOTAL = "**Total**";
 
 /**
  * A quarter file with its reader table's YoY column (added at the right end when missing) set from `cells` (issuer
- * id, or "Total" for the total row) and the YoY footnotes right under the table. Every other byte is kept.
+ * id, or "Total" for the total row: its YoY and its ² phrase) and, right under the table, the YoY line and the
+ * footnotes its cells need (² items in table order). Every other byte is kept.
  */
 export function fillQuarterYoy(
   body: string,
-  cells: ReadonlyMap<string, string>,
-  notes: readonly string[],
+  cells: ReadonlyMap<string, { readonly yoy: Yoy; readonly item: string }>,
+  wording: Wording,
+  label: string,
 ): string | { problem: string } {
+  const notes = new Notes(wording);
+  const cell = (key: string) => {
+    const c = cells.get(key);
+    return c ? notes.add(c.yoy, label, c.item) : "";
+  };
   const ls = lines(body);
   const raw = body.split("\n");
   const head = ls.findIndex((l) => {
@@ -569,12 +626,10 @@ export function fillQuarterYoy(
         ? YOY_HEADER
         : k === head + 1
           ? "--:"
-          : name === TOTAL
-            ? (cells.get("Total") ?? "")
-            : (cells.get(ISSUER_LINK.exec(name)?.[1] ?? "") ?? "");
+          : cell(name === TOTAL ? "Total" : (ISSUER_LINK.exec(name)?.[1] ?? ""));
     raw[k] = rowOf(c);
   }
-  return withNotes(raw.slice(0, k).join("\n"), `\n${raw.slice(k).join("\n")}`, notes);
+  return withNotes(raw.slice(0, k).join("\n"), `\n${raw.slice(k).join("\n")}`, [QUARTER_YOY_LINE, ...notes.lines()]);
 }
 
 // ---------- issuer READMEs: the quarter table ----------
@@ -582,57 +637,113 @@ export function fillQuarterYoy(
 export const ISSUER_QUARTERS_HEADING = "## Quarters";
 const DASH = "—";
 
-/** An issuer README with its "## Quarters" section (inserted before "## Years" when missing) set to `section`. */
+/**
+ * An issuer README with its "## Quarters" section set to `section`, placed right after the facts list: before the
+ * README's first other "## " heading (moved there when it sits elsewhere). A problem when the README has no "## "
+ * heading at all (it always has "## Years", L13).
+ */
 export function fillIssuerQuarters(readme: string, section: string): string | { problem: string } {
   const H = ISSUER_QUARTERS_HEADING;
-  const h = readme.indexOf(`\n${H}\n`);
+  let r = readme;
+  const h = r.indexOf(`\n${H}\n`);
   if (h >= 0) {
-    const e = readme.indexOf("\n## ", h + H.length + 1);
-    return e < 0
-      ? `${readme.slice(0, h + 1)}${H}\n\n${section}\n`
-      : `${readme.slice(0, h + 1)}${H}\n\n${section}\n${readme.slice(e)}`;
+    const e = r.indexOf("\n## ", h + H.length + 1);
+    r = e < 0 ? `${r.slice(0, h).trimEnd()}\n` : r.slice(0, h + 1) + r.slice(e + 1);
   }
-  const y = readme.indexOf(`\n${YEARS_HEADING}\n`);
-  if (y < 0)
+  const at = r.indexOf("\n## ");
+  if (at < 0)
     return {
-      problem: `has no "${YEARS_HEADING}" heading (the generated "${H}" table goes before it)`,
+      problem: `has no "## " heading (the generated "${H}" table goes before the first one, "## What we measure")`,
     };
-  return `${readme.slice(0, y + 1)}${H}\n\n${section}\n\n${readme.slice(y + 1)}`;
+  return `${r.slice(0, at + 1)}${H}\n\n${section}\n\n${r.slice(at + 1)}`;
 }
 
+/** Whole USD, short: `$X.XXT` at $1 trillion or more, else `$X.XB` (half-to-even, comma-grouped). */
+export function usdShort(v: bigint): string {
+  if (v >= 10n ** 12n) return `$${trillions(v)}T`;
+  const s = roundHalfEven({ digits: v, scale: 8 } satisfies Decimal)
+    .toString()
+    .padStart(2, "0");
+  return `$${group(s.slice(0, -1))}.${s.slice(-1)}B`;
+}
+
+/** The line above an issuer's quarter table (Form's copy). */
+export const ISSUER_INTRO =
+  "Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.";
+
 /**
- * An issuer's quarter table: every CSV quarter, newest first, with the count date, local amount, status, FX rate
- * (linked to its FX row), USD (linked to the adopted extract) and the bank's local-currency YoY; a quarter it was
- * left out of says why, with dashes. Then the footnotes its cells need. (Form owns the columns and copy.)
+ * An issuer's `## Quarters` section (Form's layout, YOY_LAYOUT.md section 3): the intro line; a table of every CSV
+ * quarter, newest first: Quarter | Count date | Amount (<CCY>) | Status | <PAIR> | USD | YoY (<CCY>), headed by the
+ * newest counted row's currency and FX pair (no pair or USD column when every counted row is in USD, as at the FED,
+ * where Amount is already US dollars); a left-out quarter
+ * says why, with dashes; then the footnotes its cells need and the Download line for the bank's CSV. A rate with no
+ * single FX row is a dash (L9 reports the missing row).
  */
 function issuerSection(m: Model, issuer: string, readme: string): string {
-  const notes = new Notes();
-  const rows = [...m.qs].reverse().map((q) => {
+  const notes = new Notes(YOY_NOTES.bank);
+  const newest = [...m.qs].reverse();
+  const counted = newest.map((q) => m.comp(issuer, q.id)).filter((c): c is Component => !!c);
+  const ccy = counted[0]?.currency;
+  const quoteOf = (c: Component) => {
+    const y = c.quarter.slice(0, 4);
+    const fx = fxQuote(m.text.get(fxPath(y)) ?? "", c.quarter, c.currency);
+    return fx && { ...fx, link: `${relLink(readme, fxPath(y))}#${fx.anchor}` };
+  };
+  const firstForeign = counted.find((c) => c.currency !== "USD");
+  const showFx = firstForeign !== undefined;
+  const pair = firstForeign ? (quoteOf(firstForeign)?.pair ?? "FX rate") : "";
+  const unit = (s: string) => (ccy ? `${s} (${ccy})` : s);
+  const rows = newest.map((q) => {
     const prevId = shiftQuarter(q.id, -4);
+    const label = quarterLabel(q.id);
+    const y = bankYoy(m.comp(issuer, q.id), m.comp(issuer, prevId), m.byId.has(prevId));
+    const cause = y.kind === "change" ? y.cause : undefined;
+    const outIn = (qq: Quarter | undefined) =>
+      qq?.excluded.some((e) => e.issuer === issuer) ? "left out" : "not in the basket";
+    const why =
+      cause === undefined
+        ? ""
+        : "out" in cause
+          ? cause.out === "now"
+            ? `${outIn(q)} this quarter`
+            : `${outIn(m.byId.get(prevId))} in ${quarterLabel(prevId)}`
+          : "zero" in cause
+            ? "zero a year earlier"
+            : `currency changed from ${cause.from} to ${cause.to}`;
+    const cell = notes.add(y, label, `${label} (${why})`);
+    const ql = `[${label}](${relLink(readme, q.evidenceId)})`;
     const c = m.comp(issuer, q.id);
-    const cell = notes.add(bankYoy(c, m.comp(issuer, prevId), m.byId.has(prevId)), quarterLabel(q.id));
-    const ql = `[${quarterLabel(q.id)}](${relLink(readme, q.evidenceId)})`;
     if (!c) {
       const ex = q.excluded.find((e) => e.issuer === issuer);
-      const why = ex ? `left out: ${ex.reason.replace(/\|/g, "\\|")}` : "not in the basket";
-      return rowOf([ql, DASH, why, DASH, DASH, DASH, cell]);
+      const out = ex ? `left out: ${ex.reason.replace(/\|/g, "\\|")}` : "not in the basket";
+      return rowOf([ql, DASH, out, DASH, ...(showFx ? [DASH, DASH] : []), cell]);
     }
     const [path = "", slug = ""] = c.evidenceId.split("#");
-    const fx =
-      c.currency === "USD"
-        ? "none (already USD)"
-        : `[${c.fxRate}](${relLink(readme, fxPath(q.id.slice(0, 4)))}#fx-${q.id.toLowerCase()}-${c.currency.toLowerCase()})`;
-    const usd = `[$${group(c.usd.toString())}](${relLink(readme, path)}#${slug})`;
     const [int = "", frac] = c.localValue.split(".");
-    const local = `${c.currency} ${group(int)}${frac === undefined ? "" : `.${frac}`}`;
-    return rowOf([ql, c.asOf, local, c.status, fx, usd, cell]);
+    const amount = `${c.currency === ccy ? "" : `${c.currency} `}${group(int)}${frac === undefined ? "" : `.${frac}`}`;
+    let fx = DASH;
+    if (c.currency !== "USD") {
+      const f = quoteOf(c);
+      if (f) fx = `[${f.pair === pair ? f.rate : `${f.rate} ${f.pair}`}](${f.link})`;
+    }
+    return rowOf([
+      ql,
+      c.asOf,
+      `[${amount}](${relLink(readme, path)}#${slug})`,
+      c.status,
+      ...(showFx ? [fx, usdShort(c.usd)] : []),
+      cell,
+    ]);
   });
   const table = [
-    "| Quarter | Count date | Local amount | Status | FX rate | USD | YoY (local) |",
-    "| :------ | :--------- | -----------: | :----- | ------: | --: | ----------: |",
+    `| Quarter | Count date | ${unit("Amount")} | Status |${showFx ? ` ${pair} | USD |` : ""} ${unit("YoY")} |`,
+    `| :------ | :--------- | -----------: | :----- |${showFx ? " ----------: | ----: |" : ""} --: |`,
     ...rows,
   ].join("\n");
-  return [table, ...notes.lines()].join("\n\n");
+  const csv = relLink(readme, issuerCsvPath(issuer));
+  return [ISSUER_INTRO, table, ...notes.lines(), `**Download:** [${csv}](${csv}), this bank's rows as data.`].join(
+    "\n\n",
+  );
 }
 
 // ---------- every L17 output ----------
@@ -661,14 +772,27 @@ export function outputs(text: Texts, paths: readonly string[]): Outputs | null {
   for (const q of m.qs) {
     const body = text.get(q.evidenceId);
     if (body === undefined) continue;
-    const notes = new Notes();
-    const label = quarterLabel(q.id);
     const prevId = shiftQuarter(q.id, -4);
-    const cells = new Map<string, string>([["Total", notes.add(m.total.get(q.id) as Yoy, label)]]);
-    const issuers = new Set([...q.included, ...q.excluded.map((e) => e.issuer)]);
-    for (const i of issuers)
-      cells.set(i, notes.add(bankYoy(m.comp(i, q.id), m.comp(i, prevId), m.byId.has(prevId)), label));
-    fill(q.evidenceId, fillQuarterYoy(body, cells, notes.lines()));
+    const ago = quarterLabel(prevId);
+    const cells = new Map<string, { yoy: Yoy; item: string }>([
+      ["Total", { yoy: m.total.get(q.id) as Yoy, item: "Total: different basket or set of banks" }],
+    ]);
+    for (const i of new Set([...q.included, ...q.excluded.map((e) => e.issuer)])) {
+      const y = bankYoy(m.comp(i, q.id), m.comp(i, prevId), m.byId.has(prevId));
+      const cause = y.kind === "change" ? y.cause : undefined;
+      const item =
+        cause === undefined
+          ? i
+          : "out" in cause
+            ? cause.out === "now"
+              ? `${i} left out this quarter`
+              : `${i} ${m.byId.get(prevId)?.excluded.some((e) => e.issuer === i) ? "left out" : "not in the basket"} in ${ago}`
+            : "zero" in cause
+              ? `${i} was zero in ${ago}`
+              : `${i} changed currency from ${cause.from} to ${cause.to}`;
+      cells.set(i, { yoy: y, item });
+    }
+    fill(q.evidenceId, fillQuarterYoy(body, cells, YOY_NOTES.quarter(q.id), quarterLabel(q.id)));
   }
   const index = text.get(QUARTER_LIST);
   if (index !== undefined) {

@@ -7,6 +7,24 @@
 - **Official website:** [bcb.gov.br, English](https://www.bcb.gov.br/en)
 - **Data pages used here:** [SGS time-series pages](https://www3.bcb.gov.br/sgspub/) (series 1788) · [SGS JSON API, series 1788](https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json) · [monetary and credit statistics tables, September 2026](https://www.bcb.gov.br/content/estatisticas/hist_estatisticasmonetariascredito/202609_Tabelas_de_estatisticas_monetarias_e_de_credito.xlsx) (Table 28; no archive could capture this workbook)
 
+## Quarters
+
+Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.
+
+| Quarter | Count date | Amount (BRL) | Status | BRL per USD | USD | YoY (BRL) |
+| :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | [431,100,998,000](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2026-sgs-values-page-retrieved-2026-10-22) | provisional | [5.129214](../../FX/2026.md#fx-2026q2-brl) | $84.0B | -4.4%ᵖ |
+| [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | [438,897,105,000](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2026-sgs-values-page-retrieved-2026-10-22) | as published | [5.230105](../../FX/2026.md#fx-2026q1-brl) | $83.9B | —¹ |
+| [2025 Q4](../../quarters/2025Q4.md) | 2025-12 | [447,096,654,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-dec2025-sgs-values-page-retrieved-2026-10-23) | as published | [5.461561](../../FX/2025.md#fx-2025q4-brl) | $81.9B | —¹ |
+| [2025 Q3](../../quarters/2025Q3.md) | 2025-09 | [429,700,158,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2025-sgs-values-page-retrieved-2026-10-23) | as published | [5.366859](../../FX/2025.md#fx-2025q3-brl) | $80.1B | —¹ |
+| [2025 Q2](../../quarters/2025Q2.md) | 2025-06 | [451,010,163,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2025-sgs-values-page-retrieved-2026-10-26) | as published | [5.538024](../../FX/2025.md#fx-2025q2-brl) | $81.4B | —¹ |
+
+¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
+
+ᵖ This quarter's or the year-ago figure is provisional, so the bank may revise it.
+
+**Download:** [BCB.csv](BCB.csv), this bank's rows as data.
+
 ## What we measure
 
 SGS 1788 "BM - Base monetária restrita (saldo em final de período)", the BCB's own "base monetária": currency issued plus bank reserves, the stock at the end of the month, published in R$ thousand and used as published, not adjusted. It is the series in column B of Table 28, "Base monetária e componentes - Saldos em final de período", of the BCB's monetary and credit statistics, and the base the BCB reports in its monthly statistics text: "A base monetária totalizou R$432,6 bilhões em agosto" (August 2026; [Texto de estatísticas monetárias e de crédito, September 2026](https://www.bcb.gov.br/content/estatisticas/hist_estatisticasmonetariascredito/202609_Texto_de_estatisticas_monetarias_e_de_credito.pdf) (archived: [archive.today](https://archive.ph/vVRtp))).
@@ -22,20 +40,6 @@ How the BCB defines it:
 **Not used.** SGS 20306 "Reserve Money - Monetary Authority" / "Passivo Monetário - Autoridade Monetária": no BCB primary source found defines its contents, its convention (end of month or monthly average) or its status, and its SGS metadata page returns an error ([20306](https://www3.bcb.gov.br/sgspub/consultarmetadados/consultarMetadadosSeries.do?method=consultarMetadadosSeriesInternet&hdOidSerieMetadados=20306) (archived: [Wayback](<https://web.archive.org/web/20261026171312/https://www3.bcb.gov.br/sgspub/consultarmetadados/consultarMetadadosSeries.do?method=consultarMetadadosSeriesInternet&hdOidSerieMetadados=20306>), [Ghostarchive](https://ghostarchive.org/archive/FZUab)), [1788](https://www3.bcb.gov.br/sgspub/consultarmetadados/consultarMetadadosSeries.do?method=consultarMetadadosSeriesInternet&hdOidSerieMetadados=1788) (archived: [Ghostarchive](https://ghostarchive.org/archive/iKvUG))). It is kept in the year files as an alternative definition, never summed and with no reference value. SGS 1785 is the same base as a business-day average, "BM - Base monetária restrita (média nos dias úteis do mês)" ([open-data catalogue, series 1785](https://dadosabertos.bcb.gov.br/dataset/1785-sgs) (archived: [Ghostarchive](https://ghostarchive.org/archive/cLo01))), not an end-of-period stock.
 
 **Current vintage.** Read on 26 October 2026, the SGS pages for September 2025 to June 2026 print the same four quarter-end figures as the year files: SGS 1788 ([values page](https://www3.bcb.gov.br/sgspub/consultarvalores/consultarValoresSeries.do?method=consultarValores&optSelecionaSerie=1788&dataInicio=01/09/2025&dataFim=30/06/2026&selTipoArqDownload=1&hdOidSeriesSelecionadas=1788&hdPaginar=false&bilServico=%5BSGSFW2301%5D) (archived: [archive.today](https://archive.ph/re3Hd)), [JSON API](https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json&dataInicial=01/09/2025&dataFinal=30/06/2026) (archived: [Wayback](<https://web.archive.org/web/20261026171201/https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json&dataInicial=01%2F09%2F2025&dataFinal=30%2F06%2F2026>), [archive.today](https://archive.ph/BYoSv), [Ghostarchive](https://ghostarchive.org/archive/ctIfz))) and SGS 20306 ([values page](https://www3.bcb.gov.br/sgspub/consultarvalores/consultarValoresSeries.do?method=consultarValores&optSelecionaSerie=20306&dataInicio=01/09/2025&dataFim=30/06/2026&selTipoArqDownload=1&hdOidSeriesSelecionadas=20306&hdPaginar=false&bilServico=%5BSGSFW2301%5D) (archived: [Wayback](<https://web.archive.org/web/20261026171209/https://www3.bcb.gov.br/sgspub/consultarvalores/consultarValoresSeries.do?method=consultarValores&optSelecionaSerie=20306&dataInicio=01%2F09%2F2025&dataFim=30%2F06%2F2026&selTipoArqDownload=1&hdOidSeriesSelecionadas=20306&hdPaginar=false&bilServico=%5BSGSFW2301%5D>), [archive.today](https://archive.ph/1BJhR), [Ghostarchive](https://ghostarchive.org/archive/Lqlw7)), [JSON API](https://api.bcb.gov.br/dados/serie/bcdata.sgs.20306/dados?formato=json&dataInicial=01/09/2025&dataFinal=30/06/2026) (archived: [Wayback](<https://web.archive.org/web/20261026171153/https://api.bcb.gov.br/dados/serie/bcdata.sgs.20306/dados?formato=json&dataInicial=01%2F09%2F2025&dataFinal=30%2F06%2F2026>), [archive.today](https://archive.ph/O5M9x), [Ghostarchive](https://ghostarchive.org/archive/NTa1f))).
-
-## Quarters
-
-| Quarter | Count date | Local amount | Status | FX rate | USD | YoY (local) |
-| :------ | :--------- | -----------: | :----- | ------: | --: | ----------: |
-| [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | BRL 431,100,998,000 | provisional | [0.19496164519554068128](../../FX/2026.md#fx-2026q2-brl) | [$84,048,159,816](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2026-sgs-values-page-retrieved-2026-10-22) | -4.4%ᵖ |
-| [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | BRL 438,897,105,000 | as published | [0.19120075027174406632](../../FX/2026.md#fx-2026q1-brl) | [$83,917,455,768](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2026-sgs-values-page-retrieved-2026-10-22) | —¹ |
-| [2025 Q4](../../quarters/2025Q4.md) | 2025-12 | BRL 447,096,654,000 | as published | [0.18309783594836714265](../../FX/2025.md#fx-2025q4-brl) | [$81,862,429,807](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-dec2025-sgs-values-page-retrieved-2026-10-23) | —¹ |
-| [2025 Q3](../../quarters/2025Q3.md) | 2025-09 | BRL 429,700,158,000 | as published | [0.18632872598292595352](../../FX/2025.md#fx-2025q3-brl) | [$80,065,482,995](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2025-sgs-values-page-retrieved-2026-10-23) | —¹ |
-| [2025 Q2](../../quarters/2025Q2.md) | 2025-06 | BRL 451,010,163,000 | as published | [0.18056982057138069463](../../FX/2025.md#fx-2025q2-brl) | [$81,438,824,209](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2025-sgs-values-page-retrieved-2026-10-26) | —¹ |
-
-¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
-
-ᵖ One or both figures are provisional and may be revised.
 
 ## Years
 

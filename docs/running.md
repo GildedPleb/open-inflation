@@ -100,9 +100,9 @@ bun run readme
 ```
 
 - It rewrites `README.md`'s generated blocks.
-- It rewrites the quarter list in `base_money/README.md`, with each quarter's YoY and the footnotes under it.
-- It rewrites the YoY column of each quarter file's table and the footnotes under that table.
-- It rewrites the `## Quarters` table in each issuer README and the `## Years` list in each issuer and FX folder README.
+- It rewrites the quarter list in `base_money/README.md`, with each quarter's rounded total, YoY, exact total and date, and the footnotes under it.
+- It rewrites the YoY column of each quarter file's table, and the `YoY:` line and footnotes under that table.
+- It rewrites the `## Quarters` section in each issuer README (right after the facts list, before `## What we measure`) and the `## Years` list in each issuer and FX folder README.
 - It writes `base_money/components.csv` and each `base_money/issuers/<ISS>/<ISS>.csv`.
 - It reads `base_money/base_money.csv`, each quarter file's last machine block, the adopted extract each component's anchor names (its `- As of:`, `- Convention:` and `- Status:` lines) and `catalog.json`. It never writes `base_money/base_money.csv`.
 - Run it after adding or changing a quarter: a CSV row, its quarter file and its issuer files.

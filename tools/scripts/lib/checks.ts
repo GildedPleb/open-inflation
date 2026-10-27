@@ -1423,6 +1423,17 @@ const fxTable: (body: string) => ReadonlyMap<string, FxSection> = memoText((body
   return out;
 });
 
+/**
+ * The quoted Pair and Rate (cell text, verbatim) of currency `ccy`'s row in quarter `q` of an FX year file, found by
+ * its row anchor; null when there is not exactly one such row (L9 reports why).
+ */
+export function fxQuote(body: string, q: string, ccy: string): { pair: string; rate: string; anchor: string } | null {
+  const anchor = rowAnchor(q, ccy);
+  const hits = (fxTable(body).get(q)?.rows ?? []).filter((r) => r.anchor === anchor);
+  const r = hits.length === 1 ? hits[0] : undefined;
+  return r ? { pair: cellText(r.cell.Pair), rate: cellText(r.cell.Rate), anchor } : null;
+}
+
 /** A row's Pair and Rate: its currency, the USD per unit it derives (fx_rate), or why not. */
 function fxRowRate(r: FxRow): {
   ccy?: string;
