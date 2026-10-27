@@ -7,6 +7,22 @@
 - **Official website:** [rbi.org.in](https://www.rbi.org.in/)
 - **Data pages used here:** [Weekly Statistical Supplement](https://www.rbi.org.in/Scripts/WSSView.aspx)
 
+## Quarters
+
+Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.
+
+| Quarter | Count date | Amount (INR) | Status | INR per USD | USD | YoY (INR) |
+| :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [52,563,650,000,000](2026.md#rbi-reserve-money-2026-06-30-wss-2026-07-10) | final | [94.65](../../FX/2026.md#fx-2026q2-inr) | $555.3B | +6.8% |
+| [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [51,078,310,000,000](2026.md#rbi-reserve-money-2026-03-31-wss-2026-06-26) | final | [93.437](../../FX/2026.md#fx-2026q1-inr) | $546.7B | —¹ |
+| [2025 Q4](../../quarters/2025Q4.md) | 2025-12-31 | [47,991,350,000,000](2025.md#rbi-reserve-money-2025-12-31-wss-2026-01-09) | final | [89.832](../../FX/2025.md#fx-2025q4-inr) | $534.2B | —¹ |
+| [2025 Q3](../../quarters/2025Q3.md) | 2025-09-26 | [48,715,290,000,000](2025.md#rbi-reserve-money-2025-09-26-wss-2025-10-03) | final | [88.63](../../FX/2025.md#fx-2025q3-inr) | $549.6B | —¹ |
+| [2025 Q2](../../quarters/2025Q2.md) | 2025-06-27 | [49,237,050,000,000](2025.md#rbi-reserve-money-2025-06-27-wss-2025-07-04) | final | [85.431](../../FX/2025.md#fx-2025q2-inr) | $576.3B | —¹ |
+
+¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
+
+**Download:** [RBI.csv](RBI.csv), this bank's rows as data.
+
 ## What we measure
 
 Weekly Statistical Supplement "Reserve Money: Components and Sources"; stock on the last day of the month; final figures only. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).

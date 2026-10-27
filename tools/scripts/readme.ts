@@ -1,6 +1,9 @@
-// bun run readme: rewrite README.md's generated blocks, the quarter list and each issuer/FX folder README's "## Years" list from base_money/base_money.csv, the roll-ups
-// and catalog.json (lib/readme.ts). Lint (L13) fails when any file it writes differs from what this would write.
-// Exit 0 written, 2 when an input cannot be read or a README marker is missing.
+// bun run readme: rewrite every generated output (lib/readme.ts) from base_money/base_money.csv, the roll-ups, their
+// adopted extracts and catalog.json: README.md's generated blocks and each folder README's "## Years" list (L13); the
+// quarter list, each quarter file's YoY column and footnotes, each issuer README's "## Quarters" table,
+// base_money/components.csv and each base_money/issuers/<ISS>/<ISS>.csv (L17). Never base_money.csv.
+// Lint fails when any file it writes differs from what this would write.
+// Exit 0 written, 2 when an input cannot be read, a README marker or heading is missing, or an extract lacks a field.
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { exitOnCrash } from "./lib/exit.ts";
@@ -12,6 +15,7 @@ import {
   fillReadme,
   freshIndex,
   generate,
+  outputs,
   README,
   YEARS_HEADING,
   yearLists,
@@ -44,21 +48,35 @@ if (Array.isArray(filled)) {
   process.exit(2);
 }
 const indexPath = join(REPO_ROOT, EVIDENCE_INDEX);
-const index = existsSync(indexPath) ? fillIndex(readFileSync(indexPath, "utf8"), g.index) : freshIndex(g.index);
+if (!existsSync(indexPath)) text.set(EVIDENCE_INDEX, freshIndex(g.index));
+const index = fillIndex(text.get(EVIDENCE_INDEX) ?? "", g.index);
 if (typeof index !== "string") {
   console.error(`readme: ${EVIDENCE_INDEX} ${index.problem}`);
   process.exit(2);
 }
-const years = new Map<string, string>();
+const writes = new Map<string, string>([[README, filled]]);
 for (const [p, list] of yearLists(paths)) {
   const y = fillList(text.get(p) ?? "", YEARS_HEADING, list, "year list");
   if (typeof y !== "string") {
     console.error(`readme: ${p} ${y.problem}`);
     process.exit(2);
   }
-  years.set(p, y);
+  text.set(p, y);
+  writes.set(p, y);
 }
-writeFileSync(join(REPO_ROOT, README), filled);
-writeFileSync(indexPath, index);
-for (const [p, y] of years) writeFileSync(join(REPO_ROOT, p), y);
-console.log(`readme: wrote ${README}, ${EVIDENCE_INDEX} and ${years.size} folder year list(s)`);
+const out = outputs(text, paths);
+if (!out || out.problems.length) {
+  for (const p of out?.problems ?? []) console.error(`readme: ${p.file}: ${p.message}`);
+  if (!out) console.error("readme: cannot read an input; run bun run lint");
+  process.exit(2);
+}
+for (const [p, t] of out.want) writes.set(p, t);
+if (writes.has(CSV_PATH)) throw new Error(`readme: never writes ${CSV_PATH}`);
+let changed = 0;
+for (const [p, t] of writes) {
+  const abs = join(REPO_ROOT, p);
+  if (existsSync(abs) && readFileSync(abs, "utf8") === t) continue;
+  writeFileSync(abs, t);
+  changed++;
+}
+console.log(`readme: ${writes.size} generated file(s), ${changed} rewritten`);

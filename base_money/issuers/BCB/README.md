@@ -7,6 +7,24 @@
 - **Official website:** [bcb.gov.br, English](https://www.bcb.gov.br/en)
 - **Data pages used here:** [SGS time-series pages](https://www3.bcb.gov.br/sgspub/) (series 1788) · [SGS JSON API, series 1788](https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json) · [monetary and credit statistics tables, September 2026](https://www.bcb.gov.br/content/estatisticas/hist_estatisticasmonetariascredito/202609_Tabelas_de_estatisticas_monetarias_e_de_credito.xlsx) (Table 28; no archive could capture this workbook)
 
+## Quarters
+
+Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.
+
+| Quarter | Count date | Amount (BRL) | Status | BRL per USD | USD | YoY (BRL) |
+| :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | [431,100,998,000](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2026-sgs-values-page-retrieved-2026-10-22) | provisional | [5.129214](../../FX/2026.md#fx-2026q2-brl) | $84.0B | -4.4%ᵖ |
+| [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | [438,897,105,000](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2026-sgs-values-page-retrieved-2026-10-22) | as published | [5.230105](../../FX/2026.md#fx-2026q1-brl) | $83.9B | —¹ |
+| [2025 Q4](../../quarters/2025Q4.md) | 2025-12 | [447,096,654,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-dec2025-sgs-values-page-retrieved-2026-10-23) | as published | [5.461561](../../FX/2025.md#fx-2025q4-brl) | $81.9B | —¹ |
+| [2025 Q3](../../quarters/2025Q3.md) | 2025-09 | [429,700,158,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2025-sgs-values-page-retrieved-2026-10-23) | as published | [5.366859](../../FX/2025.md#fx-2025q3-brl) | $80.1B | —¹ |
+| [2025 Q2](../../quarters/2025Q2.md) | 2025-06 | [451,010,163,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2025-sgs-values-page-retrieved-2026-10-26) | as published | [5.538024](../../FX/2025.md#fx-2025q2-brl) | $81.4B | —¹ |
+
+¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
+
+ᵖ This quarter's or the year-ago figure is provisional, so the bank may revise it.
+
+**Download:** [BCB.csv](BCB.csv), this bank's rows as data.
+
 ## What we measure
 
 SGS 1788 "BM - Base monetária restrita (saldo em final de período)", the BCB's own "base monetária": currency issued plus bank reserves, the stock at the end of the month, published in R$ thousand and used as published, not adjusted. It is the series in column B of Table 28, "Base monetária e componentes - Saldos em final de período", of the BCB's monetary and credit statistics, and the base the BCB reports in its monthly statistics text: "A base monetária totalizou R$432,6 bilhões em agosto" (August 2026; [Texto de estatísticas monetárias e de crédito, September 2026](https://www.bcb.gov.br/content/estatisticas/hist_estatisticasmonetariascredito/202609_Texto_de_estatisticas_monetarias_e_de_credito.pdf) (archived: [archive.today](https://archive.ph/vVRtp))).

@@ -24,7 +24,8 @@ export type CheckId =
   | "L13"
   | "L14"
   | "L15"
-  | "L16";
+  | "L16"
+  | "L17";
 
 export interface Finding {
   readonly check: CheckId;

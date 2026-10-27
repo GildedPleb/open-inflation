@@ -10,8 +10,6 @@ import {
   end,
   fillIndex,
   fillList,
-  fillReadme,
-  freshIndex,
   generate,
   type Quarter,
   YEARS_HEADING,
@@ -20,7 +18,7 @@ import {
 } from "../scripts/lib/readme.ts";
 import { REPO_ROOT } from "../scripts/lib/root.ts";
 import type { CheckId, Snapshot } from "../scripts/lib/types.ts";
-import { CSV_HEADER, files, goodText, machineBlock, Q3, rollup } from "./fixture.ts";
+import { CSV_HEADER, files, generateAll, goodText, machineBlock, Q3, rollup, withFields } from "./fixture.ts";
 
 const NOW = Date.parse("2026-10-22T16:00:00Z");
 
@@ -70,15 +68,11 @@ describe("YoY (R3)", () => {
   });
 });
 
-describe("L13 generated README and evidence index; L6 links (G3)", () => {
+describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
   const skeleton = `# fixture\n\n${BLOCKS.map((n) => `${begin(n)}\n\n${end(n)}`).join("\n\n")}\n`;
   const generated = (): Record<string, string> => {
-    const text = goodText();
-    const g = generate(new Map(Object.entries(text)), Object.keys(text));
-    if (!g) throw new Error("fixture does not generate");
-    const readme = fillReadme(skeleton, g.blocks);
-    if (typeof readme !== "string") throw new Error(readme.join("; "));
-    return { ...text, "README.md": readme, [EVIDENCE_INDEX]: freshIndex(g.index) };
+    const { [EVIDENCE_INDEX]: _, ...text } = withFields(goodText());
+    return generateAll({ ...text, "README.md": skeleton });
   };
   const snap = (patch: (t: Record<string, string>) => void): Snapshot => {
     const t = generated();
@@ -115,18 +109,18 @@ describe("L13 generated README and evidence index; L6 links (G3)", () => {
   });
   test("a missing quarter link in the quarter list fails", async () => {
     const s = snap((t) => edit(t, EVIDENCE_INDEX, "[2026 Q3](quarters/2026Q3.md)", "2026 Q3"));
-    expect(await ids(s)).toEqual(["L13", "L6"].sort() as CheckId[]);
+    expect(await ids(s)).toEqual(["L17", "L6"].sort() as CheckId[]);
   });
-  test("a hand-edited quarter list line fails L13; prose around the list is free", async () => {
-    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "30 September 2026", "1 October 2026")))).toEqual(["L13"]);
+  test("a hand-edited quarter list line fails L17; prose around the list is free", async () => {
+    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "30 September 2026", "1 October 2026")))).toEqual(["L17"]);
     expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "newest first.", "newest first. Edited.")))).toEqual([]);
   });
   test("the quarter list names each quarter's coverage and the issuers left out", async () => {
     const t = generated();
-    expect(t[EVIDENCE_INDEX]).toContain("; covers 99.92% of the basket, left out: BOJ");
-    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "; covers 99.92% of the basket, left out: BOJ", "")))).toEqual(
-      ["L13"],
-    );
+    expect(t[EVIDENCE_INDEX]).toContain(" · covers 99.92% of the basket; left out: BOJ");
+    expect(
+      await ids(snap((t) => edit(t, EVIDENCE_INDEX, " · covers 99.92% of the basket; left out: BOJ", ""))),
+    ).toEqual(["L17"]);
   });
   test("a coverage figure in front-page prose must be the latest quarter's coverage_pct", async () => {
     const prose = (pct: string) => (t: Record<string, string>) =>
@@ -139,7 +133,7 @@ describe("L13 generated README and evidence index; L6 links (G3)", () => {
     expect(await ids(snap(prose("99.92")))).toEqual([]);
     expect(await ids(snap(prose("99.91")))).toEqual(["L13"]);
   });
-  test("a gap between present quarters is a generated plain-text line, and L13 checks it", async () => {
+  test("a gap between present quarters is a generated plain-text line, and L17 checks it", async () => {
     const gap = (t: Record<string, string>) => {
       t["base_money/base_money.csv"] =
         `${CSV_HEADER}2026-03-31,1221,base_money/quarters/2026Q1.md\n2026-09-30,1221,${Q3}\n`;
@@ -150,20 +144,15 @@ describe("L13 generated README and evidence index; L6 links (G3)", () => {
     const g = generate(new Map(Object.entries(t)), Object.keys(t));
     expect(g?.index.split("\n")[1]).toBe("- 2026 Q2: no row; a missing quarter is never estimated.");
     const withGap = (edit: (t: Record<string, string>) => void): Snapshot => {
-      const u = goodText();
-      gap(u);
-      const h = generate(new Map(Object.entries(u)), Object.keys(u));
-      if (!h) throw new Error("gap fixture does not generate");
-      u[EVIDENCE_INDEX] = freshIndex(h.index);
-      const readme = fillReadme(skeleton, h.blocks);
-      if (typeof readme !== "string") throw new Error(readme.join("; "));
-      u["README.md"] = readme;
+      const { [EVIDENCE_INDEX]: _, ...v } = goodText();
+      gap(v);
+      const u = generateAll({ ...withFields(v), "README.md": skeleton });
       edit(u);
       return { files: files(u), base: null };
     };
-    const l13 = async (s: Snapshot) => (await lint(s, { now: NOW })).filter((f) => f.check === "L13");
-    expect(await l13(withGap(() => {}))).toEqual([]);
-    const dropped = await l13(
+    const l17 = async (s: Snapshot) => (await lint(s, { now: NOW })).filter((f) => f.check === "L17");
+    expect(await l17(withGap(() => {}))).toEqual([]);
+    const dropped = await l17(
       withGap((u) => {
         u[EVIDENCE_INDEX] = (u[EVIDENCE_INDEX] as string).replace(
           "- 2026 Q2: no row; a missing quarter is never estimated.\n",

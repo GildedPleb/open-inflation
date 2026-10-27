@@ -3375,6 +3375,8 @@ describe("per-extract Archive attempt, Link audit and Rejected source lines (L7)
 /** The L12 path patterns as a layout list names them (any <ISS> placeholder name). */
 const LAYOUT = [
   "base_money/base_money.csv",
+  "base_money/components.csv",
+  "base_money/issuers/<ID>/<ID>.csv",
   "base_money/README.md",
   "base_money/quarters/YYYYQn.md",
   "base_money/issuers/<ID>/<YYYY>.md",
