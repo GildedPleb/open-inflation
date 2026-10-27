@@ -11,7 +11,7 @@
 
 Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.
 
-| Quarter | Count date | Amount (JPY) | Status | JPY per USD | USD | YoY (JPY) |
+| Quarter | Count date | Amount (JPY) | Status | JPY per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [559,984,900,000,000](2026.md#boj-monetary-base-end-of-period-2026-06-release-2026-07-02) | as published | [162.544](../../FX/2026.md#fx-2026q2-jpy) | $3.45T | -14.0% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [580,666,600,000,000](2026.md#boj-monetary-base-end-of-period-2026-03-release-2026-04-02) | as published | [158.686](../../FX/2026.md#fx-2026q1-jpy) | $3.66T | —¹ |
@@ -21,7 +21,9 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
 
-**Download:** [BOJ.csv](BOJ.csv), this bank's rows as data.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. as published: the bank gives no status label, so the figure is the one shown on the retrieval date. Later changes are added as revisions, never overwritten.
+
+**Download:** [BOJ.csv](BOJ.csv), this bank's rows as data. Columns and units: [Components CSV](../../../docs/methodology/base_money.md#components-csv).
 
 ## What we measure
 

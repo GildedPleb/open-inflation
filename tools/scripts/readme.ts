@@ -36,6 +36,17 @@ walk(join(REPO_ROOT, EVIDENCE_ROOT));
 const text = new Map<string, string>();
 for (const p of [...new Set([...paths, CSV_PATH]), "catalog.json", README])
   text.set(p, readFileSync(join(REPO_ROOT, p), "utf8"));
+// The methodology the bank pages link (their Status note and Download line need its headings).
+const methodology = (() => {
+  try {
+    return JSON.parse(text.get("catalog.json") ?? "").series?.find((x: { id?: string }) => x?.id === "base_money")
+      ?.methodology;
+  } catch {
+    return undefined;
+  }
+})();
+if (typeof methodology === "string" && existsSync(join(REPO_ROOT, methodology)))
+  text.set(methodology, readFileSync(join(REPO_ROOT, methodology), "utf8"));
 
 const g = generate(text, paths.sort());
 if (!g) {

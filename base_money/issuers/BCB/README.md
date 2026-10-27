@@ -11,7 +11,7 @@
 
 Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.
 
-| Quarter | Count date | Amount (BRL) | Status | BRL per USD | USD | YoY (BRL) |
+| Quarter | Count date | Amount (BRL) | Status | BRL per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | [431,100,998,000](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2026-sgs-values-page-retrieved-2026-10-22) | provisional | [5.129214](../../FX/2026.md#fx-2026q2-brl) | $84.0B | -4.4%ᵖ |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | [438,897,105,000](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2026-sgs-values-page-retrieved-2026-10-22) | as published | [5.230105](../../FX/2026.md#fx-2026q1-brl) | $83.9B | —¹ |
@@ -23,7 +23,11 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ᵖ This quarter's or the year-ago figure is provisional, so the bank may revise it.
 
-**Download:** [BCB.csv](BCB.csv), this bank's rows as data.
+Count date: the date the bank's figure counts, as the bank gives it; YYYY-MM means the bank reports a month-end figure without a day.
+
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. provisional: the bank marks it provisional or preliminary and may revise it. as published: the bank gives no status label, so the figure is the one shown on the retrieval date. Later changes are added as revisions, never overwritten.
+
+**Download:** [BCB.csv](BCB.csv), this bank's rows as data. Columns and units: [Components CSV](../../../docs/methodology/base_money.md#components-csv).
 
 ## What we measure
 

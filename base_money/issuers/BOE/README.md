@@ -11,7 +11,7 @@
 
 Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.
 
-| Quarter | Count date | Amount (GBP) | Status | USD per GBP | USD | YoY (GBP) |
+| Quarter | Count date | Amount (GBP) | Status | USD per GBP | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | [756,193,000,000](2026.md#boe-lpmavaa--lpmbl22-2026-06-retrieved-2026-10-22) | as published | [1.332387](../../FX/2026.md#fx-2026q2-gbp) | $1.01T | -2.6% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | [747,579,000,000](2026.md#boe-lpmavaa--lpmbl22-2026-03-retrieved-2026-10-23) | as published | [1.334998](../../FX/2026.md#fx-2026q1-gbp) | $998.0B | —¹ |
@@ -21,7 +21,11 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
 
-**Download:** [BOE.csv](BOE.csv), this bank's rows as data.
+Count date: the date the bank's figure counts, as the bank gives it; YYYY-MM means the bank reports a month-end figure without a day.
+
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. as published: the bank gives no status label, so the figure is the one shown on the retrieval date. Later changes are added as revisions, never overwritten.
+
+**Download:** [BOE.csv](BOE.csv), this bank's rows as data. Columns and units: [Components CSV](../../../docs/methodology/base_money.md#components-csv).
 
 ## What we measure
 

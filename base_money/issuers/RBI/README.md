@@ -11,7 +11,7 @@
 
 Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.
 
-| Quarter | Count date | Amount (INR) | Status | INR per USD | USD | YoY (INR) |
+| Quarter | Count date | Amount (INR) | Status | INR per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [52,563,650,000,000](2026.md#rbi-reserve-money-2026-06-30-wss-2026-07-10) | final | [94.65](../../FX/2026.md#fx-2026q2-inr) | $555.3B | +6.8% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [51,078,310,000,000](2026.md#rbi-reserve-money-2026-03-31-wss-2026-06-26) | final | [93.437](../../FX/2026.md#fx-2026q1-inr) | $546.7B | —¹ |
@@ -21,7 +21,9 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
 
-**Download:** [RBI.csv](RBI.csv), this bank's rows as data.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. final: the bank marks it final. Later changes are added as revisions, never overwritten.
+
+**Download:** [RBI.csv](RBI.csv), this bank's rows as data. Columns and units: [Components CSV](../../../docs/methodology/base_money.md#components-csv).
 
 ## What we measure
 

@@ -16,13 +16,19 @@ import {
 import {
   bankYoy,
   COMPONENTS_HEADER,
+  COUNT_DATE_NOTE,
   type Component,
   csvProblems,
   fillIssuerQuarters,
+  ISSUER_YOY_HEADER,
   outputs,
   PROVISIONAL_MARK,
   QUARTER_YOY_LINE,
+  STATUS_NOTE_END,
+  STATUS_TERMS,
+  statusNote,
   usdShort,
+  YOY_HEADER,
   YOY_NOTES,
   yoyCell,
   yoyText,
@@ -38,6 +44,8 @@ import {
   folderReadme,
   generateAll,
   goodText,
+  METHODOLOGY_PATH,
+  METHODOLOGY_STUB,
   machineBlock,
   rollup,
   withFields,
@@ -125,6 +133,7 @@ interface C {
   fx: string;
   usd: number;
   status?: string;
+  asOf?: string;
 }
 const FED = (value: string, o: Partial<C> = {}): C => ({ iss: "FED", ccy: "USD", value, fx: "1", usd: +value, ...o });
 const ECB = (value: string, fx: string, usd: number, o: Partial<C> = {}): C => ({
@@ -145,6 +154,7 @@ const twoYears = (q26: C[], q27: C[]): Record<string, string> => {
     "README.md": "# fixture\n",
     "catalog.json": catalog(),
     [CSV_PATH]: CSV_HEADER,
+    [METHODOLOGY_PATH]: METHODOLOGY_STUB,
   };
   const years = new Map<string, string[]>();
   for (const [q, cs] of [
@@ -164,7 +174,11 @@ const twoYears = (q26: C[], q27: C[]): Record<string, string> => {
       .join("\n");
     t[quarterPath(q)] = rollup(machineBlock({ quarter: q, asOf: dateOf(q), components, total: `${total}` }));
     for (const c of cs) {
-      const fields = [`- As of: ${dateOf(q)}`, "- Convention: end of period", `- Status: ${c.status ?? "final"}`];
+      const fields = [
+        `- As of: ${c.asOf ?? dateOf(q)}`,
+        "- Convention: end of period",
+        `- Status: ${c.status ?? "final"}`,
+      ];
       const p = extractPath(c.iss, q.slice(0, 4));
       t[p] =
         `${t[p] ?? `# ${c.iss} ${q.slice(0, 4)}\n`}\n## ${q}\n\n${extract({ title: adoptedTitle(c.iss, q), fields })}`;
@@ -185,6 +199,10 @@ const cell = (md: string | undefined, row: string): string | undefined =>
 const Q26 = quarterPath("2026Q3");
 const Q27 = quarterPath("2027Q3");
 const ECB_README = folderReadmePath("ECB");
+/** The bank pages' links into the fixture methodology (relative from base_money/issuers/<ISS>/README.md). */
+const DOC = "../../../methodology/base_money.md";
+const STATUS_FINAL = statusNote(`${DOC}#status-and-vintages`, new Set(["final"]));
+const DOWNLOAD_ECB = `**Download:** [ECB.csv](ECB.csv), this bank's rows as data. Columns and units: [Components CSV](${DOC}#components-csv).`;
 
 describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
   // FED 1000 -> 1100 USD; ECB 200 EUR x 1.1 = $220 -> 180 EUR x 1.2 = $216; total $1,220 -> $1,316 (+7.87%).
@@ -198,7 +216,7 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
       "(quarters/2027Q3.md): about $0.00 trillion, YoY +7.9% · exactly $1,316 on 30 September 2027 · covers",
     );
     expect(cell(t[ECB_README], "[2027 Q3]")).toBe("-10.0%");
-    expect(t[ECB_README]).toContain("| Quarter | Count date | Amount (EUR) | Status | FX rate | USD | YoY (EUR) |");
+    expect(t[ECB_README]).toContain("| Quarter | Count date | Amount (EUR) | Status | FX rate | USD | YoY (local) |");
     expect(t[ECB_README]).toMatch(
       /\n\| \[2027 Q3\]\(\.\.\/\.\.\/quarters\/2027Q3\.md\) \| 2027-09-30 \| \[180\]\(2027\.md#[a-z0-9-]+\) \| final \| — \| \$0\.0B \| -10\.0% \|\n/,
     );
@@ -207,7 +225,7 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
     const t = base();
     expect(t[COMPONENTS_CSV]).toContain("2027-09-30,2027Q3,FED,2027-09-30,end of period,final,USD,1100,1,1100,");
     expect(cell(t[folderReadmePath("FED")], "[2027 Q3]")).toBe("+10.0%");
-    expect(t[folderReadmePath("FED")]).toContain("| Quarter | Count date | Amount (USD) | Status | YoY (USD) |\n");
+    expect(t[folderReadmePath("FED")]).toContain("| Quarter | Count date | Amount (USD) | Status | YoY (local) |\n");
   });
   test("—¹ and its footnote on the first year; no ² or ᵖ note when no cell needs one", () => {
     const t = base();
@@ -218,7 +236,7 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
     expect(t[Q27]).not.toContain("¹ ");
     expect(t[QUARTER_LIST]).toContain("\n\n¹ No year-ago quarter yet: 2026 Q3.\n");
     expect(cell(t[ECB_README], "[2026 Q3]")).toBe("—¹");
-    expect(t[ECB_README]).toContain(`|\n\n${YOY_NOTES.bank.none(["2026 Q3"])}\n\n**Download:** [ECB.csv](ECB.csv)`);
+    expect(t[ECB_README]).toContain(`|\n\n${YOY_NOTES.bank.none(["2026 Q3"])}\n\n${STATUS_FINAL}\n\n${DOWNLOAD_ECB}\n`);
   });
   test("ᵖ at either end marks the bank and the total, with its footnote once", () => {
     for (const [a, b] of [
@@ -292,6 +310,44 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
     expect(usdShort(1_234_560_000_000n - 1n)).toBe("$1.23T");
     expect(usdShort(999_960_000_000n)).toBe("$1,000.0B");
     expect(usdShort(220n)).toBe("$0.0B");
+  });
+  test("m1: the quarter file's YoY header names its basis; an older plain YoY header is replaced in place", () => {
+    const t = base();
+    expect(YOY_HEADER).toBe("YoY (local; Total in USD)");
+    expect(t[Q27]).toContain(`| FX rate | USD | ${YOY_HEADER} |\n`);
+    expect(t[Q27]).toContain(`|\n\n${QUARTER_YOY_LINE}\n`); // the note line stays, saying the same
+    const old = (t[Q27] as string).replace(`| ${YOY_HEADER} |`, "| YoY |");
+    expect(generateAll({ ...t, [Q27]: old })).toEqual(t);
+    expect(ISSUER_YOY_HEADER).toBe("YoY (local)");
+  });
+  test("m3: the bank page defines a YYYY-MM count date and each status it shows, after the ¹ ² ᵖ notes", () => {
+    const t = twoYears(
+      [FED("1000"), ECB("200", "1.1", 220, { status: "as published", asOf: "2026-09" })],
+      [FED("1100"), ECB("180", "1.2", 216, { status: "provisional" })],
+    );
+    expect(Object.keys(STATUS_TERMS)).toEqual(["final", "provisional", "revised", "as published"]);
+    const status = `[Status](${DOC}#status-and-vintages): the bank's own label. ${STATUS_TERMS.provisional} ${STATUS_TERMS["as published"]} ${STATUS_NOTE_END}`;
+    expect(t[ECB_README]).toContain(
+      `\n\n${YOY_NOTES.bank.provisional()}\n\n${COUNT_DATE_NOTE}\n\n${status}\n\n${DOWNLOAD_ECB}\n`,
+    );
+    expect(t[ECB_README]).toContain("| 2026-09 |"); // the count date as stored
+    expect(t[folderReadmePath("FED")]).not.toContain("Count date:"); // full dates only: no Count date note
+    expect(t[folderReadmePath("FED")]).toContain(`.\n\n${STATUS_FINAL}\n\n**Download:**`);
+  });
+  test("² on a bank page is one paragraph, items newest first, joined by ', '", () => {
+    expect(YOY_NOTES.bank.change(["2028 Q1 (left out this quarter)", "2027 Q3 (left out in 2026 Q3)"])).toBe(
+      "² Not like for like with a year earlier: 2028 Q1 (left out this quarter), 2027 Q3 (left out in 2026 Q3).",
+    );
+  });
+  test("a methodology without the linked heading is a generator problem, not a broken link", () => {
+    const t = base();
+    for (const [doc, anchor] of [
+      ["# M\n\n### Components CSV\n", "status-and-vintages"],
+      ["# M\n\n## Status and vintages\n", "components-csv"],
+    ]) {
+      const o = outputs(new Map(Object.entries({ ...t, [METHODOLOGY_PATH]: doc as string })), Object.keys(t));
+      expect(o?.problems).toContainEqual({ file: ECB_README, message: expect.stringContaining(`"#${anchor}"`) });
+    }
   });
   test("G1 idempotent: generating the generated repo changes nothing; base_money.csv is never written", () => {
     const t = base();
@@ -404,6 +460,11 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
     await l17(edit(Q3, "the series has no 2025 Q3.", "the series has no 2025 Q2."), Q3);
     await l17(edit(Q3, `${QUARTER_YOY_LINE}\n\n`, ""), Q3); // the YoY line removed
     await l17(edit(Q3, "so exchange rates don't move it;", "so FX doesn't move it;"), Q3); // or reworded
+    await l17(edit(Q3, `| ${YOY_HEADER} |`, "| YoY |"), Q3); // m1: the header's basis
+  });
+  test("L5: the Status note's and Download line's methodology links resolve", async () => {
+    const fs = await lint(snap({ [METHODOLOGY_PATH]: "# Methodology\n" }), { now: NOW });
+    expect(fs.filter((f) => f.check === "L5").map((f) => f.file)).toContain(ECB_README);
   });
   test("a field, a row order or a missing file in components.csv", async () => {
     await l17(edit(COMPONENTS_CSV, "end of period,final,USD", "month end,final,USD"), COMPONENTS_CSV);
@@ -434,6 +495,11 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
       { [ECB_README]: `${(gen[ECB_README] as string).replace(section, "")}\n${section.trimEnd()}\n` },
       ECB_README,
     ); // moved last
+    await l17(edit(ECB_README, `| ${ISSUER_YOY_HEADER} |`, "| YoY (EUR) |"), ECB_README); // m1
+    await l17(edit(ECB_README, STATUS_TERMS.final, "final: final."), ECB_README); // m3: a status meaning
+    await l17(edit(ECB_README, `${STATUS_FINAL}\n\n`, ""), ECB_README); // or the Status note removed
+    await l17(edit(ECB_README, `\n\n${STATUS_FINAL}`, `\n\n${COUNT_DATE_NOTE}\n\n${STATUS_FINAL}`), ECB_README); // a stray Count date note
+    await l17(edit(ECB_README, " Columns and units: [Components CSV](", " Columns: [Components CSV]("), ECB_README); // m2
     await l17(edit(QUARTER_LIST, "YoY —¹", "YoY +0.0%"), QUARTER_LIST);
     await l17(edit(QUARTER_LIST, " · exactly $1,221 on", ", exactly $1,221 on"), QUARTER_LIST);
   });
@@ -471,7 +537,9 @@ describe("real data: this checkout's committed outputs", () => {
   walk(join(REPO_ROOT, "base_money"));
   paths.sort();
   const text = new Map<string, string>();
-  for (const p of [...paths, "catalog.json", "README.md"]) text.set(p, readFileSync(join(REPO_ROOT, p), "utf8"));
+  const METHODOLOGY = "docs/methodology/base_money.md";
+  for (const p of [...paths, "catalog.json", "README.md", METHODOLOGY])
+    text.set(p, readFileSync(join(REPO_ROOT, p), "utf8"));
   const csv = text.get(COMPONENTS_CSV) ?? "";
   const rows = csv
     .split("\n")
@@ -524,22 +592,33 @@ describe("real data: this checkout's committed outputs", () => {
         "",
         "Amounts are as the bank publishes them, in its own currency. YoY compares the same quarter a year earlier in that currency, so exchange rates don't move it.",
         "",
-        "| Quarter | Count date | Amount (INR) | Status | INR per USD | USD | YoY (INR) |",
+        "| Quarter | Count date | Amount (INR) | Status | INR per USD | USD | YoY (local) |",
         "| :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |",
         "| [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [52,563,650,000,000](2026.md#rbi-reserve-money-2026-06-30-wss-2026-07-10) | final | [94.65](../../FX/2026.md#fx-2026q2-inr) | $555.3B | +6.8% |",
         "| [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [51,078,310,000,000](2026.md#rbi-reserve-money-2026-03-31-wss-2026-06-26) | final | [93.437](../../FX/2026.md#fx-2026q1-inr) | $546.7B | —¹ |",
       ].join("\n"),
     );
     expect(rbi).toContain(
-      "\n\n¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.\n\n**Download:** [RBI.csv](RBI.csv), this bank's rows as data.\n\n## What we measure\n",
+      [
+        "\n\n¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.",
+        "[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. final: the bank marks it final. Later changes are added as revisions, never overwritten.",
+        "**Download:** [RBI.csv](RBI.csv), this bank's rows as data. Columns and units: [Components CSV](../../../docs/methodology/base_money.md#components-csv).",
+        "## What we measure\n",
+      ].join("\n\n"),
     );
+    // the two links resolve: base_money/issuers/RBI/ + ../../../ is the repo root
+    for (const a of ["status-and-vintages", "components-csv"])
+      expect(slugs(text.get(METHODOLOGY) ?? "").has(a)).toBe(true);
+    expect(text.get(folderReadmePath("BCB"))).toContain(`| 2026-06 |`);
+    expect(text.get(folderReadmePath("BCB"))).toContain(`\n\n${COUNT_DATE_NOTE}\n\n[Status](`);
+    expect(text.get(quarterPath("2026Q2"))).toContain(`| USD | ${YOY_HEADER} |\n`);
     const heads = rbi.split("\n").filter((l) => l.startsWith("## "));
     expect([heads[0], heads.at(-1)]).toEqual(["## Quarters", "## Years"]);
   });
   test("the front page: the Per bank line under Download, and each basket bank linked to its page", () => {
     const readme = text.get("README.md") ?? "";
     expect(readme).toContain(
-      "base_money.csv`\n\n**Per bank:** [base_money/components.csv](base_money/components.csv) · [raw CSV](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/components.csv): one row per quarter and central bank, with the bank's own figure and currency, count date, status, exchange rate, US-dollar amount and source link. Each bank's page has a CSV of just its rows.\n\n<details>",
+      "base_money.csv`\n\n**Per bank:** [base_money/components.csv](base_money/components.csv) · [raw CSV](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/components.csv): one row per quarter and central bank, with the bank's own figure and currency, count date, status, exchange rate, US-dollar amount and source link. Each bank's page has a CSV of just its rows. Columns and units (`fx_rate` is US dollars per one local unit): [Components CSV](docs/methodology/base_money.md#components-csv).\n\n<details>",
     );
     for (const i of ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"])
       expect(readme).toContain(`\n- **[${i}](base_money/issuers/${i}/README.md)**: `);
