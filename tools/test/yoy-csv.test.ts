@@ -15,6 +15,7 @@ import {
   quarterPath,
 } from "../scripts/lib/paths.ts";
 import {
+  banksPhrase,
   bankYoy,
   COMPONENTS_HEADER,
   COUNT_DATE_LEAD,
@@ -544,7 +545,7 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
     const t = gen[Q3] as string;
     expect(t).toContain("| [FED](../issuers/FED/README.md) | FED monetary base | USD 1,001 | none (already USD) |");
     await l17(edit(Q3, "| FED monetary base |", "| FED monetary base, hand-typed |"), Q3); // the failing fixture
-    await l17(edit(Q3, "base money across the two central banks", "base money across two central banks"), Q3);
+    await l17(edit(Q3, "two of the three central banks", "two of three central banks"), Q3);
     const rows = t.split("\n").filter((l) => /^\| \[(FED|ECB)\]/.test(l));
     expect(rows).toHaveLength(2);
     await l17({ [Q3]: t.replace(`${rows[0]}\n${rows[1]}`, `${rows[1]}\n${rows[0]}`) }, Q3);
@@ -554,6 +555,13 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
     const fs = await lint(snap(edit(fed, "\n- Measure (reader): FED monetary base", "")), { now: NOW });
     expect(fs.map((f) => `${f.check} ${f.file}`)).toContain(`L17 ${Q3}`);
     expect(fs.map((f) => f.message)).toContainEqual(expect.stringContaining('has no "- Measure (reader):" line'));
+  });
+  test("the opening sentence's banks: full basket as today, else N of the basket size (data), singular for one", () => {
+    expect(banksPhrase(9, 9)).toBe("the nine central banks in the basket");
+    expect(banksPhrase(8, 9)).toBe("eight of the nine central banks in the basket");
+    expect(banksPhrase(1, 9)).toBe("one of the nine central banks in the basket");
+    expect(banksPhrase(2, 3)).toBe("two of the three central banks in the basket"); // size is the data's, not 9
+    expect(gen[Q3]).toContain("base money across two of the three central banks in the basket came to"); // fixture: 2 of 3, from catalog.json
   });
   test("the H1-to-rounding-note bounds: only that span is replaced; a missing title or end is a problem", () => {
     expect(fillQuarterTable(`# Q\n\nold\n\n${ROUNDING_LEAD}.\n\n## What's left out\n`, "new")).toBe(

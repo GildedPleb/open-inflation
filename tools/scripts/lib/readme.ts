@@ -704,6 +704,16 @@ const groupDecimal = (v: string) => {
   const [i = "", f] = v.split(".");
   return f === undefined ? group(i) : `${group(i)}.${f}`;
 };
+const numberWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
+/**
+ * The opening sentence's banks phrase for `n` included banks of a `size`-bank basket: "the nine central banks in the
+ * basket" when full (today's text), else "eight of the nine central banks in the basket" ("one of the nine ..." for one).
+ */
+export function banksPhrase(n: number, size: number): string {
+  return n >= size
+    ? `the ${numberWord(n)} central banks in the basket`
+    : `${numberWord(n)} of the ${numberWord(size)} central banks in the basket`;
+}
 /** An issuer's display name: its README's H1 without the trailing " (<ISS>)" (no catalog field; the bank pages' own title). */
 export function issuerName(text: Texts, issuer: string): string | undefined {
   const h1 = /^# (.+)$/m.exec(text.get(`${ISSUERS_DIR}/${issuer}/README.md`) ?? "")?.[1];
@@ -756,9 +766,10 @@ function quarterTable(m: Model, q: Quarter): string | { problems: string[] } {
       "",
     ]);
   });
-  if (problems.length) return { problems };
-  const n = rows.length;
-  const sentence = `On ${Number(q.date.slice(8, 10))} ${LONG_MONTHS[Number(q.date.slice(5, 7)) - 1]} ${year}, base money across the ${NUMBER_WORDS[n] ?? String(n)} central banks in the basket came to **$${group(q.value.toString())}** (about **$${trillions(q.value)} trillion**), covering ${q.coverage.replace(/\.0+$|(\.\d*?)0+$/, "$1")}% of the basket by value.`;
+  const size = m.cat.baskets.get(q.basket)?.length;
+  if (size === undefined) problems.push(`catalog.json has no basket version ${q.basket}`);
+  if (problems.length || size === undefined) return { problems };
+  const sentence = `On ${Number(q.date.slice(8, 10))} ${LONG_MONTHS[Number(q.date.slice(5, 7)) - 1]} ${year}, base money across ${banksPhrase(rows.length, size)} came to **$${group(q.value.toString())}** (about **$${trillions(q.value)} trillion**), covering ${q.coverage.replace(/\.0+$|(\.\d*?)0+$/, "$1")}% of the basket by value.`;
   return [
     sentence,
     "",
