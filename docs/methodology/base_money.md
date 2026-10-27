@@ -247,6 +247,10 @@ FX is supporting data: it only translates each central bank's figure into US dol
 
 **Which revisions are taken.** A revision is taken up the next time that quarter is touched or at the next scheduled update, not by polling sources. Sources that overwrite in place (BOE, SNB, CBR, BCB and the PBOC year-to-date files) show only the latest vintage, so the archive captures recorded in each extract are the only record of the earlier one.
 
+**Provisional rows.** Each quarterly run first re-reads every earlier CSV row whose status is `provisional`. If the bank now shows a firmer figure or status, it is taken as a revision; if not, the row stays `provisional` and is re-read at the next run.
+
+**Unannounced revisions.** A bank may later change a figure without saying so. No source is polled for this. Such a change is still detectable: every extract's archive captures prove the figure as first published, so a later mismatch, whenever it is seen, is recorded as a revision.
+
 ## Versioning
 
 **Versioning starts at the v1 release** (data back to at least 2018). Until then there is no version ceremony: no bumps, tags or release notes, and the catalog `version` stays `0.1.0`. The semver rules are written here when v1 is cut.
