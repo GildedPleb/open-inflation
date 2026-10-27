@@ -21,9 +21,9 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
 
-[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. final: the bank marks it final. Later changes are added as revisions, never overwritten.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `final`: the bank marks it final. Later changes are added as revisions, never overwritten.
 
-**Download:** [RBI.csv](RBI.csv), this bank's rows as data. Columns and units: [Components CSV](../../../docs/methodology/base_money.md#components-csv).
+**Download:** [RBI.csv](RBI.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](../../../docs/methodology/base_money.md#components-csv).
 
 ## What we measure
 

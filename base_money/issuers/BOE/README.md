@@ -21,11 +21,11 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
 
-Count date: the date the bank's figure counts, as the bank gives it; YYYY-MM means the bank reports a month-end figure without a day.
+Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month.
 
-[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. as published: the bank gives no status label, so the figure is the one shown on the retrieval date. Later changes are added as revisions, never overwritten.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
-**Download:** [BOE.csv](BOE.csv), this bank's rows as data. Columns and units: [Components CSV](../../../docs/methodology/base_money.md#components-csv).
+**Download:** [BOE.csv](BOE.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](../../../docs/methodology/base_money.md#components-csv).
 
 ## What we measure
 

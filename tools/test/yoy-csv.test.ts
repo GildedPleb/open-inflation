@@ -16,17 +16,21 @@ import {
 import {
   bankYoy,
   COMPONENTS_HEADER,
-  COUNT_DATE_NOTE,
+  COUNT_DATE_LEAD,
   type Component,
+  countDateNote,
   csvProblems,
   fillIssuerQuarters,
   ISSUER_YOY_HEADER,
+  MONTH_BASIS,
+  MONTH_BASIS_TEXT,
   outputs,
   PROVISIONAL_MARK,
   QUARTER_YOY_LINE,
   STATUS_NOTE_END,
   STATUS_TERMS,
   statusNote,
+  statusTerm,
   usdShort,
   YOY_HEADER,
   YOY_NOTES,
@@ -134,6 +138,7 @@ interface C {
   usd: number;
   status?: string;
   asOf?: string;
+  convention?: string;
 }
 const FED = (value: string, o: Partial<C> = {}): C => ({ iss: "FED", ccy: "USD", value, fx: "1", usd: +value, ...o });
 const ECB = (value: string, fx: string, usd: number, o: Partial<C> = {}): C => ({
@@ -176,7 +181,7 @@ const twoYears = (q26: C[], q27: C[]): Record<string, string> => {
     for (const c of cs) {
       const fields = [
         `- As of: ${c.asOf ?? dateOf(q)}`,
-        "- Convention: end of period",
+        `- Convention: ${c.convention ?? "end of period"}`,
         `- Status: ${c.status ?? "final"}`,
       ];
       const p = extractPath(c.iss, q.slice(0, 4));
@@ -202,7 +207,7 @@ const ECB_README = folderReadmePath("ECB");
 /** The bank pages' links into the fixture methodology (relative from base_money/issuers/<ISS>/README.md). */
 const DOC = "../../../methodology/base_money.md";
 const STATUS_FINAL = statusNote(`${DOC}#status-and-vintages`, new Set(["final"]));
-const DOWNLOAD_ECB = `**Download:** [ECB.csv](ECB.csv), this bank's rows as data. Columns and units: [Components CSV](${DOC}#components-csv).`;
+const DOWNLOAD_ECB = `**Download:** [ECB.csv](ECB.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](${DOC}#components-csv).`;
 
 describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
   // FED 1000 -> 1100 USD; ECB 200 EUR x 1.1 = $220 -> 180 EUR x 1.2 = $216; total $1,220 -> $1,316 (+7.87%).
@@ -321,18 +326,62 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
     expect(ISSUER_YOY_HEADER).toBe("YoY (local)");
   });
   test("m3: the bank page defines a YYYY-MM count date and each status it shows, after the ¹ ² ᵖ notes", () => {
+    // BOE (a monthly-average bank) in GBP, from the ECB helper
+    const boe = { iss: "BOE", ccy: "GBP" };
     const t = twoYears(
-      [FED("1000"), ECB("200", "1.1", 220, { status: "as published", asOf: "2026-09" })],
-      [FED("1100"), ECB("180", "1.2", 216, { status: "provisional" })],
+      [FED("1000"), ECB("200", "1.1", 220, { ...boe, status: "as published", asOf: "2026-09" })],
+      [FED("1100"), ECB("180", "1.2", 216, { ...boe, status: "provisional" })],
     );
     expect(Object.keys(STATUS_TERMS)).toEqual(["final", "provisional", "revised", "as published"]);
-    const status = `[Status](${DOC}#status-and-vintages): the bank's own label. ${STATUS_TERMS.provisional} ${STATUS_TERMS["as published"]} ${STATUS_NOTE_END}`;
-    expect(t[ECB_README]).toContain(
-      `\n\n${YOY_NOTES.bank.provisional()}\n\n${COUNT_DATE_NOTE}\n\n${status}\n\n${DOWNLOAD_ECB}\n`,
+    const status = `[Status](${DOC}#status-and-vintages): the bank's own label. \`provisional\`: ${STATUS_TERMS.provisional} \`as published\`: ${STATUS_TERMS["as published"]} ${STATUS_NOTE_END}`;
+    const download = DOWNLOAD_ECB.replaceAll("ECB.csv", "BOE.csv");
+    expect(t[folderReadmePath("BOE")]).toContain(
+      `\n\n${YOY_NOTES.bank.provisional()}\n\n${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT.average}\n\n${status}\n\n${download}\n`,
     );
-    expect(t[ECB_README]).toContain("| 2026-09 |"); // the count date as stored
+    expect(t[folderReadmePath("BOE")]).toContain("| 2026-09 |"); // the count date as stored
     expect(t[folderReadmePath("FED")]).not.toContain("Count date:"); // full dates only: no Count date note
     expect(t[folderReadmePath("FED")]).toContain(`.\n\n${STATUS_FINAL}\n\n**Download:**`);
+  });
+  test("NF1/NF2/NF3: Count date per bank basis, the 'as published' wording, terms in code formatting", () => {
+    expect(`${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT.average}`).toBe(
+      "Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month.",
+    );
+    expect(`${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT["month-end"]}`).toBe(
+      "Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the bank's month-end figure, published without a day.",
+    );
+    expect(Object.entries(MONTH_BASIS).sort()).toEqual([
+      ["BCB", "month-end"],
+      ["BOE", "average"],
+      ["BOJ", "month-end"],
+      ["FED", "average"],
+      ["PBOC", "month-end"],
+      ["RBI", "month-end"],
+      ["SNB", "average"],
+    ]);
+    expect(countDateNote("ECB", new Set())).toBeNull(); // no YYYY-MM row: no note, no basis needed
+    expect(countDateNote("BCB", new Set(["end-of-month stock"]))).toBe(
+      `${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT["month-end"]}`,
+    );
+    expect(countDateNote("FED", new Set(["monthly average"]))).toBe(`${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT.average}`);
+    expect(countDateNote("ECB", new Set(["weekly stock"]))).toEqual({
+      problem: expect.stringContaining("ECB has a YYYY-MM count date but no month basis"),
+    });
+    expect(countDateNote("FED", new Set(["end-of-month stock"]))).toEqual({
+      problem: expect.stringContaining('"end-of-month stock"'),
+    });
+    // the generator fails loudly rather than guess: ECB (no basis) with a YYYY-MM count date
+    const month = { asOf: "2026-09" };
+    expect(() => twoYears([FED("1000"), ECB("200", "1.1", 220, month)], [FED("1100"), ECB("180", "1.2", 216)])).toThrow(
+      /ECB has a YYYY-MM count date but no month basis/,
+    );
+    expect(statusTerm("as published")).toBe(
+      "`as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none.",
+    );
+    const note = statusNote("x", new Set(["final", "as published"]));
+    expect(note).toBe(
+      "[Status](x): the bank's own label. `final`: the bank marks it final. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.",
+    );
+    expect(note.split(STATUS_NOTE_END).length).toBe(2); // the closing sentence once
   });
   test("² on a bank page is one paragraph, items newest first, joined by ', '", () => {
     expect(YOY_NOTES.bank.change(["2028 Q1 (left out this quarter)", "2027 Q3 (left out in 2026 Q3)"])).toBe(
@@ -496,10 +545,13 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
       ECB_README,
     ); // moved last
     await l17(edit(ECB_README, `| ${ISSUER_YOY_HEADER} |`, "| YoY (EUR) |"), ECB_README); // m1
-    await l17(edit(ECB_README, STATUS_TERMS.final, "final: final."), ECB_README); // m3: a status meaning
+    await l17(edit(ECB_README, statusTerm("final"), "`final`: final."), ECB_README); // m3: a status meaning
     await l17(edit(ECB_README, `${STATUS_FINAL}\n\n`, ""), ECB_README); // or the Status note removed
-    await l17(edit(ECB_README, `\n\n${STATUS_FINAL}`, `\n\n${COUNT_DATE_NOTE}\n\n${STATUS_FINAL}`), ECB_README); // a stray Count date note
-    await l17(edit(ECB_README, " Columns and units: [Components CSV](", " Columns: [Components CSV]("), ECB_README); // m2
+    await l17(
+      edit(ECB_README, `\n\n${STATUS_FINAL}`, `\n\n${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT.average}\n\n${STATUS_FINAL}`),
+      ECB_README,
+    ); // a stray Count date note
+    await l17(edit(ECB_README, " What each column means, with units: [", " Columns: ["), ECB_README); // m2
     await l17(edit(QUARTER_LIST, "YoY —¹", "YoY +0.0%"), QUARTER_LIST);
     await l17(edit(QUARTER_LIST, " · exactly $1,221 on", ", exactly $1,221 on"), QUARTER_LIST);
   });
@@ -601,8 +653,8 @@ describe("real data: this checkout's committed outputs", () => {
     expect(rbi).toContain(
       [
         "\n\n¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.",
-        "[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. final: the bank marks it final. Later changes are added as revisions, never overwritten.",
-        "**Download:** [RBI.csv](RBI.csv), this bank's rows as data. Columns and units: [Components CSV](../../../docs/methodology/base_money.md#components-csv).",
+        "[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `final`: the bank marks it final. Later changes are added as revisions, never overwritten.",
+        "**Download:** [RBI.csv](RBI.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](../../../docs/methodology/base_money.md#components-csv).",
         "## What we measure\n",
       ].join("\n\n"),
     );
@@ -610,7 +662,13 @@ describe("real data: this checkout's committed outputs", () => {
     for (const a of ["status-and-vintages", "components-csv"])
       expect(slugs(text.get(METHODOLOGY) ?? "").has(a)).toBe(true);
     expect(text.get(folderReadmePath("BCB"))).toContain(`| 2026-06 |`);
-    expect(text.get(folderReadmePath("BCB"))).toContain(`\n\n${COUNT_DATE_NOTE}\n\n[Status](`);
+    expect(text.get(folderReadmePath("BCB"))).toContain(
+      `\n\n${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT["month-end"]}\n\n[Status](`,
+    );
+    for (const i of ["FED", "BOE", "SNB"])
+      expect(text.get(folderReadmePath(i))).toContain(
+        `\n\n${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT.average}\n\n[Status](`,
+      );
     expect(text.get(quarterPath("2026Q2"))).toContain(`| USD | ${YOY_HEADER} |\n`);
     const heads = rbi.split("\n").filter((l) => l.startsWith("## "));
     expect([heads[0], heads.at(-1)]).toEqual(["## Quarters", "## Years"]);
@@ -618,7 +676,7 @@ describe("real data: this checkout's committed outputs", () => {
   test("the front page: the Per bank line under Download, and each basket bank linked to its page", () => {
     const readme = text.get("README.md") ?? "";
     expect(readme).toContain(
-      "base_money.csv`\n\n**Per bank:** [base_money/components.csv](base_money/components.csv) · [raw CSV](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/components.csv): one row per quarter and central bank, with the bank's own figure and currency, count date, status, exchange rate, US-dollar amount and source link. Each bank's page has a CSV of just its rows. Columns and units (`fx_rate` is US dollars per one local unit): [Components CSV](docs/methodology/base_money.md#components-csv).\n\n<details>",
+      "base_money.csv`\n\n**Per bank:** [base_money/components.csv](base_money/components.csv) · [raw CSV](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/components.csv): one row per quarter and central bank, with the bank's own figure and currency, count date, status, exchange rate, US-dollar amount and source link. Each bank's page has a CSV of just its rows. What each column means, with units: [CSV columns and units](docs/methodology/base_money.md#components-csv). `fx_rate` is US dollars per one unit of the bank's own currency.\n\n<details>",
     );
     for (const i of ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"])
       expect(readme).toContain(`\n- **[${i}](base_money/issuers/${i}/README.md)**: `);
