@@ -78,16 +78,15 @@ Local research scripts, never in CI and never a merge gate:
 
 ```sh
 bun run verify --base origin/main  # HEAD each archive URL the diff adds, once (L8's link check)
-bun run audit                      # re-check every link; store: $OBM_ARCHIVE_DIR or ~/open-inflation-archive/
 bun run link-check --write         # two live links per figure; drops dead archives, dates the Capture check
 ```
 
 - **Lint has no base.** It checks the working tree alone; `--base` and `$LINT_BASE` are accepted and ignored. See [Lint](docs/running.md#lint).
 - **Verify has a base.** Locally it defaults to `HEAD`, so after a commit pass `--base origin/main`. See [Verify](docs/running.md#verify).
 - **No network in lint, tests or CI.** L8 checks archive URLs by form only. Every test file imports `tools/test/no-network.ts` first. A new CLI test uses the in-process `lintMain` harness, not `Bun.spawn`.
-- **verify, audit and link-check** are local research scripts, never merge gates. See [Verify](docs/running.md#verify), [Audit](docs/running.md#audit) and [Link check](docs/running.md#link-check).
+- **verify and link-check** are local research scripts, never merge gates. See [Verify](docs/running.md#verify) and [Link check](docs/running.md#link-check).
   - verify prints `archive.today (distinct URLs): N verified, M unverified (R rate-limited, B blocked)` and the unverified URLs; open each in a browser.
-  - No verdict means rate-limited (a 429 or 503 still there when pacing gives up; a 429 is never a verdict), blocked, unconfirmed, offline, or, in audit, any other HTTP status.
-  - audit exits 3 when any link has no verdict. A lost link is fixed with `bun run link-check --write` (drop) or a new capture (repair); nothing is written about it.
+  - No verdict means rate-limited (a 429 or 503 still there when pacing gives up; a 429 is never a verdict), blocked, unconfirmed or offline.
+  - A lost link is fixed with `bun run link-check --write` (drop) or a new capture (repair); nothing is written about it.
 - **Pacing** is per host; override with `OBM_RATE_<KEY>_MS`: `OBM_RATE_ARCHIVE_TODAY_MS`, `OBM_RATE_GHOSTARCHIVE_ORG_MS`, `OBM_RATE_WEB_ARCHIVE_ORG_MS`, `OBM_RATE_ARCHIVE_ORG_MS` and `OBM_RATE_DEFAULT_MS`. See [Tuning and limits](docs/running.md#tuning-and-limits).
 - **Exit codes.** `0` clean, `1` findings, `2` usage or error, `3` incomplete. See [Exit codes](docs/running.md#exit-codes).

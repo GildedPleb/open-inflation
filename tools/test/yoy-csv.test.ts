@@ -218,7 +218,7 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
     expect(cell(t[Q27], "[ECB]")).toBe("-10.0%");
     expect(cell(t[Q27], "**Total**")).toBe("+7.9%");
     expect(t[QUARTER_LIST]).toContain(
-      "| [2027&nbsp;Q3](quarters/2027Q3.md) | 2027&#8209;09&#8209;30 | $0.0B | +7.9% | 1,316 | 99.92%; left out: BOJ |\n",
+      "| [2027&nbsp;Q3](quarters/2027Q3.md) | 2027-09-30 | $0.0B | +7.9% | 1,316 | 99.92%; left out: BOJ |\n",
     );
     expect(cell(t[ECB_README], "[2027 Q3]")).toBe("-10.0%");
     expect(t[ECB_README]).toContain("| Quarter | Count date | Amount (EUR) | Status | FX rate | USD | YoY (local) |");

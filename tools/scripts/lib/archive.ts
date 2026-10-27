@@ -55,7 +55,7 @@ export async function canaryOnline(
   return false;
 }
 
-/** `online`, asked at most once per CANARY_TTL_MS of `now` (verify and audit ask only after a network error). */
+/** `online`, asked at most once per CANARY_TTL_MS of `now` (verify asks only after a network error). */
 export function networkCheck(online: () => Promise<boolean>, now: () => number): () => Promise<boolean> {
   let last: { at: number; up: Promise<boolean> } | null = null;
   return () => {

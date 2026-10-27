@@ -4,6 +4,8 @@ import {
   AVAILABILITY_FORMS,
   archiveNet,
   bounded,
+  CANARIES,
+  canaryOnline,
   errorText,
   ghostPage,
   httpAvailable,
@@ -902,5 +904,35 @@ describe("exit codes", () => {
       "verify: internal error: plain",
       "verify: internal error: no stack",
     ]);
+  });
+});
+
+describe("canaryOnline (verify's network check)", () => {
+  test("canaryOnline: any HTTP answer from any canary is online; none is offline", async () => {
+    const seen: string[] = [];
+    const f = (answer: (u: string) => Response | Error) =>
+      (async (u: string) => {
+        seen.push(u);
+        const a = answer(u);
+        if (a instanceof Error) throw a;
+        return a;
+      }) as unknown as typeof fetch;
+    expect(
+      await canaryOnline(
+        f(() => new Response(null, { status: 503 })),
+        1000,
+      ),
+    ).toBe(true);
+    expect(seen).toEqual([CANARIES[0]]);
+    seen.length = 0;
+    const second = (u: string) => (u === CANARIES[1] ? new Response(null, { status: 200 }) : new Error("ETIMEOUT"));
+    expect(await canaryOnline(f(second), 1000)).toBe(true);
+    expect(seen).toEqual([...CANARIES]);
+    expect(
+      await canaryOnline(
+        f(() => new Error("ENOTFOUND")),
+        1000,
+      ),
+    ).toBe(false);
   });
 });

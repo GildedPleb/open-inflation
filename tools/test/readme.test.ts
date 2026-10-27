@@ -112,9 +112,7 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     expect(await ids(s)).toEqual(["L17", "L6"].sort() as CheckId[]);
   });
   test("a hand-edited quarter list line fails L17; prose around the list is free", async () => {
-    expect(
-      await ids(snap((t) => edit(t, EVIDENCE_INDEX, "| 2026&#8209;09&#8209;30 |", "| 2026&#8209;10&#8209;01 |"))),
-    ).toEqual(["L17"]);
+    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "| 2026-09-30 |", "| 2026-10-01 |")))).toEqual(["L17"]);
     expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "newest first.", "newest first. Edited.")))).toEqual([]);
   });
   test("the quarter list names each quarter's coverage and the issuers left out", async () => {
@@ -237,12 +235,24 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
       "| :------ | :--------- | ----------: | --------: | ----------------: |",
     ]);
     expect(rows.slice(-5)).toEqual([
-      "| [2026&nbsp;Q2](quarters/2026Q2.md) | 2026&#8209;06&#8209;30 | $22.13T | -5.5%ᵖ | 22,125,479,242,256 |",
-      "| [2026&nbsp;Q1](quarters/2026Q1.md) | 2026&#8209;03&#8209;31 | $22.45T | —¹ | 22,449,782,815,379 |",
-      "| [2025&nbsp;Q4](quarters/2025Q4.md) | 2025&#8209;12&#8209;31 | $22.55T | —¹ | 22,554,451,077,005 |",
-      "| [2025&nbsp;Q3](quarters/2025Q3.md) | 2025&#8209;09&#8209;30 | $22.88T | —¹ | 22,882,534,748,618 |",
-      "| [2025&nbsp;Q2](quarters/2025Q2.md) | 2025&#8209;06&#8209;30 | $23.42T | —¹ | 23,418,246,247,929 |",
+      "| [2026&nbsp;Q2](quarters/2026Q2.md) | 2026-06-30 | $22.13T | -5.5%ᵖ | 22,125,479,242,256 |",
+      "| [2026&nbsp;Q1](quarters/2026Q1.md) | 2026-03-31 | $22.45T | —¹ | 22,449,782,815,379 |",
+      "| [2025&nbsp;Q4](quarters/2025Q4.md) | 2025-12-31 | $22.55T | —¹ | 22,554,451,077,005 |",
+      "| [2025&nbsp;Q3](quarters/2025Q3.md) | 2025-09-30 | $22.88T | —¹ | 22,882,534,748,618 |",
+      "| [2025&nbsp;Q2](quarters/2025Q2.md) | 2025-06-30 | $23.42T | —¹ | 23,418,246,247,929 |",
     ]);
+  });
+  test("count dates use ASCII hyphens, never U+2011, so a copied date matches a search", () => {
+    const g = generate(repoText(), [...repoText().keys()]);
+    const index = g?.index ?? "";
+    expect(index).toContain("| 2026-06-30 |");
+    expect(index).not.toContain("\u2011");
+    expect(index).not.toContain("&#8209;");
+  });
+  test("the note under the table is Form's, its own paragraph", () => {
+    expect(repoText().get("base_money/README.md")).toContain(
+      "|\n\nTotal is rounded for easy reading; Exact total is the full figure, to the dollar.\n\n¹",
+    );
   });
   test("each YoY cell is the front page's, byte for byte", () => {
     const text = repoText();

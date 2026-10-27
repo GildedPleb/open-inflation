@@ -4,7 +4,6 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { CANARIES } from "../scripts/lib/archive.ts";
-import { type AuditIo, auditMain } from "../scripts/lib/audit-main.ts";
 import { lint } from "../scripts/lib/checks.ts";
 import { loadSnapshot, NotGitCheckout } from "../scripts/lib/git.ts";
 import { type LintGit, lintMain } from "../scripts/lib/lint-main.ts";
@@ -205,7 +204,7 @@ describe("repository identity", () => {
     expect(rules).toMatch(/^### L8\n\n.*no network calls.*`bun run verify`/m);
     for (const doc of [running, rules]) expect(doc).not.toContain("OBM_NO_NETWORK");
   });
-  test("docs: pace env names, audit exit 3, Ghostarchive 503, who opens unverified captures (N-a, 2a, F-2, m-F)", async () => {
+  test("docs: pace env names, Ghostarchive 503, who opens unverified captures (N-a, 2a, F-2, m-F)", async () => {
     const read = (p: string) => Bun.file(join(ROOT, p)).text();
     // The methodology links docs/running.md for pacing and verify output rather than repeating them.
     const docs = await Promise.all(["docs/running.md", "AGENTS.md"].map(read));
@@ -214,25 +213,22 @@ describe("repository identity", () => {
       for (const key of Object.keys(DEFAULT_PACE.intervals)) expect(doc).toContain(`\`${envName(key)}\``);
       expect(doc).toContain("`OBM_RATE_<KEY>_MS`");
       expect(doc).not.toContain("OBM_RATE_<HOST>_MS");
-      // 2a: audit exits 3 when any link has no verdict; no doc still says it exits 0 regardless.
-      expect(doc).toMatch(/audit[^.]*\b3\b[^.]*no verdict|`3` \(incomplete\) when any link has no verdict/);
-      expect(doc).not.toMatch(/still exits 0|whenever it ran, whatever it found/);
+      // The separate audit script is gone: no doc still offers it.
+      expect(doc).not.toContain("bun run audit");
       // F-2: a Ghostarchive 503 is retried as a rate limit, not called its Cloudflare challenge.
       expect(doc).not.toMatch(/503,? \(?its Cloudflare challenge|Ghostarchive also 503/);
-      expect(doc).toContain("any other HTTP status");
     }
     const [running] = docs;
     const rules = await read("docs/lint.md");
     expect(rules).not.toContain("reviewer to open");
-    expect(running).toMatch(/audit uses 0, 2 and 3/);
   });
   test("docs: the rate-limited wording and distinct-URL counts (N-h, m-A)", async () => {
     const read = (p: string) => Bun.file(join(ROOT, p)).text();
-    // README's contributor content moved to docs/running.md (verify, audit) and docs/lint.md (the rules).
+    // README's contributor content moved to docs/running.md (verify, link-check) and docs/lint.md (the rules).
     const [running, rules, agents, methodology] = await Promise.all(
       ["docs/running.md", "docs/lint.md", "AGENTS.md", "docs/methodology/base_money.md"].map(read),
     );
-    for (const doc of [running, agents, methodology]) {
+    for (const doc of [running, agents]) {
       // N-h: "a 429, or a 429 or 503" said 429 twice; a 429 is never a verdict, a 503 only when pacing gave up.
       expect(doc).not.toContain("429, or a 429");
       expect(doc).toMatch(/a 429 or 503 still there when pacing (gave|gives) up(; | \()a 429 is never a verdict/);
@@ -250,9 +246,9 @@ describe("repository identity", () => {
   });
 });
 
-// #18: lint and CI make no network call, ever. verify and audit are local scripts, never CI steps or merge gates.
+// #18: lint and CI make no network call, ever. verify and link-check are local scripts, never CI steps or merge gates.
 describe("no network in lint or CI", () => {
-  test("CI (lint.yml) runs no verify or audit step and sets no network env", async () => {
+  test("CI (lint.yml) runs no verify, audit or link-check step and sets no network env", async () => {
     const yml = await Bun.file(join(ROOT, ".github", "workflows", "lint.yml")).text();
     const runs = [...yml.matchAll(/^\s*run:\s*(.+)$/gm)].map((m) => (m[1] ?? "").trim());
     expect(runs).toEqual([
@@ -262,14 +258,15 @@ describe("no network in lint or CI", () => {
       "bun run check",
       "bun run lint",
     ]);
-    expect(yml).not.toMatch(/\b(verify|audit)\b|scripts\/(verify|audit)/);
+    expect(yml).not.toMatch(/\b(verify|audit|link-check)\b|scripts\/(verify|audit|link-check)/);
     expect(yml).not.toMatch(/OBM_NO_NETWORK|OBM_ARCHIVE_DIR|curl|wget|https?_proxy/i);
   });
-  test("verify, audit and test are package scripts; nothing names OBM_NO_NETWORK", async () => {
+  test("verify, link-check and test are package scripts; no audit script; nothing names OBM_NO_NETWORK", async () => {
     const pkg = (await Bun.file(join(ROOT, "package.json")).json()) as { scripts: Record<string, string> };
-    expect([pkg.scripts.verify, pkg.scripts.audit, pkg.scripts.lint, pkg.scripts.test]).toEqual([
+    expect(pkg.scripts.audit).toBeUndefined();
+    expect([pkg.scripts.verify, pkg.scripts["link-check"], pkg.scripts.lint, pkg.scripts.test]).toEqual([
       "bun tools/scripts/verify.ts",
-      "bun tools/scripts/audit.ts",
+      "bun tools/scripts/link-check.ts",
       "bun tools/scripts/lint.ts",
       "bun test", // `bun run test` runs the suite, not /usr/bin/test
     ]);
@@ -282,7 +279,7 @@ describe("no network in lint or CI", () => {
     ])
       expect(await Bun.file(join(ROOT, f)).text()).not.toContain("OBM_NO_NETWORK");
   });
-  test("lint's import graph never reaches the network code (archive.ts, verify.ts, audit.ts) or fetch", async () => {
+  test("lint's import graph never reaches the network code (archive.ts, verify.ts, link-check.ts) or fetch", async () => {
     const seen = new Set<string>();
     const walk = async (p: string) => {
       if (seen.has(p)) return;
@@ -294,7 +291,7 @@ describe("no network in lint or CI", () => {
     await walk(join(ROOT, "tools", "scripts", "lint.ts"));
     const names = [...seen].map((p) => p.slice(ROOT.length + 1)).sort();
     expect(names).toContain("tools/scripts/lib/checks.ts");
-    for (const n of ["tools/scripts/lib/archive.ts", "tools/scripts/lib/verify.ts", "tools/scripts/lib/audit.ts"])
+    for (const n of ["tools/scripts/lib/archive.ts", "tools/scripts/lib/verify.ts", "tools/scripts/lib/link-check.ts"])
       expect(names).not.toContain(n);
   });
 });
@@ -376,8 +373,8 @@ describe("CLI", () => {
   };
   const smokeLint = spawned("lint.ts", smokeRepo(), "--base", "HEAD~1");
   const smokeStubs = Promise.all([spawned("update.ts", ROOT), spawned("backfill.ts", ROOT)]);
-  // verify and audit end to end on bad usage only (exit 2 before any request): the in-process tests cover the rest.
-  const smokeWrappers = Promise.all([spawned("verify.ts", ROOT, "--nope"), spawned("audit.ts", ROOT, "extra")]);
+  // verify end to end on bad usage only (exit 2 before any request): the in-process tests cover the rest.
+  const smokeWrappers = Promise.all([spawned("verify.ts", ROOT, "--nope")]);
 
   test("lint: 0 on clean, 1 with findings, 2 on bad usage", async () => {
     // #18: lint makes no network call, ever. With no base every archive URL is new, and a new Wayback, archive.today
@@ -460,11 +457,11 @@ describe("CLI", () => {
     );
     expect((await run(["--base", main])).err).not.toContain("verify: note:");
   });
-  // Assay (#19): every exit code is pinned, in-process (verifyMain and auditMain; no bun start per case). verify and
-  // audit exit 2 on usage before any request; an uncaught error exits 2, not Bun's 1 (exitOnCrash, units). The
+  // Assay (#19): every exit code is pinned, in-process (verifyMain; no bun start per case). verify
+  // exits 2 on usage before any request; an uncaught error exits 2, not Bun's 1 (exitOnCrash, units). The
   // wrappers only install that handler and exit with the main's code.
-  test("verify and audit: 2 on bad usage; the wrappers exit with the main's code", async () => {
-    const usage = async (main: (io: VerifyIo & AuditIo) => Promise<number>, argv: string[]) => {
+  test("verify: 2 on bad usage; the wrappers exit with the main's code", async () => {
+    const usage = async (main: (io: VerifyIo) => Promise<number>, argv: string[]) => {
       const err: string[] = [];
       const fetch = (async () => {
         throw new Error("no request before usage");
@@ -474,11 +471,7 @@ describe("CLI", () => {
     };
     expect(await usage(verifyMain, ["--nope"])).toEqual([2, ["usage: bun run verify [--base <ref>]"]]);
     expect(await usage(verifyMain, ["--base"])).toEqual([2, ["usage: bun run verify [--base <ref>]"]]);
-    expect(await usage(auditMain, ["extra"])).toEqual([
-      2,
-      ["usage: bun run audit   (store: $OBM_ARCHIVE_DIR, else ~/open-inflation-archive/)"],
-    ]);
-    for (const name of ["lint", "verify", "audit"]) {
+    for (const name of ["lint", "verify"]) {
       const src = readFileSync(join(ROOT, "tools", "scripts", `${name}.ts`), "utf8");
       expect(src).toContain(`\nexitOnCrash("${name}");\n`);
       expect(src).toMatch(new RegExp(`process\\.exit\\(\\s*await ${name}Main\\(`));
@@ -571,12 +564,10 @@ describe("CLI", () => {
     expect(ue).toContain("not implemented (Waypoint 3)");
     expect(be).toContain("not implemented (Waypoint 4)");
   });
-  test("smoke: the verify and audit processes exit 2 with their usage on bad argv", async () => {
-    const [[vc, vo, ve], [ac, ao, ae]] = await smokeWrappers;
-    expect([vc, ac]).toEqual([2, 2]);
-    expect([vo, ao]).toEqual(["", ""]);
+  test("smoke: the verify process exits 2 with its usage on bad argv", async () => {
+    const [[vc, vo, ve]] = await smokeWrappers;
+    expect([vc, vo]).toEqual([2, ""]);
     expect(ve).toMatch(/^usage: bun run verify/m);
-    expect(ae).toMatch(/^usage: bun run audit/m);
   });
 });
 

@@ -1,5 +1,5 @@
 // Every evidence path in one place. Lint (checks.ts), the README/quarter-list generator (readme.ts), the base
-// snapshot (git.ts), the audit report and the test fixtures read these; re-pointing the layout is an edit here.
+// snapshot (git.ts) and the test fixtures read these; re-pointing the layout is an edit here.
 import { posix } from "node:path";
 
 /** The folder holding all evidence: the quarter list, the quarter files and the extracts. */

@@ -39,7 +39,7 @@ export const USAGE = "usage: bun run link-check [--quarter YYYYQn] [--write]";
 /**
  * The pacing link-check runs under: DEFAULT_PACE's per-host intervals (each below the host's known limit) and
  * adaptive slow-down, but patient: up to 12 tries per URL over up to 12 h, so a rate limit delays the run instead
- * of ending it without a verdict. OBM_RATE_* overrides apply as for verify and audit.
+ * of ending it without a verdict. OBM_RATE_* overrides apply as for verify.
  */
 export const CHECK_PACE: PaceConfig = { ...DEFAULT_PACE, maxTries: 12, budgetMs: 12 * 60 * 60_000 };
 

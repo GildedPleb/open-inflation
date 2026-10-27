@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { httpChallenge, httpHead, pacedNet } from "../scripts/lib/archive.ts";
-import { rawUrl, runAudit } from "../scripts/lib/audit.ts";
 import {
   type Clock,
   createPacer,
@@ -21,7 +20,7 @@ import type { HeadResult, Net } from "../scripts/lib/types.ts";
 import { verify, verifyExit } from "../scripts/lib/verify.ts";
 import { extract, files, goodText, onGood } from "./fixture.ts";
 
-// Pacing for the local scripts (verify, audit): per-host spacing, hosts in parallel, Retry-After, backoff, adaptive
+// Pacing for the local scripts (verify, link-check): per-host spacing, hosts in parallel, Retry-After, backoff, adaptive
 // slow-down, give-up vs blocked. A virtual clock: sleep() parks on a timer and the driver jumps time to the next one,
 // so nothing really waits.
 const fakeClock = (rand = 0) => {
@@ -284,7 +283,7 @@ describe("pacedNet: blocked vs rate-limited", () => {
   });
 });
 
-describe("paced verify and audit", () => {
+describe("paced verify", () => {
   test("verify's exit: 1 with findings, else 3 when any URL has no verdict, else 0", () => {
     expect([verifyExit(0, 0), verifyExit(2, 0), verifyExit(1, 4), verifyExit(0, 1)]).toEqual([0, 1, 1, 3]);
   });
@@ -331,47 +330,6 @@ describe("paced verify and audit", () => {
               [`rate-limited ${TODAY}`],
             ],
       );
-    }
-  });
-  test("audit: hosts in parallel, a 429 retried to its 200, a CAPTCHA blocked, a rate limit given up", async () => {
-    const store = mkdtempSync(join(tmpdir(), "obm-pace-"));
-    afterAll(() => rmSync(store, { recursive: true, force: true }));
-    const RAW = rawUrl(WB);
-    for (const [today, detail, tries] of [
-      [["captcha page"], "HTTP 429 (blocked: challenge/CAPTCHA)", 1], // a challenge is not retried
-      [["slow"], "HTTP 429 (rate-limited: gave up after 3 tries over 3 min 00 s)", 3],
-      [["slow", "slow", "fine"], "HTTP 200, first saved copy", 3],
-    ] as const) {
-      const { clock, drive, now } = fakeClock();
-      const left = [...today];
-      const at: string[] = [];
-      const f = (async (u: string) => {
-        at.push(`${hostKey(u)}@${now()}`);
-        if (u === ORIG) await clock.sleep(10_000); // a slow host does not hold up the others
-        if (u !== TODAY) return new Response(`${u} v1`);
-        const b = (left.length > 1 ? left.shift() : left[0]) as string;
-        return new Response(b, { status: b === "fine" ? 200 : 429 });
-      }) as typeof fetch;
-      const fs = files(
-        {},
-        { [FED]: `# FED 2026\n\n## 2026Q3\n\n${extract({ title: "FED src", original: ORIG, archive2: TODAY })}` },
-      );
-      const r = await drive(
-        runAudit({
-          files: fs,
-          fetch: f,
-          store,
-          date: "2026-10-23",
-          timeoutMs: 1000,
-          pauseMs: 0,
-          pacer: createPacer(PACE, clock),
-          clock,
-        }),
-      );
-      expect(r.report.links.find((l) => l.url === TODAY)?.detail).toBe(detail);
-      expect(r.report.links.map((l) => l.fetched)).toEqual([ORIG, RAW, TODAY]);
-      expect(at.slice(0, 3)).toEqual(["example.test@0", "web.archive.org@0", "archive.today@0"]);
-      expect(at.filter((a) => a.startsWith("archive.today@")).length).toBe(tries);
     }
   });
 });

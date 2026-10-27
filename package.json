@@ -7,7 +7,6 @@
     "lint": "bun tools/scripts/lint.ts",
     "readme": "bun tools/scripts/readme.ts",
     "verify": "bun tools/scripts/verify.ts",
-    "audit": "bun tools/scripts/audit.ts",
     "link-check": "bun tools/scripts/link-check.ts",
     "update": "bun tools/scripts/update.ts",
     "backfill": "bun tools/scripts/backfill.ts",

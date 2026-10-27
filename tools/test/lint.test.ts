@@ -2888,7 +2888,7 @@ describe("verify: L8 an archive.today Archive URL (fake network)", () => {
     await fails(onGood({ [FED]: added }), ["L8"], /network error: archive\.today: ECONNREFUSED/, f.opts);
     expect(f.avail).toEqual([]);
   });
-  // N-d: offline (no canary host answers) a network error is no verdict, "offline", never a finding (audit's m-G).
+  // N-d: offline (no canary host answers) a network error is no verdict, "offline", never a finding.
   test("N-d: a network error while no canary answers is no verdict (offline), never a finding", async () => {
     const f = fake({ kind: "network", message: "getaddrinfo ETIMEOUT archive.ph" });
     const nv: string[] = [];

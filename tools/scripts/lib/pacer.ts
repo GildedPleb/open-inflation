@@ -1,4 +1,4 @@
-// A per-host pacer for the local scripts (verify, audit): requests to one host are serial and at least that host's
+// A per-host pacer for the local scripts (verify, link-check): requests to one host are serial and at least that host's
 // interval apart; different hosts run in parallel. On HTTP 429 or 503 it waits (max(Retry-After, the host's
 // interval), else exponential backoff with jitter), slows that host for the rest of the run, and retries the same URL until it gets a verdict,
 // the per-URL try cap or the run's time budget. Clock, sleep and randomness are injected: tests never wait.
@@ -52,7 +52,7 @@ export interface PaceConfig {
  * Defaults, each well under the host's known or measured limit: archive.today 30 s (no published limit; scripts
  * report 429s faster than one per 8-10 s), Ghostarchive 5 s (three captures at 5 s all answered 200 from the
  * box), web.archive.org 2 s (snapshot pages: 600/min hard limit), the archive.org availability API 5 s (its
- * throttle is stricter and undocumented), any other host 1 s (the audit's old pause).
+ * throttle is stricter and undocumented), any other host 1 s.
  */
 export const DEFAULT_PACE: PaceConfig = {
   intervals: { "archive.today": 30_000, "ghostarchive.org": 5_000, "web.archive.org": 2_000, "archive.org": 5_000 },

@@ -224,7 +224,7 @@ export async function verify(snap: Snapshot, opts: VerifyOptions): Promise<Findi
     progress?.(`L8 pacing: about ${duration(e.ms)} before any retry (hosts in parallel: ${hosts})`);
   }
   // N-d: archive.today or Ghostarchive not answering at all is a finding only while the network is up (a canary host
-  // answers, as audit's m-G); with no canary answering it is no verdict, "offline", and the run is incomplete.
+  // answers); with no canary answering it is no verdict, "offline", and the run is incomplete.
   const up = opts.online && networkCheck(opts.online, () => (opts.clock ?? realClock).now());
   const offline = async (url: string, v: Verdict): Promise<Verdict> =>
     v.network !== undefined && up && !(await up())

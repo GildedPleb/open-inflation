@@ -11,10 +11,9 @@ For contributors. Run every command from the repository root.
 | `bun run lint` | Checks the data files in the working tree | Before every push | Yes | Never |
 | `bun run readme` | Rewrites the generated README parts | After adding a quarter | Through lint L13 | Never |
 | `bun run verify` | Checks each archive URL your change adds | While archiving new sources | No | Yes |
-| `bun run audit` | Re-checks every link and keeps private copies | When re-checking links | No | Yes |
-| `bun run link-check` | Checks each figure has two live links that show its number; `--write` drops dead archives and dates the Capture check | Each quarter, and after archiving new sources | No | Yes |
+| `bun run link-check` | Checks each figure has two live links that show its number; `--write` drops dead archives and dates the Capture check | One day to one week after a new quarter whose links were not confirmed at build time, and on the whole repository quarterly (mid January, April, July and October) | No | Yes |
 
-CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check` and `bun run lint` on every push and pull request. CI never runs `verify`, `audit` or `link-check`: archives rate-limit. Lint L16 checks the two-link rule offline in CI; whether the links are live is `link-check`'s job, and a slow archive never blocks publishing.
+CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check` and `bun run lint` on every push and pull request. CI never runs `verify` or `link-check`: archives rate-limit. Lint L16 checks the two-link rule offline in CI; whether the links are live is `link-check`'s job, and a slow archive never blocks publishing.
 
 ## Requirements
 
@@ -36,21 +35,16 @@ Every command below reports in these words.
 |---|---|---|
 | finding | A real problem. The run fails with exit 1. | lint, verify |
 | verified | The archive answered with the capture. Progress lines say `ok`. | verify |
-| ok | Resolves, with the same content as the last saved copy. On a first run, any resolving URL is ok. | audit |
-| changed | Resolves, but its sha256 differs from the last saved copy, or it redirects to a different final URL than last time. | audit |
-| lost | HTTP 404 or 410, or the host name does not exist (DNS ENOTFOUND) while a canary host still answers. | audit |
-| no verdict | The check could not decide. Not a failure, but the run is incomplete and exits 3. | verify, audit |
+| no verdict | The check could not decide. Not a failure, but the run is incomplete and exits 3. | verify, link-check |
 
 A no verdict always says why, in one of these kinds:
 
 | Kind | When |
 |---|---|
 | rate-limited | a 429 or 503 still there when pacing gives up; a 429 is never a verdict. |
-| blocked | A challenge or CAPTCHA: a 403 from archive.today or Ghostarchive, a Cloudflare `cf-mitigated: challenge` header, or a CAPTCHA page. In audit, a 403 from any host. Never retried. |
+| blocked | A challenge or CAPTCHA: a 403 from archive.today or Ghostarchive, a Cloudflare `cf-mitigated: challenge` header, or a CAPTCHA page. Never retried. |
 | unconfirmed | The capture was not seen. See [Archive host quirks](#archive-host-quirks). |
 | offline | No HTTP answer, and no canary host (`www.gstatic.com` or `one.one.one.one`) answers either. The network itself is down. |
-| error page | Audit only: Ghostarchive's `Archiving error` page. In verify this page is a finding. |
-| other | Audit only: any other HTTP status, or a timeout, reset, redirect loop, oversized body or DNS error other than ENOTFOUND while a canary answers. |
 
 For a no-verdict URL, open it in a browser, or re-run later or from another network.
 
@@ -174,48 +168,6 @@ Rules:
 | 2 | Usage, base or pacing-setting error |
 | 3 | Incomplete: no findings, but some URL has no verdict |
 
-## Audit
-
-Re-checks every link in the repository and keeps private copies of what still resolves.
-
-```sh
-bun run audit
-```
-
-- It is a local script. It is not a merge gate and never runs in CI. It takes no arguments.
-- It checks every Original URL and every numbered Archive URL in the repository, once per URL.
-- It fetches each link and classes it ok, changed, lost or no verdict, by HTTP status and content (sha256).
-- Wayback captures are fetched raw, as `https://web.archive.org/web/<timestamp>id_/<url>`, for hashing.
-- Originals are hashed as served, so a dynamic original may show as changed. It needs a human look.
-- The script does not judge whether a figure is still shown.
-- When no canary answers, requests go out without pacing waits until a link answers again. An offline run ends at once.
-
-Where it saves:
-
-- The store is `~/open-inflation-archive/` by default, or `$OBM_ARCHIVE_DIR`.
-- A store inside the repository is refused, symlinks resolved.
-- It saves each link that got a verdict and still resolves. No-verdict pages are not saved.
-- It writes `manifest.json`, with each URL's sha256 and final URL.
-- It writes dated reports, `reports/audit-<YYYY-MM-DD>.md` and `.json`.
-- The store is private. Never commit or publish it.
-- Nothing is written into the evidence. A lost link is fixed with [Link check](#link-check): dropped while two live links remain, else repaired.
-
-What it prints:
-
-- A summary: `audit <date>: N links: ok A, changed C, lost L, no verdict V`.
-- One row per changed, lost or no-verdict link. Each carries its HTTP status or error code.
-- A paced row reads, e.g., `HTTP 429 (rate-limited: gave up after K tries over T)` or `HTTP 429 (blocked: challenge/CAPTCHA)`.
-- The two report paths.
-- An `audit: INCOMPLETE:` line when any link has no verdict, counted by kind.
-
-Its kinds are rate-limited, blocked, unconfirmed, Ghostarchive error page, offline and other. Changed and lost are a report for the researcher, not findings, so audit never exits 1. In short, audit exits 3 when any link has no verdict.
-
-| Exit | Meaning |
-|---|---|
-| 0 | Every link got a verdict |
-| 2 | Usage, not a git working tree, refused store, or pacing-setting error |
-| 3 | Incomplete: some link has no verdict |
-
 ## Link check
 
 `bun run link-check` checks the two-live-links rule against the network: every figure (each extract with a `- Value (published unit):`) needs two live links that show its number, the Original URL plus one archive, or two archives when the original is gone. It is local only, not a merge gate: archives rate-limit, so it never runs in CI.
@@ -260,7 +212,7 @@ Cite each capture that worked as the next `- Archive URL <n>:` line; record noth
 
 ### Pacing
 
-One request at a time per host, hosts in parallel, the `OBM_RATE_*` overrides as for verify and audit (see [Tuning and limits](#tuning-and-limits)). link-check is patient: up to 12 tries per URL within 12 h, so a rate limit delays the run rather than ending it. Each request times out after 60 s (`OBM_ARCHIVE_TIMEOUT_MS`).
+One request at a time per host, hosts in parallel, the `OBM_RATE_*` overrides as for verify (see [Tuning and limits](#tuning-and-limits)). link-check is patient: up to 12 tries per URL within 12 h, so a rate limit delays the run rather than ending it. Each request times out after 60 s (`OBM_ARCHIVE_TIMEOUT_MS`).
 
 - **Wayback, 2 s apart (30 a minute).** Internet Archive staff give the replay limit (`/web/<timestamp>/`) as 600 a minute over 5 minutes, asking clients to stay at 80% (480); `/cdx/` is 60 a minute and Save Page Now 15 or fewer ([edgi-govdata-archiving/wayback#137](https://github.com/edgi-govdata-archiving/wayback/issues/137)). Since September 2026 its bot protection also sends 429s below those limits, so the check stays far under them and backs off on any 429.
 - **Ghostarchive, 5 s apart.** It publishes no limit and sits behind Cloudflare; each link costs two or three requests (the page, then its saved file, which may redirect to another storage path).
@@ -272,7 +224,7 @@ Captures are made before verify runs:
 - archive.today and Ghostarchive captures are made in a browser, with any CAPTCHA solved.
 - The order is in [Save order](#save-order). Nothing records a failed capture.
 
-What verify asks each archive. Audit fetches every link with a GET and applies the same Ghostarchive page test.
+What verify asks each archive.
 
 | Host | What we check | Verified when | No verdict when |
 |---|---|---|---|
@@ -292,7 +244,7 @@ Notes:
 
 ## Tuning and limits
 
-Verify and audit pace their requests the same way:
+Verify and link-check pace their requests the same way:
 
 - One host's requests are serial, at least its interval apart.
 - Different hosts run in parallel.
@@ -317,15 +269,14 @@ Verify and audit pace their requests the same way:
 | Slow-down | Each 429 or 503 multiplies that host's interval by 1.5 for the rest of the run, up to 5 min | None |
 | Tries per URL | 5, the first included | `OBM_RATE_MAX_TRIES`, at least 1 |
 | Run budget | 60 min. No wait that would end past it is started. | `OBM_RATE_BUDGET_MS` |
-| Request timeout | 15 s in verify, 30 s in audit | None |
-| Redirects | Verify: 5 hops, same capture only. Audit: 10. | None |
+| Request timeout | 15 s in verify | None |
+| Redirects | Verify: 5 hops, same capture only. | None |
 | Page read | Ghostarchive: 256 KiB. Challenge check: 512 KiB. | None |
-| Audit body | 100 MiB. A larger body is not saved and gets no verdict. | None |
 | Canary check | One answer is reused for 60 s | None |
 
 - A URL given up at the try cap or the budget is logged `rate-limited (gave up after K tries over T; ...)`.
 - The availability API's 429s and 503s always use the backoff; its Retry-After is not read.
-- Each request sends a User-Agent: `open-inflation-verify` or `open-inflation-audit`, with the repository URL.
+- Each request sends a User-Agent: `open-inflation-verify`, with the repository URL.
 
 ## Exit codes
 
@@ -338,8 +289,8 @@ Every script uses the same codes.
 | `2` | Usage or error |
 | `3` | Incomplete: no findings, but some URL got no verdict |
 
-- lint uses 0, 1 and 2; verify and link-check use all four; audit uses 0, 2 and 3.
-- Exit 2 covers a bad argument, a base that cannot be resolved, not a git checkout, a refused store and a bad pacing setting.
+- lint uses 0, 1 and 2; verify and link-check use all four.
+- Exit 2 covers a bad argument, a base that cannot be resolved, not a git checkout and a bad pacing setting.
 - Any uncaught internal error also exits 2, never 1.
 
 ## Code checks

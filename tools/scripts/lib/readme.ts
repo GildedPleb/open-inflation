@@ -517,12 +517,12 @@ const COVERAGE_HEADER = " Coverage |";
 const COVERAGE_ALIGN = " :------- |";
 
 /**
- * A cell kept on one line at phone width: GitHub strips CSS (no `white-space: nowrap`), so spaces become `&nbsp;` and
- * hyphens `&#8209;` (non-breaking hyphen). Both render as the plain characters' look.
+ * A cell kept on one line at phone width: GitHub strips CSS (no `white-space: nowrap`), so spaces become `&nbsp;`.
+ * Hyphens stay ASCII `-`: a U+2011 survives GitHub's render and a copy, so a search for the date would not match.
  */
-const nowrap = (s: string) => s.replaceAll(" ", "&nbsp;").replaceAll("-", "&#8209;");
+const nowrap = (s: string) => s.replaceAll(" ", "&nbsp;");
 /** The note under the quarter table (README copy is Form's). */
-export const QUARTER_TABLE_NOTE = "Total is rounded; Exact total is to the dollar.";
+export const QUARTER_TABLE_NOTE = "Total is rounded for easy reading; Exact total is the full figure, to the dollar.";
 
 /**
  * The quarter table: every CSV row newest first (the linked quarter, its ISO count date, the rounded total as the bank

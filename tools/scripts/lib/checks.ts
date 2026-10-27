@@ -844,7 +844,7 @@ function blockProblems(b: Extract, now: number): string[] {
   return out;
 }
 
-/** The issuer-year extract files (L7, L8, verify, audit): not the FX rate tables, which are neither checked as extracts nor archived. */
+/** The issuer-year extract files (L7, L8, verify, link-check): not the FX rate tables, which are neither checked as extracts nor archived. */
 const issuerTexts = (texts: Texts | null) =>
   [...(texts ?? [])].filter(([p]) => EXTRACT_FILE.test(p) && !isFxPath(p)).sort(([a], [b]) => a.localeCompare(b));
 
@@ -963,30 +963,6 @@ export function archiveRefs(texts: Texts | null, now?: number): Map<string, Arch
     }
   }
   return urls;
-}
-
-/** One link as written in an extract, for `bun run audit` (which re-checks every one of them, locally). */
-export interface ExtractLink {
-  readonly file: string;
-  readonly quarter: string | null;
-  readonly extract: string;
-  /** "Original URL", "Archive URL", "Archive URL 2", ... */
-  readonly field: string;
-  readonly url: string;
-}
-/** Every Original URL and Archive URL in the issuer files, in file and extract order. */
-export function extractLinks(fs: Files): ExtractLink[] {
-  const out: ExtractLink[] = [];
-  for (const [file, body] of issuerTexts(decodeAll(fs)))
-    for (const b of extracts(body).blocks) {
-      const links = [
-        ...(b.fields.get("Original URL") ?? []).map((url) => ({ field: "Original URL", url })),
-        ...b.archives.map((a) => ({ field: a.label, url: a.url })),
-      ];
-      for (const { field, url } of links)
-        if (/^https?:\/\/\S+$/.test(url)) out.push({ file, quarter: b.quarter, extract: b.title, field, url });
-    }
-  return out;
 }
 
 // ---------- L9 ----------
