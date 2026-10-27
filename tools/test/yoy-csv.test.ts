@@ -28,8 +28,6 @@ import {
   MONTH_BASIS_TEXT,
   outputs,
   PROVISIONAL_MARK,
-  QUARTER_TABLE_BEGIN,
-  QUARTER_TABLE_END,
   QUARTER_YOY_LINE,
   ROUNDING_LEAD,
   STATUS_NOTE_END,
@@ -557,15 +555,13 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
     expect(fs.map((f) => `${f.check} ${f.file}`)).toContain(`L17 ${Q3}`);
     expect(fs.map((f) => f.message)).toContainEqual(expect.stringContaining('has no "- Measure (reader):" line'));
   });
-  test("between the markers when a quarter file has them; outside them stays as written", () => {
-    const body = `# Q\n\nIntro.\n\n${QUARTER_TABLE_BEGIN}\nold\n${QUARTER_TABLE_END}\n\n## What's left out\n`;
-    expect(fillQuarterTable(body, "new")).toBe(
-      `# Q\n\nIntro.\n\n${QUARTER_TABLE_BEGIN}\nnew\n${QUARTER_TABLE_END}\n\n## What's left out\n`,
+  test("the H1-to-rounding-note bounds: only that span is replaced; a missing title or end is a problem", () => {
+    expect(fillQuarterTable(`# Q\n\nold\n\n${ROUNDING_LEAD}.\n\n## What's left out\n`, "new")).toBe(
+      "# Q\n\nnew\n\n## What's left out\n",
     );
-    expect(fillQuarterTable(`# Q\n\nold\n\n${ROUNDING_LEAD}.\n\n## Rest\n`, "new")).toBe("# Q\n\nnew\n\n## Rest\n");
     expect(fillQuarterTable("# Q\n\nNo table.\n", "new")).toEqual({ problem: expect.stringContaining(ROUNDING_LEAD) });
-    expect(fillQuarterTable(`${QUARTER_TABLE_BEGIN}\nold\n`, "new")).toEqual({
-      problem: expect.stringContaining(QUARTER_TABLE_END),
+    expect(fillQuarterTable(`old\n\n${ROUNDING_LEAD}.\n`, "new")).toEqual({
+      problem: expect.stringContaining('"# " title'),
     });
   });
   test("L5: the Status note's and Download line's methodology links resolve", async () => {

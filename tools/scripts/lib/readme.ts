@@ -656,9 +656,6 @@ export function fillQuarterYoy(
 
 // ---------- quarter files: the opening sentence, the reader table and the rounding note ----------
 
-/** The markers around a quarter file's generated scope (QUARTER_TABLE_GENERATOR.md section 2), once added. */
-export const QUARTER_TABLE_BEGIN = "<!-- generated: quarter-table -->";
-export const QUARTER_TABLE_END = "<!-- /generated -->";
 export const QUARTER_READER_HEADER =
   "| Issuer | What was measured | Local amount | FX rate (market close) | USD | YoY (local; Total in USD) |";
 export const QUARTER_READER_ALIGN = "| :----- | :---------------- | -----------: | -------------------: | --: | --: |";
@@ -775,22 +772,16 @@ function quarterTable(m: Model, q: Quarter): string | { problems: string[] } {
 }
 
 /**
- * A quarter file with its generated scope set to `scope`: between the markers when present, else from after the
- * "# " title to the end of the rounding note ("Each USD figure ..."). Every other byte is kept.
+ * A quarter file with its generated scope set to `scope`: from after the "# " title to the end of the
+ * rounding note ("Each USD figure ..."); no markers (QUARTER_TABLE_GENERATOR.md section 2). Every other byte is kept.
  */
 export function fillQuarterTable(body: string, scope: string): string | { problem: string } {
-  const b = body.indexOf(QUARTER_TABLE_BEGIN);
-  if (b >= 0) {
-    const e = body.indexOf(QUARTER_TABLE_END, b);
-    if (e < 0) return { problem: `has "${QUARTER_TABLE_BEGIN}" but no "${QUARTER_TABLE_END}"` };
-    return `${body.slice(0, b + QUARTER_TABLE_BEGIN.length)}\n${scope}\n${body.slice(e)}`;
-  }
   const raw = body.split("\n");
   const title = raw.findIndex((l) => l.startsWith("# "));
   const last = raw.findIndex((l, i) => i > title && l.startsWith(ROUNDING_LEAD));
   if (title < 0 || last < 0)
     return {
-      problem: `has no "# " title followed by a "${ROUNDING_LEAD}" note (or "${QUARTER_TABLE_BEGIN}" markers) around the generated table`,
+      problem: `has no "# " title followed by a "${ROUNDING_LEAD}" note around the generated table`,
     };
   return [...raw.slice(0, title + 1), "", scope, ...raw.slice(last + 1)].join("\n");
 }
