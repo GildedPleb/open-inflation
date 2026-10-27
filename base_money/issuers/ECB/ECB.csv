@@ -1,0 +1,6 @@
+date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2025-06-30,2025Q2,ECB,2025-06-27,weekly stock,as published,EUR,4430135000000,1.171921,5191768239335,base_money/issuers/ECB/2025.md#ecb-liability-items-1--21--22-statement-2025-06-27-published-2025-07-01
+2025-09-30,2025Q3,ECB,2025-09-26,weekly stock,as published,EUR,4374240000000,1.170823,5121460799520,base_money/issuers/ECB/2025.md#ecb-liability-items-1--21--22-statement-2025-09-26-published-2025-09-30
+2025-12-31,2025Q4,ECB,2025-12-26,weekly stock,as published,EUR,4243284000000,1.17744,4996212312960,base_money/issuers/ECB/2025.md#ecb-liability-items-1--21--22-statement-2025-12-26-published-2025-12-30
+2026-03-31,2026Q1,ECB,2026-03-27,weekly stock,as published,EUR,4148672000000,1.151013,4775175404736,base_money/issuers/ECB/2026.md#ecb-liability-items-1--21--22-statement-2026-03-27-published-2026-03-31
+2026-06-30,2026Q2,ECB,2026-06-26,weekly stock,as published,EUR,3980253000000,1.138952,4533317114856,base_money/issuers/ECB/2026.md#ecb-liability-items-1--21--22-statement-2026-06-26-published-2026-06-30

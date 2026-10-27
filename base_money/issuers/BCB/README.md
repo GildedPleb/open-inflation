@@ -23,6 +23,20 @@ How the BCB defines it:
 
 **Current vintage.** Read on 26 October 2026, the SGS pages for September 2025 to June 2026 print the same four quarter-end figures as the year files: SGS 1788 ([values page](https://www3.bcb.gov.br/sgspub/consultarvalores/consultarValoresSeries.do?method=consultarValores&optSelecionaSerie=1788&dataInicio=01/09/2025&dataFim=30/06/2026&selTipoArqDownload=1&hdOidSeriesSelecionadas=1788&hdPaginar=false&bilServico=%5BSGSFW2301%5D) (archived: [archive.today](https://archive.ph/re3Hd)), [JSON API](https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json&dataInicial=01/09/2025&dataFinal=30/06/2026) (archived: [Wayback](<https://web.archive.org/web/20261026171201/https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json&dataInicial=01%2F09%2F2025&dataFinal=30%2F06%2F2026>), [archive.today](https://archive.ph/BYoSv), [Ghostarchive](https://ghostarchive.org/archive/ctIfz))) and SGS 20306 ([values page](https://www3.bcb.gov.br/sgspub/consultarvalores/consultarValoresSeries.do?method=consultarValores&optSelecionaSerie=20306&dataInicio=01/09/2025&dataFim=30/06/2026&selTipoArqDownload=1&hdOidSeriesSelecionadas=20306&hdPaginar=false&bilServico=%5BSGSFW2301%5D) (archived: [Wayback](<https://web.archive.org/web/20261026171209/https://www3.bcb.gov.br/sgspub/consultarvalores/consultarValoresSeries.do?method=consultarValores&optSelecionaSerie=20306&dataInicio=01%2F09%2F2025&dataFim=30%2F06%2F2026&selTipoArqDownload=1&hdOidSeriesSelecionadas=20306&hdPaginar=false&bilServico=%5BSGSFW2301%5D>), [archive.today](https://archive.ph/1BJhR), [Ghostarchive](https://ghostarchive.org/archive/Lqlw7)), [JSON API](https://api.bcb.gov.br/dados/serie/bcdata.sgs.20306/dados?formato=json&dataInicial=01/09/2025&dataFinal=30/06/2026) (archived: [Wayback](<https://web.archive.org/web/20261026171153/https://api.bcb.gov.br/dados/serie/bcdata.sgs.20306/dados?formato=json&dataInicial=01%2F09%2F2025&dataFinal=30%2F06%2F2026>), [archive.today](https://archive.ph/O5M9x), [Ghostarchive](https://ghostarchive.org/archive/NTa1f))).
 
+## Quarters
+
+| Quarter | Count date | Local amount | Status | FX rate | USD | YoY (local) |
+| :------ | :--------- | -----------: | :----- | ------: | --: | ----------: |
+| [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | BRL 431,100,998,000 | provisional | [0.19496164519554068128](../../FX/2026.md#fx-2026q2-brl) | [$84,048,159,816](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2026-sgs-values-page-retrieved-2026-10-22) | -4.4%ᵖ |
+| [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | BRL 438,897,105,000 | as published | [0.19120075027174406632](../../FX/2026.md#fx-2026q1-brl) | [$83,917,455,768](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2026-sgs-values-page-retrieved-2026-10-22) | —¹ |
+| [2025 Q4](../../quarters/2025Q4.md) | 2025-12 | BRL 447,096,654,000 | as published | [0.18309783594836714265](../../FX/2025.md#fx-2025q4-brl) | [$81,862,429,807](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-dec2025-sgs-values-page-retrieved-2026-10-23) | —¹ |
+| [2025 Q3](../../quarters/2025Q3.md) | 2025-09 | BRL 429,700,158,000 | as published | [0.18632872598292595352](../../FX/2025.md#fx-2025q3-brl) | [$80,065,482,995](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2025-sgs-values-page-retrieved-2026-10-23) | —¹ |
+| [2025 Q2](../../quarters/2025Q2.md) | 2025-06 | BRL 451,010,163,000 | as published | [0.18056982057138069463](../../FX/2025.md#fx-2025q2-brl) | [$81,438,824,209](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2025-sgs-values-page-retrieved-2026-10-26) | —¹ |
+
+¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
+
+ᵖ One or both figures are provisional and may be revised.
+
 ## Years
 
 - [2026](2026.md)

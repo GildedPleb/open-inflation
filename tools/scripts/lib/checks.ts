@@ -1,4 +1,4 @@
-// All integrity checks, L1-L15 (docs/lint.md). Pure over a Snapshot: no network, no I/O. L8's link check
+// All integrity checks, L1-L17 (docs/lint.md). Pure over a Snapshot: no network, no I/O. L8's link check
 // (HEAD on each new archive URL) is not here; it is `bun run verify` (lib/verify.ts), run locally, never in CI.
 import { posix } from "node:path";
 import { ledgerLint } from "./archive-ledger.ts";
@@ -6,6 +6,7 @@ import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from 
 import { fencedBlocks, headingSlugs, headings, htmlAnchors, lines, links, memoText, slugs } from "./markdown.ts";
 import {
   ARCHIVE_LEDGER,
+  COMPONENTS_CSV,
   CSV_PATH,
   EVIDENCE_ROOT,
   extractOf,
@@ -16,8 +17,10 @@ import {
   folderReadmeOf,
   folderReadmePath,
   fxPath,
+  ISSUER_CSV_TEXT,
   ISSUER_TEXT,
   isFxPath,
+  issuerCsvOf,
   QUARTER_LIST,
   QUARTER_TEXT,
   quarterOfPath,
@@ -27,11 +30,12 @@ import {
   relLink,
 } from "./paths.ts";
 import {
-  fillIndex,
+  csvProblems,
   fillList,
   fillReadme,
   generate,
   hasMarkers,
+  outputs,
   quarters,
   README,
   YEARS_HEADING,
@@ -82,6 +86,7 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   catalog(ctx, emit);
   placement(ctx, emit);
   generated(ctx, emit);
+  generatedOutputs(ctx, emit);
   docsAgree(ctx, rows, emit);
   evidenceWording(ctx, emit);
   const ledger = ledgerLint(ctx.text);
@@ -434,13 +439,47 @@ function generated(ctx: Ctx, emit: Emit) {
     emit("L13", README, `generated block differs from the data at line ${diff + 1}; ${fix}`);
   }
   frontPageCoverage(readme ?? "", quarters(ctx.text)?.at(-1)?.coverage, (m) => emit("L13", README, m));
-  const index = ctx.text.get(QUARTER_LIST);
-  if (index === undefined) return; // L6 reports a missing list
-  const want = fillIndex(index, g.index);
-  if (typeof want !== "string") emit("L13", QUARTER_LIST, want.problem);
-  else if (want !== index) {
-    const diff = firstDiff(index, want);
-    emit("L13", QUARTER_LIST, `quarter list differs from the data at line ${diff + 1}; ${fix}`);
+}
+
+// ---------- L17 generated outputs ----------
+
+/** What each L17 output is, for its finding. */
+const outputKind = (p: string) =>
+  p === COMPONENTS_CSV
+    ? "components CSV"
+    : issuerCsvOf(p)
+      ? "issuer components CSV"
+      : p === QUARTER_LIST
+        ? "quarter list (or its YoY footnotes)"
+        : QUARTER_FILE.test(p)
+          ? "YoY column (or its footnotes)"
+          : "quarter table (or its footnotes)";
+
+/**
+ * L17: the quarter list, each quarter file's YoY column and footnotes, each issuer README's quarter table and the
+ * two components CSVs equal, byte for byte, what `bun run readme` builds; each committed CSV also passes its format
+ * checks on its own. Runs once the repo is in generated mode (README markers) or has a components CSV.
+ */
+function generatedOutputs(ctx: Ctx, emit: Emit) {
+  if (!hasMarkers(ctx.text.get(README)) && !ctx.files.has(COMPONENTS_CSV)) return;
+  const paths = [...ctx.files.keys()].sort();
+  const out = outputs(ctx.text, paths);
+  if (!out) return; // an input other checks report (L1, L2, L9, L11) cannot be read
+  const fix = "run `bun run readme`";
+  for (const p of out.problems) emit("L17", p.file, `${p.message}; then ${fix}`);
+  for (const [p, want] of out.want) {
+    const have = ctx.text.get(p);
+    if (have === undefined) {
+      if (p !== QUARTER_LIST) emit("L17", p, `is missing (a generated output); ${fix}`); // L6 reports the list
+    } else if (have !== want)
+      emit("L17", p, `${outputKind(p)} differs from the generated output at line ${firstDiff(have, want) + 1}; ${fix}`);
+  }
+  for (const p of paths) {
+    const iss = issuerCsvOf(p)?.issuer;
+    if (p !== COMPONENTS_CSV && iss === undefined) continue;
+    if (!out.want.has(p)) emit("L17", p, `is not generated (${iss} has no year file); delete it`);
+    const body = ctx.text.get(p);
+    if (body !== undefined) for (const m of csvProblems(ctx.text, body, iss)) emit("L17", p, m);
   }
 }
 
@@ -1142,7 +1181,7 @@ const tableCells = (l: string) =>
 const ADOPTED_LINE = /^\s*[-*]\s+Adopted:\s*yes\b/i;
 /** A reference_values entry's figure: an adopted extract, or a reference-only one ("- Adopted: no (reference-only"). */
 const REFERENCE_LINE = /^\s*[-*]\s+Adopted:\s*(?:yes\b|no \(reference-only\b)/i;
-function adoptedIn(md: string, frag: string, adoptedLine = ADOPTED_LINE): { slug: string; line: number }[] {
+export function adoptedIn(md: string, frag: string, adoptedLine = ADOPTED_LINE): { slug: string; line: number }[] {
   const hs = headings(md);
   const ss = headingSlugs(md);
   const ls = lines(md);
@@ -1315,7 +1354,11 @@ type FxRow = {
  * One "## YYYYQn" section of an FX rate table: its rows, or none when it has no table (rows null); `misplaced` when
  * Date in report is not the column right after Report count date.
  */
-type FxSection = { readonly line: number; readonly rows: FxRow[] | null; readonly misplaced?: boolean };
+type FxSection = {
+  readonly line: number;
+  readonly rows: FxRow[] | null;
+  readonly misplaced?: boolean;
+};
 
 /**
  * An FX rate table file (base_money/FX/<YYYY>.md) by quarter: under each level-2 "## YYYYQn" heading, the first
@@ -2082,13 +2125,14 @@ function placement(ctx: Ctx, emit: Emit) {
       );
     else if (p === ROOT_CSV) emit("L12", p, `the CSV lives at ${CSV}`);
     else if (p.startsWith(EVIDENCE_ROOT)) {
-      if (p === CSV || p === QUARTER_LIST || p === ARCHIVE_LEDGER || QUARTER_FILE.test(p)) continue;
-      const iss = (extractOf(p) ?? folderReadmeOf(p))?.issuer; // upper-case issuer ids; FX in its own folder
+      if (p === CSV || p === QUARTER_LIST || p === ARCHIVE_LEDGER || p === COMPONENTS_CSV || QUARTER_FILE.test(p))
+        continue;
+      const iss = (extractOf(p) ?? folderReadmeOf(p) ?? issuerCsvOf(p))?.issuer; // upper-case issuer ids; FX in its own folder
       if (iss === undefined)
         emit(
           "L12",
           p,
-          `${EVIDENCE_ROOT} holds only the CSV ${CSV}, the archive-link ledger ${ARCHIVE_LEDGER}, the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX rate tables ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
+          `${EVIDENCE_ROOT} holds only the CSV ${CSV}, the components CSVs ${COMPONENTS_CSV} and ${ISSUER_CSV_TEXT}, the archive-link ledger ${ARCHIVE_LEDGER}, the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX rate tables ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
         );
       else if (iss !== FX_ID && basket.size > 0 && !basket.has(iss))
         emit(
@@ -2121,6 +2165,8 @@ const RETIRED_LOWER = RETIRED_TERMS.map((t) => [t, t.toLowerCase()] as const);
 /** L12's path patterns, as the layout lists in docs/running.md and AGENTS.md must name them. */
 export const LAYOUT_PATTERNS = [
   CSV_PATH,
+  COMPONENTS_CSV,
+  ISSUER_CSV_TEXT,
   QUARTER_LIST,
   QUARTER_TEXT,
   ISSUER_TEXT,
@@ -2150,8 +2196,8 @@ function docsAgree(ctx: Ctx, rows: Row[], emit: Emit) {
       for (const m of l.text.matchAll(/`([^`]+)`/g)) {
         const span = m[1] as string;
         const d = DOC_PATH.exec(span);
-        // Retired roots (L12) are named as retired, so they need not exist.
-        if (!d || PLACEHOLDER.test(span) || RETIRED_ROOTS.includes(span)) continue;
+        // Retired roots (L12) are named as retired, and the components CSV is written by `bun run readme` (L17).
+        if (!d || PLACEHOLDER.test(span) || RETIRED_ROOTS.includes(span) || span === COMPONENTS_CSV) continue;
         const path = (d[1] as string).replace(/\/$/, "");
         if (!exists(ctx, path)) e(p, `line ${l.line}: \`${span}\` names ${path}, which does not exist`);
       }
@@ -2182,7 +2228,11 @@ function docsAgree(ctx: Ctx, rows: Row[], emit: Emit) {
       lines(body)
         .filter((l) => l.fence === "none")
         .flatMap((l) => [...l.text.matchAll(/`([^`]+)`/g)])
-        .map((m) => (m[1] as string).replace(/^(base_money\/issuers\/)<[A-Z]+>\//, "$1<ISS>/")),
+        .map((m) =>
+          (m[1] as string)
+            .replace(/^(base_money\/issuers\/)<([A-Z]+)>\/<\2>\.csv$/, "$1<ISS>/<ISS>.csv")
+            .replace(/^(base_money\/issuers\/)<[A-Z]+>\/(?!<ISS>\.csv$)/, "$1<ISS>/"),
+        ),
     );
     for (const want of LAYOUT_PATTERNS)
       if (!named.has(want)) e(p, `the layout list does not name \`${want}\` (every L12 path pattern)`);
@@ -2318,7 +2368,12 @@ const SUPERSEDED_NOTE = /^- Note \d{4}-\d{2}-\d{2}:.*(\bsuperseded\b|\bconversio
 
 function extractLines(ctx: Ctx, emit: Emit) {
   for (const [p, body] of issuerTexts(ctx.text)) {
-    let block: { title: string; line: number; notes: number | null; superseded: boolean } | null = null;
+    let block: {
+      title: string;
+      line: number;
+      notes: number | null;
+      superseded: boolean;
+    } | null = null;
     const close = () => {
       if (block?.notes != null && !block.superseded)
         emit(
@@ -2332,7 +2387,15 @@ function extractLines(ctx: Ctx, emit: Emit) {
       const h = /^ {0,3}(#{1,6})\s+(.*?)\s*$/.exec(l.text);
       if (h) {
         close();
-        block = h[1]?.length === 3 ? { title: h[2] ?? "", line: l.line, notes: null, superseded: false } : null;
+        block =
+          h[1]?.length === 3
+            ? {
+                title: h[2] ?? "",
+                line: l.line,
+                notes: null,
+                superseded: false,
+              }
+            : null;
         continue;
       }
       if (!block) continue;

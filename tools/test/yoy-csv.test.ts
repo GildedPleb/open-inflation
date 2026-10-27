@@ -1,0 +1,452 @@
+import "./no-network.ts";
+import { describe, expect, test } from "bun:test";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { lint, machines } from "../scripts/lib/checks.ts";
+import { parseDecimal } from "../scripts/lib/decimal.ts";
+import { slugs } from "../scripts/lib/markdown.ts";
+import {
+  COMPONENTS_CSV,
+  CSV_PATH,
+  extractPath,
+  folderReadmePath,
+  QUARTER_LIST,
+  quarterPath,
+} from "../scripts/lib/paths.ts";
+import {
+  bankYoy,
+  COMPONENTS_HEADER,
+  type Component,
+  csvProblems,
+  outputs,
+  PROVISIONAL_MARK,
+  YOY_NOTES,
+  yoyCell,
+  yoyText,
+} from "../scripts/lib/readme.ts";
+import { REPO_ROOT } from "../scripts/lib/root.ts";
+import type { CheckId, Snapshot } from "../scripts/lib/types.ts";
+import {
+  adoptedTitle,
+  CSV_HEADER,
+  catalog,
+  extract,
+  files,
+  folderReadme,
+  generateAll,
+  goodText,
+  machineBlock,
+  rollup,
+  withFields,
+} from "./fixture.ts";
+
+// WP "YoY + generated CSVs" (product/WP_YOY_CSV_REQUIREMENTS.md, G1-G12). Every test here is offline and in memory,
+// except the real-data block, which reads this checkout's committed files with fs (no git, no network).
+
+const NOW = Date.parse("2026-10-22T16:00:00Z");
+const d = (s: string) => {
+  const v = parseDecimal(s);
+  if (!v) throw new Error(s);
+  return v;
+};
+
+describe("G7 YoY: the one formula", () => {
+  test("signed, exact, half-to-even to 1 dp; a result that rounds to zero is 0.0%, unsigned", () => {
+    expect(yoyText(d("1100"), d("1000"))).toBe("+10.0%");
+    expect(yoyText(d("900"), d("1000"))).toBe("-10.0%");
+    expect(yoyText(d("1000"), d("1000"))).toBe("0.0%");
+    expect(yoyText(d("99999"), d("100000"))).toBe("0.0%"); // -0.001%: never "-0.0%"
+    expect(yoyText(d("100001"), d("100000"))).toBe("0.0%");
+  });
+  test("x.x5 ties go to the even tenth, both signs", () => {
+    expect(yoyText(d("10125"), d("10000"))).toBe("+1.2%");
+    expect(yoyText(d("10135"), d("10000"))).toBe("+1.4%");
+    expect(yoyText(d("9875"), d("10000"))).toBe("-1.2%");
+    expect(yoyText(d("9865"), d("10000"))).toBe("-1.4%");
+  });
+  test("decimals of different scales compare exactly; a zero base has no YoY", () => {
+    expect(yoyText(d("200.25"), d("200"))).toBe("+0.1%");
+    expect(yoyText(d("1.5"), d("1.25"))).toBe("+20.0%");
+    expect(yoyText(d("1"), d("0"))).toBeNull();
+  });
+});
+
+describe("G7 YoY: one bank, in its local currency", () => {
+  const c = (o: Partial<Component> = {}): Component => ({
+    date: "2026-09-30",
+    quarter: "2026Q3",
+    issuer: "ECB",
+    asOf: "2026-09-30",
+    convention: "end of period",
+    status: "final",
+    currency: "EUR",
+    localValue: "200",
+    fxRate: "1.1",
+    usd: 220n,
+    evidenceId: "base_money/issuers/ECB/2026.md#x",
+    ...o,
+  });
+  test("a value when both quarters count the bank in the same currency", () => {
+    expect(bankYoy(c({ localValue: "180" }), c(), true)).toEqual({ kind: "value", text: "-10.0%", provisional: false });
+  });
+  test("—¹ when the year-ago quarter is not in the CSV; ¹ takes precedence over ²", () => {
+    expect(yoyCell(bankYoy(c(), c(), false))).toBe("—¹");
+    expect(yoyCell(bankYoy(undefined, undefined, false))).toBe("—¹");
+    expect(yoyCell(bankYoy(c(), undefined, false))).toBe("—¹");
+  });
+  test("—² when the bank is left out at either end, or its currency changed", () => {
+    expect(yoyCell(bankYoy(undefined, c(), true))).toBe("—²");
+    expect(yoyCell(bankYoy(c(), undefined, true))).toBe("—²");
+    expect(yoyCell(bankYoy(c({ currency: "USD" }), c(), true))).toBe("—²");
+  });
+  test("ᵖ when either end is provisional; never on a dash", () => {
+    expect(yoyCell(bankYoy(c({ status: "provisional" }), c(), true))).toBe(`0.0%${PROVISIONAL_MARK}`);
+    expect(yoyCell(bankYoy(c(), c({ status: "provisional" }), true))).toBe("0.0%ᵖ");
+    expect(yoyCell(bankYoy(c({ status: "revised" }), c({ status: "as published" }), true))).toBe("0.0%");
+    expect(yoyCell(bankYoy(c({ status: "provisional" }), undefined, true))).toBe("—²");
+    expect(yoyCell(bankYoy(c({ status: "provisional" }), c(), false))).toBe("—¹");
+  });
+});
+
+/** One basket component in a synthetic quarter. */
+interface C {
+  iss: string;
+  ccy: string;
+  value: string;
+  fx: string;
+  usd: number;
+  status?: string;
+}
+const FED = (value: string, o: Partial<C> = {}): C => ({ iss: "FED", ccy: "USD", value, fx: "1", usd: +value, ...o });
+const ECB = (value: string, fx: string, usd: number, o: Partial<C> = {}): C => ({
+  iss: "ECB",
+  ccy: "EUR",
+  value,
+  fx,
+  usd,
+  ...o,
+});
+const dateOf = (q: string) => `${q.slice(0, 4)}-09-30`;
+/**
+ * A repo with 2026Q3 and 2027Q3 (a year apart; only Q3s, so 2027Q3 is the only quarter with a year-ago quarter),
+ * every file the generator reads, and its generated outputs.
+ */
+const twoYears = (q26: C[], q27: C[]): Record<string, string> => {
+  const t: Record<string, string> = {
+    "README.md": "# fixture\n",
+    "catalog.json": catalog(),
+    [CSV_PATH]: CSV_HEADER,
+  };
+  const years = new Map<string, string[]>();
+  for (const [q, cs] of [
+    ["2026Q3", q26],
+    ["2027Q3", q27],
+  ] as const) {
+    const total = cs.reduce((a, c) => a + c.usd, 0);
+    t[CSV_PATH] += `${dateOf(q)},${total},${quarterPath(q)}\n`;
+    const components = cs
+      .flatMap((c) => [
+        `  - issuer: ${c.iss}`,
+        `    anchor: ${extractPath(c.iss, q.slice(0, 4))}#${q.toLowerCase()}`,
+        `    local_currency: ${c.ccy}`,
+        `    local_value: "${c.value}"`,
+        `    fx_rate: "${c.fx}"`,
+      ])
+      .join("\n");
+    t[quarterPath(q)] = rollup(machineBlock({ quarter: q, asOf: dateOf(q), components, total: `${total}` }));
+    for (const c of cs) {
+      const fields = [`- As of: ${dateOf(q)}`, "- Convention: end of period", `- Status: ${c.status ?? "final"}`];
+      const p = extractPath(c.iss, q.slice(0, 4));
+      t[p] =
+        `${t[p] ?? `# ${c.iss} ${q.slice(0, 4)}\n`}\n## ${q}\n\n${extract({ title: adoptedTitle(c.iss, q), fields })}`;
+      years.set(c.iss, [...new Set([...(years.get(c.iss) ?? []), q.slice(0, 4)])]);
+    }
+  }
+  for (const [iss, ys] of years) t[folderReadmePath(iss)] = folderReadme(iss, ...ys.reverse());
+  return generateAll(t);
+};
+/** The YoY cell of `row` (its first cell) in the table of `md`. */
+const cell = (md: string | undefined, row: string): string | undefined =>
+  (md ?? "")
+    .split("\n")
+    .find((l) => l.startsWith(`| ${row}`))
+    ?.split("|")
+    .at(-2)
+    ?.trim();
+const Q26 = quarterPath("2026Q3");
+const Q27 = quarterPath("2027Q3");
+const ECB_README = folderReadmePath("ECB");
+
+describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
+  // FED 1000 -> 1100 USD; ECB 200 EUR x 1.1 = $220 -> 180 EUR x 1.2 = $216; total $1,220 -> $1,316 (+7.87%).
+  const base = () => twoYears([FED("1000"), ECB("200", "1.1", 220)], [FED("1100"), ECB("180", "1.2", 216)]);
+  test("each bank's YoY is in its local currency (ECB -10.0% while its USD rose less), the total in USD", () => {
+    const t = base();
+    expect(cell(t[Q27], "[FED]")).toBe("+10.0%");
+    expect(cell(t[Q27], "[ECB]")).toBe("-10.0%");
+    expect(cell(t[Q27], "**Total**")).toBe("+7.9%");
+    expect(t[QUARTER_LIST]).toContain("(about $0.00 trillion), YoY +7.9%;");
+    expect(cell(t[ECB_README], "[2027 Q3]")).toBe("-10.0%");
+  });
+  test("FED (USD) has fx_rate 1 and its local YoY equals its USD YoY", () => {
+    const t = base();
+    expect(t[COMPONENTS_CSV]).toContain("2027-09-30,2027Q3,FED,2027-09-30,end of period,final,USD,1100,1,1100,");
+    expect(cell(t[folderReadmePath("FED")], "[2027 Q3]")).toBe("+10.0%");
+  });
+  test("—¹ and its footnote on the first year; no ² or ᵖ note when no cell needs one", () => {
+    const t = base();
+    for (const r of ["[FED]", "[ECB]", "**Total**"]) expect(cell(t[Q26], r)).toBe("—¹");
+    expect(t[Q26]).toContain(`\n\n${YOY_NOTES.none(["2026 Q3"])}\n`);
+    expect(t[Q26]).not.toContain("² ");
+    expect(t[Q27]).not.toContain("¹ ");
+    expect(t[QUARTER_LIST]).toContain(YOY_NOTES.none(["2026 Q3"]));
+    expect(cell(t[ECB_README], "[2026 Q3]")).toBe("—¹");
+  });
+  test("ᵖ at either end marks the bank and the total, with its footnote once", () => {
+    for (const [a, b] of [
+      ["provisional", "final"],
+      ["final", "provisional"],
+    ] as const) {
+      const t = twoYears(
+        [FED("1000"), ECB("200", "1.1", 220, { status: a })],
+        [FED("1100"), ECB("180", "1.2", 216, { status: b })],
+      );
+      expect(cell(t[Q27], "[ECB]")).toBe("-10.0%ᵖ");
+      expect(cell(t[Q27], "[FED]")).toBe("+10.0%");
+      expect(cell(t[Q27], "**Total**")).toBe("+7.9%ᵖ");
+      expect(t[Q27]?.split(YOY_NOTES.provisional).length).toBe(2);
+      expect(t[QUARTER_LIST]).toContain("YoY +7.9%ᵖ;");
+      expect(t[QUARTER_LIST]).toContain(YOY_NOTES.provisional);
+      expect(cell(t[ECB_README], "[2027 Q3]")).toBe("-10.0%ᵖ");
+      expect(t[Q26]).not.toContain(YOY_NOTES.provisional); // only dashes there
+    }
+  });
+  test("a bank left out now: its row says so, its YoY and the total are —²", () => {
+    const t = twoYears([FED("1000"), ECB("200", "1.1", 220)], [FED("1100")]);
+    expect(cell(t[Q27], "**Total**")).toBe("—²");
+    expect(t[Q27]).toContain(YOY_NOTES.change(["2027 Q3"]));
+    const row = t[ECB_README]?.split("\n").find((l) => l.startsWith("| [2027 Q3]"));
+    expect(row).toContain("left out: not evidenced this quarter");
+    expect(row?.endsWith("| —² |")).toBe(true);
+    expect(t[ECB_README]).toContain(YOY_NOTES.change(["2027 Q3"]));
+  });
+  test("a bank left out a year ago: —² now; that first year stays —¹ (¹ over ²)", () => {
+    const t = twoYears([FED("1000")], [FED("1100"), ECB("180", "1.2", 216)]);
+    expect(cell(t[Q27], "[ECB]")).toBe("—²");
+    expect(cell(t[Q27], "**Total**")).toBe("—²");
+    expect(cell(t[Q27], "[FED]")).toBe("+10.0%");
+    expect(cell(t[ECB_README], "[2026 Q3]")).toBe("—¹");
+  });
+  test("a bank whose local currency changed: —² for the bank; the total keeps its value", () => {
+    const t = twoYears([FED("1000"), ECB("200", "1.1", 220)], [FED("1100"), ECB("216", "1", 216, { ccy: "USD" })]);
+    expect(cell(t[Q27], "[ECB]")).toBe("—²");
+    expect(cell(t[Q27], "**Total**")).toBe("+7.9%");
+  });
+  test("G1 idempotent: generating the generated repo changes nothing; base_money.csv is never written", () => {
+    const t = base();
+    expect(generateAll(t)).toEqual(t);
+    const o = outputs(new Map(Object.entries(t)), Object.keys(t));
+    expect(o?.want.has(CSV_PATH)).toBe(false);
+    expect(t[CSV_PATH]).toBe(
+      `${CSV_HEADER}2026-09-30,1220,base_money/quarters/2026Q3.md\n2027-09-30,1316,base_money/quarters/2027Q3.md\n`,
+    );
+  });
+});
+
+describe("G3-G6 the components CSVs", () => {
+  const t = withFields(goodText());
+  const g = generateAll(t);
+  test("components.csv: the header, one row per counted issuer (no excluded issuer), basket order, LF and a final newline", () => {
+    expect(g[COMPONENTS_CSV]).toBe(
+      [
+        COMPONENTS_HEADER,
+        "2026-09-30,2026Q3,FED,2026-09-30,end of period,final,USD,1001,1,1001,base_money/issuers/FED/2026.md#fed-h41",
+        "2026-09-30,2026Q3,ECB,2026-09-30,end of period,final,EUR,200.25,1.1,220,base_money/issuers/ECB/2026.md#ecb-weekly-statement",
+        "",
+      ].join("\n"),
+    );
+    expect(g["base_money/issuers/BOJ/BOJ.csv"]).toBe(`${COMPONENTS_HEADER}\n`); // BOJ has a year file, no rows
+    expect(g["base_money/issuers/FX/FX.csv"]).toBeUndefined();
+  });
+  test("G6 the issuer CSVs together are components.csv, row for row", () => {
+    const two = twoYears([FED("1000"), ECB("200", "1.1", 220)], [FED("1100"), ECB("180", "1.2", 216)]);
+    const body = (p: string) => (two[p] ?? "").split("\n").slice(1, -1);
+    const each = ["FED", "ECB"].flatMap((i) => body(`base_money/issuers/${i}/${i}.csv`));
+    expect(each.sort()).toEqual(body(COMPONENTS_CSV).sort());
+    expect(body(COMPONENTS_CSV).map((l) => l.split(",").slice(1, 3).join())).toEqual([
+      "2026Q3,FED",
+      "2026Q3,ECB",
+      "2027Q3,FED",
+      "2027Q3,ECB",
+    ]);
+  });
+  test("an extract without a Status, or a Convention with a comma or quote, is a problem (never a quoted field)", () => {
+    const problems = (from: string, to: string) => {
+      const u = { ...t, [extractPath("ECB", "2026")]: (t[extractPath("ECB", "2026")] as string).replace(from, to) };
+      return outputs(new Map(Object.entries(u)), Object.keys(u))?.problems.map((p) => `${p.file}: ${p.message}`);
+    };
+    expect(problems("x", "x")).toEqual([]);
+    expect(problems("- Status: final\n", "")).toEqual([
+      expect.stringMatching(/^base_money\/quarters\/2026Q3\.md: ECB: .*ECB\/2026\.md#ecb-weekly-statement .*Status/),
+    ]);
+    expect(problems("- Status: final", "- Status: maybe")).toEqual([expect.stringContaining("Status")]);
+    expect(problems("end of period", "end, of period")).toEqual([expect.stringContaining("Convention")]);
+    expect(problems("end of period", 'end "of" period')).toEqual([expect.stringContaining("Convention")]);
+  });
+  describe("csvProblems: the committed CSV on its own", () => {
+    const text = new Map(Object.entries(g));
+    const csv = g[COMPONENTS_CSV] as string;
+    const [h, fed, ecb] = csv.split("\n") as [string, string, string];
+    test("the generated CSV has none", () => {
+      expect(csvProblems(text, csv)).toEqual([]);
+      expect(csvProblems(text, g["base_money/issuers/FED/FED.csv"] as string, "FED")).toEqual([]);
+    });
+    test("encoding, line endings, header, quotes and field count", () => {
+      expect(csvProblems(text, `\uFEFF${csv}`)).toEqual(["starts with a byte-order mark"]);
+      expect(csvProblems(text, csv.replaceAll("\n", "\r\n"))).toEqual(["has CR line endings (LF only)"]);
+      expect(csvProblems(text, csv.slice(0, -1))).toEqual(["does not end in a newline"]);
+      expect(csvProblems(text, csv.replace("as_of", "asof"))[0]).toContain("line 1 is not the header");
+      expect(csvProblems(text, csv.replace("end of period,final,USD", '"end of period",final,USD'))[0]).toContain(
+        "double quote",
+      );
+      expect(csvProblems(text, csv.replace("end of period,final,USD", "end, of period,final,USD"))[0]).toContain(
+        "12 fields",
+      );
+    });
+    test("types, arithmetic, duplicates, order, issuer and the per-quarter sum against base_money.csv", () => {
+      expect(csvProblems(text, csv.replace(",final,USD", ",draft,USD"))[0]).toContain('status "draft"');
+      expect(csvProblems(text, csv.replace(",1001,base", ",1002,base"))).toEqual([
+        expect.stringContaining("usd_value 1002 is not local_value x fx_rate"),
+        expect.stringContaining("usd_value sum 1222 is not its base_money/base_money.csv value 1221"),
+      ]);
+      expect(csvProblems(text, `${h}\n${ecb}\n${fed}\n`)).toEqual([expect.stringContaining("line 3 is out of order")]);
+      expect(csvProblems(text, `${h}\n${fed}\n${fed}\n${ecb}\n`)).toEqual([
+        expect.stringContaining("a second row for FED"),
+        expect.stringContaining("sum 2222"),
+      ]);
+      expect(csvProblems(text, `${h}\n${ecb}\n`, "FED")).toEqual([expect.stringContaining("issuer ECB in FED's file")]);
+      expect(csvProblems(text, `${h}\n${fed}\n`)).toEqual([expect.stringContaining("sum 1001")]);
+    });
+  });
+});
+
+describe("G8 L17: any drift from the generator fails, naming the file and the fix", () => {
+  const gen = generateAll(withFields(goodText()));
+  const snap = (patch: Record<string, string | null>): Snapshot => ({ files: files(gen, patch), base: null });
+  const l17 = async (patch: Record<string, string | null>, file: string) => {
+    const fs = await lint(snap(patch), { now: NOW });
+    expect([...new Set(fs.map((f) => f.check))]).toEqual(["L17"] as CheckId[]);
+    expect(fs.map((f) => f.file)).toContain(file);
+    for (const f of fs) expect(f.message).toMatch(/run `bun run readme`|delete it|out of order|is not/);
+    return fs;
+  };
+  const edit = (p: string, from: string, to: string) => {
+    expect(gen[p]).toContain(from);
+    return { [p]: (gen[p] as string).replace(from, to) };
+  };
+  const Q3 = quarterPath("2026Q3");
+  test("the generated fixture lints clean", async () => {
+    expect(await lint(snap({}), { now: NOW })).toEqual([]);
+  });
+  test("a YoY cell or footnote in a quarter file", async () => {
+    await l17(edit(Q3, "| **$1,221** | —¹ |", "| **$1,221** | +1.0% |"), Q3);
+    await l17(edit(Q3, "¹ No year-ago quarter yet: 2026 Q3.", "¹ No year-ago quarter yet."), Q3);
+  });
+  test("a field, a row order or a missing file in components.csv", async () => {
+    await l17(edit(COMPONENTS_CSV, "end of period,final,USD", "month end,final,USD"), COMPONENTS_CSV);
+    const [h, a, b] = (gen[COMPONENTS_CSV] as string).split("\n");
+    const fs = await l17({ [COMPONENTS_CSV]: `${h}\n${b}\n${a}\n` }, COMPONENTS_CSV);
+    expect(fs.map((f) => f.message)).toContainEqual(expect.stringContaining("out of order"));
+    await l17({ [COMPONENTS_CSV]: null }, COMPONENTS_CSV);
+  });
+  test("an issuer CSV edited, missing or stray", async () => {
+    const fed = "base_money/issuers/FED/FED.csv";
+    await l17(edit(fed, ",1001,1,1001,", ",1001,1.0,1001,"), fed);
+    await l17({ [fed]: null }, fed);
+    const fs = await lint(snap({ "base_money/issuers/FX/FX.csv": gen[fed] as string }), { now: NOW });
+    expect(fs.map((f) => f.check)).toContain("L12");
+  });
+  test("an issuer README quarter table or the quarter list", async () => {
+    await l17(edit(ECB_README, "| EUR 200.25 | final |", "| EUR 200.25 | provisional |"), ECB_README);
+    await l17(edit(QUARTER_LIST, "YoY —¹", "YoY +0.0%"), QUARTER_LIST);
+  });
+  test("an extract that lost its Status line", async () => {
+    const fs = await l17(edit(extractPath("ECB", "2026"), "- Status: final\n", ""), Q3);
+    expect(fs.map((f) => f.message)).toContainEqual(expect.stringContaining('no "- Status:" line'));
+  });
+  test("a repo with no README markers and no components.csv has no L17 outputs to check", async () => {
+    expect(await lint({ files: files(goodText()), base: null }, { now: NOW })).toEqual([]);
+  });
+});
+
+describe("G9 L12: where the CSVs may live", () => {
+  const gen = generateAll(withFields(goodText()));
+  const l12 = async (p: string) =>
+    (await lint({ files: files(gen, { [p]: gen[COMPONENTS_CSV] as string }), base: null }, { now: NOW })).filter(
+      (f) => f.check === "L12",
+    );
+  test("components.csv and <ISS>/<ISS>.csv are placed; any other CSV under base_money/ is not", async () => {
+    expect(await l12(COMPONENTS_CSV)).toEqual([]);
+    for (const p of ["base_money/issuers/FED/ECB.csv", "base_money/issuers/FED/fed.csv", "base_money/FED.csv"])
+      expect((await l12(p)).map((f) => f.file)).toEqual([p]);
+  });
+});
+
+describe("real data: this checkout's committed outputs", () => {
+  const paths: string[] = [];
+  const walk = (dir: string) => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) walk(p);
+      else paths.push(relative(REPO_ROOT, p).split("\\").join("/"));
+    }
+  };
+  walk(join(REPO_ROOT, "base_money"));
+  paths.sort();
+  const text = new Map<string, string>();
+  for (const p of [...paths, "catalog.json", "README.md"]) text.set(p, readFileSync(join(REPO_ROOT, p), "utf8"));
+  const csv = text.get(COMPONENTS_CSV) ?? "";
+  const rows = csv
+    .split("\n")
+    .slice(1, -1)
+    .map((l) => l.split(","));
+  test("G1 every generated file equals what the generator writes, with no problems", () => {
+    const o = outputs(text, paths);
+    expect(o?.problems).toEqual([]);
+    for (const [p, want] of o?.want ?? []) expect([p, text.get(p) === want]).toEqual([p, true]);
+    expect(o?.want.has(CSV_PATH)).toBe(false);
+  });
+  test("G3/G4 each quarter's usd_value sum is its base_money.csv value; the format checks pass", () => {
+    expect(csvProblems(text, csv)).toEqual([]);
+    const sums = new Map<string, bigint>();
+    for (const r of rows) sums.set(r[0] as string, (sums.get(r[0] as string) ?? 0n) + BigInt(r[9] as string));
+    const root = (text.get(CSV_PATH) ?? "")
+      .split("\n")
+      .slice(1, -1)
+      .map((l) => l.split(","));
+    expect(root.length).toBeGreaterThan(0);
+    expect([...sums]).toEqual(root.map((r) => [r[0] as string, BigInt(r[1] as string)]));
+  });
+  test("G5 local_currency, local_value and fx_rate are the machine block's strings; evidence_id is its extract", () => {
+    for (const r of rows) {
+      const [date, quarter, iss, , , , ccy, local, fx, , ev] = r;
+      const block = machines(text.get(quarterPath(quarter as string)) ?? "")
+        .filter((b) => b.ok)
+        .at(-1);
+      const comps = (block?.ok ? (block.data as { components: Record<string, string>[] }).components : []) ?? [];
+      const c = comps.find((x) => x.issuer === iss);
+      expect([date, iss, c?.local_currency, c?.local_value, c?.fx_rate]).toEqual([date, iss, ccy, local, fx]);
+      const [file = "", slug = ""] = (ev as string).split("#");
+      expect(file).toBe((c?.anchor ?? "").split("#")[0] as string);
+      expect(slugs(text.get(file) ?? "").has(slug)).toBe(true);
+    }
+  });
+  test("G6 one issuer CSV per issuer with a year file; together they are components.csv", () => {
+    const issuers = [...new Set(paths.map((p) => /^base_money\/issuers\/([A-Z0-9]+)\/\d{4}\.md$/.exec(p)?.[1]))]
+      .filter((i): i is string => !!i && i !== "FX")
+      .sort();
+    expect(issuers.length).toBeGreaterThan(0);
+    const each = issuers.flatMap((i) => (text.get(`base_money/issuers/${i}/${i}.csv`) ?? "").split("\n").slice(1, -1));
+    expect(each.sort()).toEqual(csv.split("\n").slice(1, -1).sort());
+  });
+});

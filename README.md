@@ -12,6 +12,8 @@ Updated 26 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q3
 
 **Download:** [base_money/base_money.csv](base_money/base_money.csv) · [Raw CSV (for loaders)](https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/base_money.csv): `https://raw.githubusercontent.com/GildedPleb/open-inflation/main/base_money/base_money.csv`
 
+**Per bank:** [base_money/components.csv](base_money/components.csv): one row per quarter and central bank (count date, status, local amount, FX rate, USD, source).
+
 <details>
 <summary>Load it in a spreadsheet or Python</summary>
 
@@ -40,7 +42,7 @@ US dollars, trillions (T), converted at the market close on each report's count 
 
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
-| 2026 Q2 | $22.13T | -5.5% | [Sources](base_money/quarters/2026Q2.md) |
+| 2026 Q2 | $22.13T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
 | 2026 Q1 | $22.45T | —¹ | [Sources](base_money/quarters/2026Q1.md) |
 | 2025 Q4 | $22.55T | —¹ | [Sources](base_money/quarters/2025Q4.md) |
 | 2025 Q3 | $22.88T | —¹ | [Sources](base_money/quarters/2025Q3.md) |
@@ -51,6 +53,8 @@ US dollars, trillions (T), converted at the market close on each report's count 
 <!-- BEGIN GENERATED yoy-notes -->
 
 ¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.
+
+ᵖ One or both figures are provisional and may be revised.
 
 <!-- END GENERATED yoy-notes -->
 

@@ -1,5 +1,6 @@
 // Synthetic, test-only evidence. None of these numbers are real observations.
 import { extractPath, folderReadmePath, fxPath, QUARTER_LIST, quarterPath, relLink } from "../scripts/lib/paths.ts";
+import { BLOCKS, begin, end, fillReadme, freshIndex, generate, hasMarkers, outputs } from "../scripts/lib/readme.ts";
 import type { Files, Snapshot } from "../scripts/lib/types.ts";
 
 /** Fixture paths, from the one layout module (scripts/lib/paths.ts). */
@@ -467,4 +468,52 @@ export const virtualClock = (start = Date.parse("2026-10-22T16:00:00Z")) => {
     },
     random: () => 0,
   };
+};
+
+/**
+ * `text` with Convention and Status (and an As of where missing) in every issuer extract: the components CSV reads
+ * them from each adopted extract. `status` overrides the Status per issuer (default final).
+ */
+export const withFields = (
+  text: Record<string, string>,
+  status: Record<string, string> = {},
+): Record<string, string> => {
+  const out = { ...text };
+  for (const [p, t] of Object.entries(text)) {
+    const iss = /^base_money\/issuers\/([A-Z][A-Z0-9]*)\/\d{4}\.md$/.exec(p)?.[1];
+    if (!iss || iss === "FX") continue;
+    out[p] = t
+      .split("\n### ")
+      .map((part, i) => {
+        if (i === 0 || part.includes("- Convention:")) return part;
+        const asOf = part.includes("- As of:") ? "" : "- As of: 2026-09-30\n";
+        return part.replace(
+          "- Adopted: yes",
+          `${asOf}- Convention: end of period\n- Status: ${status[iss] ?? "final"}\n- Adopted: yes`,
+        );
+      })
+      .join("\n### ");
+  }
+  return out;
+};
+
+/** A README.md with every generated block, empty. */
+export const SKELETON_README = `# fixture\n\n${BLOCKS.map((n) => `${begin(n)}\n\n${end(n)}`).join("\n\n")}\n`;
+/** What `bun run readme` writes for `text`: README.md's blocks (into SKELETON_README when it has no markers), the
+ * quarter list and every L17 output (the components CSVs, YoY columns, issuer README quarter tables). Throws on a
+ * problem. */
+export const generateAll = (text: Record<string, string>): Record<string, string> => {
+  const out = { ...text };
+  const paths = Object.keys(out).sort();
+  const g = generate(new Map(Object.entries(out)), paths);
+  if (!g) throw new Error("fixture does not generate");
+  const readme = fillReadme(hasMarkers(out["README.md"]) ? (out["README.md"] as string) : SKELETON_README, g.blocks);
+  if (typeof readme !== "string") throw new Error(readme.join("; "));
+  out["README.md"] = readme;
+  out[INDEX] ??= freshIndex(g.index);
+  const o = outputs(new Map(Object.entries(out)), paths.includes(INDEX) ? paths : [...paths, INDEX].sort());
+  if (!o) throw new Error("fixture outputs do not generate");
+  if (o.problems.length) throw new Error(o.problems.map((p) => `${p.file}: ${p.message}`).join("; "));
+  for (const [p, t] of o.want) out[p] = t;
+  return out;
 };
