@@ -306,9 +306,22 @@ describe("link-check: --write and --quarter", () => {
     );
     expect(r.code).toBe(1);
     const t = r.written as string;
-    expect(t).toContain(`- Archive URL: ${WB_B}\n- Value`);
-    expect(t).toContain("- Capture check: 2026-07-01");
     expect(t).toContain(`- Archive URL 3: ${GHOST}\n- Capture check: 2026-10-27`);
+    // Undated adopted figures get one reason line; the repair keeps its links.
+    expect(t).toContain(
+      `- Archive URL: ${WB_B}\n- Note 2026-10-27: Capture check not dated: source unreachable: Archive URL HTTP 404 on the id_ capture: the capture is gone.\n- Value`,
+    );
+    expect(t).toContain(
+      "- Capture check: 2026-07-01\n- Note 2026-10-27: Capture check not dated: source unreachable: Original URL rate-limited: HTTP 503",
+    );
+  });
+  test("--write adds an undated figure's reason line once", async () => {
+    const net = { ...healthy(), [O_C]: { status: 503 } };
+    const opts = { argv: ["--write"], env: { OBM_RATE_MAX_TRIES: "1" } };
+    const first = (await run(net, opts)).written as string;
+    const again = (await run(net, { ...opts, text: first })).written;
+    expect(first.match(/Capture check not dated/g)?.length).toBe(1);
+    expect((again ?? first).match(/Capture check not dated/g)?.length).toBe(1);
   });
   test("a Capture check note survives the new date", async () => {
     const a = [`- Original URL: ${O_A}`, `- Archive URL: ${WB_A}`, `- Archive URL 2: ${GHOST}`];

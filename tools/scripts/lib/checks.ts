@@ -1833,7 +1833,7 @@ function catalog(ctx: Ctx, emit: Emit) {
       e(`series[${i}].path ${show(s.path)} must be a repo path to a .csv file`);
     if (typeof s.methodology !== "string" || !ctx.files.has(s.methodology))
       e(`series[${i}].methodology ${show(s.methodology)} does not exist`);
-    if (s.unit !== "USD") e(`series[${i}].unit must be "USD"`);
+    if (s.id === SERIES && s.unit !== "USD") e(`series[${i}].unit must be "USD"`);
     if (s.frequency !== "quarterly") e(`series[${i}].frequency must be "quarterly"`);
     if (s.last_updated !== null && !(typeof s.last_updated === "string" && isIsoDate(s.last_updated)))
       e(`series[${i}].last_updated must be YYYY-MM-DD or null`);

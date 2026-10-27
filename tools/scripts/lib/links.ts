@@ -174,12 +174,16 @@ export interface Edit {
   readonly figure: Figure;
   readonly drop: ReadonlySet<number>;
   readonly date: string | null;
+  /** A `- Note YYYY-MM-DD: ...` line saying why the Capture check was not dated; added once, after the links. */
+  readonly note?: string | null;
 }
 
 /**
  * The file with each edit applied: dead Archive URL lines dropped (never the Original URL, never a line not in the
  * extract), the survivors renumbered in order (Archive URL, Archive URL 2, ...), and the Capture check date set
- * (its note kept), the line added after the last link when missing. No link is ever added.
+ * (its note kept), the line added after the last link when missing. An undated figure's note line (why it was not
+ * dated) goes after its Capture check, or its last link, unless the extract already has that exact line. No link is
+ * ever added.
  */
 export function applyEdits(body: string, edits: readonly Edit[]): string {
   const raw = body.split("\n");
@@ -194,6 +198,10 @@ export function applyEdits(body: string, edits: readonly Edit[]): string {
       if (drop.has(a.line)) continue;
       k++;
       set.set(a.line, `- ${k === 1 ? "Archive URL" : `Archive URL ${k}`}: ${a.url}`);
+    }
+    if (e.note && !raw.includes(e.note)) {
+      const last = f.capture?.line ?? Math.max(f.original?.line ?? 0, ...f.archives.map((a) => a.line));
+      if (last > 0) insertAfter.set(last, e.note);
     }
     if (e.date === null) continue;
     const line = `- Capture check: ${e.date}${f.capture?.note ? `; ${f.capture.note}` : ""}`;
