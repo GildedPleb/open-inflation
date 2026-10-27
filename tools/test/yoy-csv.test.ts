@@ -363,6 +363,16 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
       `${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT["month-end"]}`,
     );
     expect(countDateNote("FED", new Set(["monthly average"]))).toBe(`${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT.average}`);
+    // N-a: SNB alone says its average is inferred and links the methodology's SNB note; a missing heading fails
+    expect(countDateNote("SNB", new Set(["monthly average"]), (a) => `doc.md#${a}`)).toBe(
+      `${COUNT_DATE_LEAD} YYYY-MM means the figure is the bank's average for that month (inferred; see [the SNB note in the methodology](doc.md#per-issuer-definitions)).`,
+    );
+    expect(countDateNote("SNB", new Set(["monthly average"]), () => null)).toEqual({
+      problem: expect.stringContaining('"#per-issuer-definitions"'),
+    });
+    expect(countDateNote("BOE", new Set(["monthly average"]), (a) => `doc.md#${a}`)).toBe(
+      `${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT.average}`,
+    );
     expect(countDateNote("ECB", new Set(["weekly stock"]))).toEqual({
       problem: expect.stringContaining("ECB has a YYYY-MM count date but no month basis"),
     });
@@ -665,7 +675,11 @@ describe("real data: this checkout's committed outputs", () => {
     expect(text.get(folderReadmePath("BCB"))).toContain(
       `\n\n${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT["month-end"]}\n\n[Status](`,
     );
-    for (const i of ["FED", "BOE", "SNB"])
+    expect(text.get(folderReadmePath("SNB"))).toContain(
+      "\n\nCount date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month (inferred; see [the SNB note in the methodology](../../../docs/methodology/base_money.md#per-issuer-definitions)).\n\n[Status](",
+    );
+    expect(slugs(text.get(METHODOLOGY) ?? "").has("per-issuer-definitions")).toBe(true);
+    for (const i of ["FED", "BOE"])
       expect(text.get(folderReadmePath(i))).toContain(
         `\n\n${COUNT_DATE_LEAD} ${MONTH_BASIS_TEXT.average}\n\n[Status](`,
       );
