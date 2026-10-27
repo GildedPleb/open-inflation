@@ -10,6 +10,7 @@ import {
   CSV_PATH,
   extractPath,
   folderReadmePath,
+  fxPath,
   QUARTER_LIST,
   quarterPath,
 } from "../scripts/lib/paths.ts";
@@ -21,12 +22,16 @@ import {
   countDateNote,
   csvProblems,
   fillIssuerQuarters,
+  fillQuarterTable,
   ISSUER_YOY_HEADER,
   MONTH_BASIS,
   MONTH_BASIS_TEXT,
   outputs,
   PROVISIONAL_MARK,
+  QUARTER_TABLE_BEGIN,
+  QUARTER_TABLE_END,
   QUARTER_YOY_LINE,
+  ROUNDING_LEAD,
   STATUS_NOTE_END,
   STATUS_TERMS,
   statusNote,
@@ -46,6 +51,9 @@ import {
   extract,
   files,
   folderReadme,
+  fxFile,
+  fxRow,
+  fxSection,
   generateAll,
   goodText,
   METHODOLOGY_PATH,
@@ -183,6 +191,7 @@ const twoYears = (q26: C[], q27: C[]): Record<string, string> => {
         `- As of: ${c.asOf ?? dateOf(q)}`,
         `- Convention: ${c.convention ?? "end of period"}`,
         `- Status: ${c.status ?? "final"}`,
+        `- Measure (reader): ${c.iss} monetary base`,
       ];
       const p = extractPath(c.iss, q.slice(0, 4));
       t[p] =
@@ -191,6 +200,16 @@ const twoYears = (q26: C[], q27: C[]): Record<string, string> => {
     }
   }
   for (const [iss, ys] of years) t[folderReadmePath(iss)] = folderReadme(iss, ...ys.reverse());
+  // The FX rows the quarter tables' FX cells link (one section per quarter, one row per non-USD component).
+  for (const [q, cs] of [
+    ["2026Q3", q26],
+    ["2027Q3", q27],
+  ] as const) {
+    const rows = cs
+      .filter((c) => c.ccy !== "USD")
+      .map((c) => fxRow(c.ccy, { q, issuer: c.iss, pair: `USD per ${c.ccy}`, rate: c.fx }));
+    if (rows.length) t[fxPath(q.slice(0, 4))] = fxFile(fxSection(q, ...rows));
+  }
   return generateAll(t);
 };
 /** The YoY cell of `row` (its first cell) in the table of `md`. */
@@ -221,9 +240,11 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
       "| [2027&nbsp;Q3](quarters/2027Q3.md) | 2027-09-30 | $0.0B | +7.9% | 1,316 | 99.92%; left out: BOJ |\n",
     );
     expect(cell(t[ECB_README], "[2027 Q3]")).toBe("-10.0%");
-    expect(t[ECB_README]).toContain("| Quarter | Count date | Amount (EUR) | Status | FX rate | USD | YoY (local) |");
+    expect(t[ECB_README]).toContain(
+      "| Quarter | Count date | Amount (EUR) | Status | USD per EUR | USD | YoY (local) |",
+    );
     expect(t[ECB_README]).toMatch(
-      /\n\| \[2027 Q3\]\(\.\.\/\.\.\/quarters\/2027Q3\.md\) \| 2027-09-30 \| \[180\]\(2027\.md#[a-z0-9-]+\) \| final \| — \| \$0\.0B \| -10\.0% \|\n/,
+      /\n\| \[2027 Q3\]\(\.\.\/\.\.\/quarters\/2027Q3\.md\) \| 2027-09-30 \| \[180\]\(2027\.md#[a-z0-9-]+\) \| final \| \[1\.2\]\(\.\.\/\.\.\/FX\/2027\.md#fx-2027q3-eur\) \| \$0\.0B \| -10\.0% \|\n/,
     );
   });
   test("FED (USD) has fx_rate 1 and its local YoY equals its USD YoY", () => {
@@ -236,7 +257,7 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
     const t = base();
     for (const r of ["[FED]", "[ECB]", "**Total**"]) expect(cell(t[Q26], r)).toBe("—¹");
     expect(t[Q26]).toContain(`|\n\n${QUARTER_YOY_LINE}\n\n¹ No year-ago quarter yet: the series has no 2025 Q3.\n`);
-    expect(t[Q27]).toContain(`|\n\n${QUARTER_YOY_LINE}\n\n## `); // the YoY line is always there
+    expect(t[Q27]).toContain(`|\n\n${QUARTER_YOY_LINE}\n\n${ROUNDING_LEAD}`); // the YoY line is always there
     expect(t[Q26]).not.toContain("² ");
     expect(t[Q27]).not.toContain("¹ ");
     expect(t[QUARTER_LIST]).toContain("\n\n¹ No year-ago quarter yet: 2026 Q3.\n");
@@ -319,7 +340,7 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
   test("m1: the quarter file's YoY header names its basis; an older plain YoY header is replaced in place", () => {
     const t = base();
     expect(YOY_HEADER).toBe("YoY (local; Total in USD)");
-    expect(t[Q27]).toContain(`| FX rate | USD | ${YOY_HEADER} |\n`);
+    expect(t[Q27]).toContain(`| FX rate (market close) | USD | ${YOY_HEADER} |\n`);
     expect(t[Q27]).toContain(`|\n\n${QUARTER_YOY_LINE}\n`); // the note line stays, saying the same
     const old = (t[Q27] as string).replace(`| ${YOY_HEADER} |`, "| YoY |");
     expect(generateAll({ ...t, [Q27]: old })).toEqual(t);
@@ -520,6 +541,32 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
     await l17(edit(Q3, `${QUARTER_YOY_LINE}\n\n`, ""), Q3); // the YoY line removed
     await l17(edit(Q3, "so exchange rates don't move it;", "so FX doesn't move it;"), Q3); // or reworded
     await l17(edit(Q3, `| ${YOY_HEADER} |`, "| YoY |"), Q3); // m1: the header's basis
+  });
+  test("the quarter table itself: a What was measured cell, a row's order, the total sentence (amounts: L-checks above)", async () => {
+    const t = gen[Q3] as string;
+    expect(t).toContain("| [FED](../issuers/FED/README.md) | FED monetary base | USD 1,001 | none (already USD) |");
+    await l17(edit(Q3, "| FED monetary base |", "| FED monetary base, hand-typed |"), Q3); // the failing fixture
+    await l17(edit(Q3, "base money across the two central banks", "base money across two central banks"), Q3);
+    const rows = t.split("\n").filter((l) => /^\| \[(FED|ECB)\]/.test(l));
+    expect(rows).toHaveLength(2);
+    await l17({ [Q3]: t.replace(`${rows[0]}\n${rows[1]}`, `${rows[1]}\n${rows[0]}`) }, Q3);
+  });
+  test("an adopted extract a quarter table uses without - Measure (reader): fails, naming it", async () => {
+    const fed = extractPath("FED", "2026");
+    const fs = await lint(snap(edit(fed, "\n- Measure (reader): FED monetary base", "")), { now: NOW });
+    expect(fs.map((f) => `${f.check} ${f.file}`)).toContain(`L17 ${Q3}`);
+    expect(fs.map((f) => f.message)).toContainEqual(expect.stringContaining('has no "- Measure (reader):" line'));
+  });
+  test("between the markers when a quarter file has them; outside them stays as written", () => {
+    const body = `# Q\n\nIntro.\n\n${QUARTER_TABLE_BEGIN}\nold\n${QUARTER_TABLE_END}\n\n## What's left out\n`;
+    expect(fillQuarterTable(body, "new")).toBe(
+      `# Q\n\nIntro.\n\n${QUARTER_TABLE_BEGIN}\nnew\n${QUARTER_TABLE_END}\n\n## What's left out\n`,
+    );
+    expect(fillQuarterTable(`# Q\n\nold\n\n${ROUNDING_LEAD}.\n\n## Rest\n`, "new")).toBe("# Q\n\nnew\n\n## Rest\n");
+    expect(fillQuarterTable("# Q\n\nNo table.\n", "new")).toEqual({ problem: expect.stringContaining(ROUNDING_LEAD) });
+    expect(fillQuarterTable(`${QUARTER_TABLE_BEGIN}\nold\n`, "new")).toEqual({
+      problem: expect.stringContaining(QUARTER_TABLE_END),
+    });
   });
   test("L5: the Status note's and Download line's methodology links resolve", async () => {
     const fs = await lint(snap({ [METHODOLOGY_PATH]: "# Methodology\n" }), { now: NOW });
