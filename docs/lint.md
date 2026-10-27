@@ -35,7 +35,7 @@ Every extract has:
 - `- Retrieved:` (UTC, not later than now plus 10 minutes).
 - `- Original URL:`.
 - One or more numbered archive lines, `- Archive URL:`, `- Archive URL 2:`, `- Archive URL 3:`, ... in that order, no URL twice. Each is an archive capture: a Wayback snapshot `https://web.archive.org/web/<14-digit timestamp>/<URL>` (a real time; the URL is the Original URL or another archive URL of the extract, compared percent-decoded per component, since Wayback writes `/` in a query as `%2F`, and a malformed `%` escape fails), an archive.today capture (`https://archive.ph/<id>`, `https://archive.today/<id>` or `https://archive.is/<id>`, or the dated form `https://<same hosts>/<YYYYMMDDhhmmss>/<URL>` with a real timestamp and such a URL) or a Ghostarchive capture (`https://ghostarchive.org/archive/<id>`). Any other host, a self-hosted copy included, fails. How many are needed is L16.
-- At most one `- Capture check: YYYY-MM-DD`, the last date every link was confirmed live and showing the number (on or after the UTC date of Retrieved, not after today). Only when the original is gone does it carry a note, `- Capture check: YYYY-MM-DD; <the evidence that the original cannot be re-found>.`, non-empty text ending with a period.
+- At most one `- Capture check: YYYY-MM-DD`, the last date every link a script can fetch (the original, Wayback and Ghostarchive) was confirmed live and showing the number; archive.today links are cited but never script-checked (on or after the UTC date of Retrieved, not after today). Only when the original is gone does it carry a note, `- Capture check: YYYY-MM-DD; <the evidence that the original cannot be re-found>.`, non-empty text ending with a period.
 - A verbatim quote.
 - `- As of:` (the observation date): `YYYY-MM-DD` or `YYYY-MM` (a real date), optionally followed by one parenthetical note to the end of the line. Under a `## YYYYQn` heading it falls inside that quarter (a month is in it if the month is). An issuer with `as_of_convention: "start_of_day"` in the catalog must use exactly the first day of the next quarter (its start-of-day stock is the quarter-end stock; no other date passes). As of (a `YYYY-MM` As of counts as that month's last day) is not after the UTC date of `- Retrieved:`.
 
@@ -97,7 +97,7 @@ Evidence states the fact for a cold reader. No line of a `base_money/**.md` file
 
 ### L16
 
-Two live links per figure, checked statically. Every adopted extract (`- Adopted: yes`) whose fields pass L7 has a `- Retrieved:` line and two links that show its number: the Original URL plus at least one Archive URL, or, when the original is gone (the Capture check carries a note giving the evidence), at least two Archive URLs. Extra links stay. Lint cannot tell whether a link is live; `bun run link-check` does, and `--write` sets the Capture check date (an extract not yet confirmed has none).
+Two live links per figure, checked statically. Every adopted extract (`- Adopted: yes`) whose fields pass L7 has a `- Retrieved:` line and two links that show its number: the Original URL plus at least one Archive URL, or, when the original is gone (the Capture check carries a note giving the evidence), at least two Archive URLs. Extra links stay. Lint cannot tell whether a link is live; `bun run link-check` does, and `--write` sets the Capture check date. An adopted extract with no `- Capture check:` line fails ("has no Capture check line; run bun run link-check --write to date it").
 
 ### L17
 
