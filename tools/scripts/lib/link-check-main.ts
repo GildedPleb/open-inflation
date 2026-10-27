@@ -6,7 +6,8 @@
 //   repair    fewer than two live: archive the original, archive the surviving archive, or re-find the original
 //   unknown   fewer than two confirmed live, and some link got no verdict (rate limit, 5xx, network): re-run
 // --write sets each figure's Capture check to today (UTC) when every link it lists was confirmed live (archive.today
-// links excepted: never fetched, see the summary) and deletes dead Archive URL lines while two live remain. It never
+// links excepted: never fetched, see the summary), adds a dated Note line saying why to an adopted figure it could not
+// date, and deletes dead Archive URL lines while two live remain. It never
 // adds a link. Only adopted figures set the exit: 0 clean, 1 drop or repair, 2 usage or error, 3 unknown.
 import { join } from "node:path";
 import { EXIT } from "./exit.ts";
@@ -125,6 +126,24 @@ export function verdictOf(
   return { verdict: "repair", action, drop: none, confirmed: false };
 }
 
+/**
+ * The reason line --write adds to an adopted figure it could not date, e.g.
+ * `- Note 2026-10-27: Capture check not dated: source unreachable: Original URL HTTP 502.` (a DATED_NOTE line).
+ */
+export function undatedNote(today: string, links: FigureResult["links"]): string | null {
+  const why = links
+    .filter((l) => l.status === "dead" || l.status === "unknown")
+    .map(
+      (l) =>
+        `${l.link.label} ${l.reason
+          .replace(/https?:\/\/\S+/g, "")
+          .replace(/[\s.;:]+$/, "")
+          .trim()}`,
+    );
+  if (why.length === 0) return null;
+  return `- Note ${today}: Capture check not dated: source unreachable: ${why.join("; ")}.`;
+}
+
 export async function linkCheckMain(io: CheckIo): Promise<number> {
   const opt = args(io.argv);
   if (!opt) {
@@ -224,10 +243,11 @@ export async function linkCheckMain(io: CheckIo): Promise<number> {
       const dated =
         (r.verdict === "ok" || r.verdict === "drop") &&
         survivors.every((l) => l.status === "live" || l.status === "unchecked");
-      if (r.drop.size === 0 && !dated) continue;
+      const note = dated || !r.figure.adopted ? null : undatedNote(today, survivors);
+      if (r.drop.size === 0 && !dated && !note) continue;
       byFile.set(r.figure.file, [
         ...(byFile.get(r.figure.file) ?? []),
-        { figure: r.figure, drop: r.drop, date: dated ? today : null },
+        { figure: r.figure, drop: r.drop, date: dated ? today : null, note },
       ]);
     }
     const write = io.write ?? ((p: string, t: string) => Bun.write(join(io.cwd, p), t));

@@ -1187,8 +1187,19 @@ describe("L11 catalog.json", () => {
       ["L11"],
       /methodology/,
     ));
-  test("unit must be USD", () =>
+  test("the base_money series' unit must be USD", () =>
     fails(good({ "catalog.json": catalog([{ ...entry, unit: "EUR" }]) }), ["L11"], /unit/));
+  test("the local-currency CSVs (components and the issuer CSVs) are not cataloged as USD", async () => {
+    const { series } = (await Bun.file(new URL("../../catalog.json", import.meta.url)).json()) as {
+      series: { id: string; path: string; unit: string }[];
+    };
+    const local = series.filter(
+      (s) => s.path === "base_money/components.csv" || s.path.startsWith("base_money/issuers/"),
+    );
+    expect(local.length).toBe(10);
+    for (const s of local) expect([s.path, s.unit]).toEqual([s.path, "local currency (see local_currency column)"]);
+    expect(series.find((s) => s.id === "base_money")?.unit).toBe("USD");
+  });
   test("frequency must be quarterly", () =>
     fails(good({ "catalog.json": catalog([{ ...entry, frequency: "monthly" }]) }), ["L11"], /frequency/));
   test("last_updated must be a date or null", () =>
@@ -2603,8 +2614,8 @@ describe("L16 two live links (static)", () => {
   const block = (o: Parameters<typeof extract>[0]) => good(fed(extract(o)));
   test("the Original URL plus one archive and a Capture check passes", () => passes(block({ title: "FED H.4.1" })));
   test("extra archives stay and pass", () => passes(block({ title: "FED H.4.1", archive2: TODAY, archive3: GHOST })));
-  test("an adopted figure not yet link-checked (no Capture check) passes", () =>
-    passes(block({ title: "FED H.4.1", capture: null })));
+  test("an adopted figure with no Capture check line fails", () =>
+    fails(block({ title: "FED H.4.1", capture: null }), ["L16"], /has no Capture check line/));
   test("an extract that is not adopted is not judged", () =>
     passes(
       good({
