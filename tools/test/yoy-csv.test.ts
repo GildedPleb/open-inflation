@@ -30,9 +30,11 @@ import {
   outputs,
   PROVISIONAL_MARK,
   QUARTER_YOY_LINE,
+  quarterLabel,
   ROUNDING_LEAD,
   STATUS_NOTE_END,
   STATUS_TERMS,
+  shiftQuarter,
   statusNote,
   statusTerm,
   usdShort,
@@ -61,6 +63,7 @@ import {
   rollup,
   withFields,
 } from "./fixture.ts";
+import { quarterWindow, rowsByQuarter, yoyProblem } from "./real-data.ts";
 
 // WP "YoY + generated CSVs" (product/WP_YOY_CSV_REQUIREMENTS.md, G1-G12). Every test here is offline and in memory,
 // except the real-data block, which reads this checkout's committed files with fs (no git, no network).
@@ -700,8 +703,9 @@ describe("real data: this checkout's committed outputs", () => {
     const each = issuers.flatMap((i) => (text.get(`base_money/issuers/${i}/${i}.csv`) ?? "").split("\n").slice(1, -1));
     expect(each.sort()).toEqual(csv.split("\n").slice(1, -1).sort());
   });
-  test("Form's RBI example: the bank page's Quarters section, right after the facts, Years last", () => {
-    const rbi = text.get(folderReadmePath("RBI")) ?? "";
+  test("Form's RBI example, on its quarters (2025 Q2 to 2026 Q2): the bank page's Quarters section, byte for byte", () => {
+    // Section 3's exact section (2026-10-26) is dated: it shows the series as it stood, 2025 Q2 to 2026 Q2.
+    const rbi = outputs(quarterWindow(text, "2025Q2", "2026Q2"), paths)?.want.get(folderReadmePath("RBI")) ?? "";
     expect(rbi).toContain(
       [
         "## Quarters",
@@ -722,6 +726,9 @@ describe("real data: this checkout's committed outputs", () => {
         "## What we measure\n",
       ].join("\n\n"),
     );
+  });
+  test("each bank page: Quarters right after the facts, Years last; the methodology anchors and count-date notes", () => {
+    const rbi = text.get(folderReadmePath("RBI")) ?? "";
     // the two links resolve: base_money/issuers/RBI/ + ../../../ is the repo root
     for (const a of ["status-and-vintages", "components-csv"])
       expect(slugs(text.get(METHODOLOGY) ?? "").has(a)).toBe(true);
@@ -740,6 +747,36 @@ describe("real data: this checkout's committed outputs", () => {
     expect(text.get(quarterPath("2026Q2"))).toContain(`| USD | ${YOY_HEADER} |\n`);
     const heads = rbi.split("\n").filter((l) => l.startsWith("## "));
     expect([heads[0], heads.at(-1)]).toEqual(["## Quarters", "## Years"]);
+  });
+  test("each bank page's generated Quarters table, every row found by label: R3's YoY (local) and the ¹ note", () => {
+    const series = new Set(
+      (text.get(CSV_PATH) ?? "")
+        .split("\n")
+        .slice(1, -1)
+        .map((l) => `${l.slice(0, 4)}Q${Math.ceil(Number(l.slice(5, 7)) / 3)}`),
+    );
+    const comp = new Map(rows.map((r) => [`${r[2]} ${r[1]}`, { currency: r[6] as string, local: r[7] as string }]));
+    const issuers = [...new Set(rows.map((r) => r[2] as string))].sort();
+    expect(issuers.length).toBeGreaterThan(0);
+    const want = outputs(text, paths)?.want;
+    for (const i of issuers) {
+      const page = want?.get(folderReadmePath(i)) ?? "";
+      const section = /## Quarters\n[\s\S]*?(?=\n## )/.exec(page)?.[0] ?? "";
+      const table = rowsByQuarter(section.split("\n"));
+      expect([i, [...table.keys()].filter((q) => series.has(q))]).toEqual([i, [...series].sort().reverse()]);
+      const none: string[] = [];
+      for (const [q, c] of table) {
+        if (!series.has(q)) continue;
+        const yearAgo = series.has(shiftQuarter(q, -4));
+        if (!yearAgo) none.push(quarterLabel(q));
+        const cur = comp.get(`${i} ${q}`);
+        const prev = comp.get(`${i} ${shiftQuarter(q, -4)}`);
+        const pair = cur && prev && cur.currency === prev.currency ? { cur: cur.local, prev: prev.local } : null;
+        expect([i, q, yoyProblem(c.at(-1), yearAgo, pair)]).toEqual([i, q, null]);
+      }
+      const note = section.split("\n").filter((l) => l.startsWith("¹ "));
+      expect([i, note]).toEqual([i, none.length ? [`¹ No year-ago quarter yet: ${none.join(", ")}.`] : []]);
+    }
   });
   test("the front page: the Per bank line under Download, and each basket bank linked to its page", () => {
     const readme = text.get("README.md") ?? "";

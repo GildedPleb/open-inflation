@@ -11,7 +11,13 @@ import {
   fillIndex,
   fillList,
   generate,
+  QUARTER_TABLE_ALIGN,
+  QUARTER_TABLE_HEADER,
   type Quarter,
+  quarterLabel,
+  quarters,
+  shiftQuarter,
+  usdShort,
   YEARS_HEADING,
   yearLists,
   yoy,
@@ -31,6 +37,7 @@ import {
   rollup,
   withFields,
 } from "./fixture.ts";
+import { quarterWindow, rowsByQuarter, yoyProblem } from "./real-data.ts";
 
 const NOW = Date.parse("2026-10-22T16:00:00Z");
 
@@ -240,20 +247,60 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
         }),
     );
 
-  test("header, alignment and the 2025 Q2 to 2026 Q2 rows are section 2's, byte for byte", () => {
-    // Section 2's exact section (2026-10-27). Newer quarters add rows above; these stay the oldest five.
-    const rows = tableOf(repoText());
-    expect(rows.slice(0, 2)).toEqual([
+  /** Section 2's exact section (2026-10-27) is dated: it shows the series as it stood, 2025 Q2 to 2026 Q2. */
+  const formsQuarters = () => quarterWindow(repoText(), "2025Q2", "2026Q2");
+  test("on section 2's quarters (2025 Q2 to 2026 Q2): the table and its notes are section 2's, byte for byte", () => {
+    const text = formsQuarters();
+    const g = generate(text, [...text.keys()]);
+    expect(g?.index.split("\n")).toEqual([
       "| Quarter | Count date | Total (USD) | YoY (USD) | Exact total (USD) |",
       "| :------ | :--------- | ----------: | --------: | ----------------: |",
-    ]);
-    expect(rows.slice(-5)).toEqual([
       "| [2026&nbsp;Q2](quarters/2026Q2.md) | 2026-06-30 | $22.13T | -5.5%ᵖ | 22,125,479,242,256 |",
       "| [2026&nbsp;Q1](quarters/2026Q1.md) | 2026-03-31 | $22.45T | —¹ | 22,449,782,815,379 |",
       "| [2025&nbsp;Q4](quarters/2025Q4.md) | 2025-12-31 | $22.55T | —¹ | 22,554,451,077,005 |",
       "| [2025&nbsp;Q3](quarters/2025Q3.md) | 2025-09-30 | $22.88T | —¹ | 22,882,534,748,618 |",
       "| [2025&nbsp;Q2](quarters/2025Q2.md) | 2025-06-30 | $23.42T | —¹ | 23,418,246,247,929 |",
     ]);
+    expect(g?.indexNotes).toEqual([
+      "¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.",
+      "ᵖ Uses a provisional bank figure that may be revised: 2026 Q2.",
+    ]);
+  });
+  test("on every committed quarter, found by label: newest first, the CSV's date and totals, R3's YoY", () => {
+    const text = repoText();
+    const g = generate(text, [...text.keys()]);
+    const qs = quarters(text) ?? [];
+    expect(qs.length).toBeGreaterThan(0);
+    const lines = g?.index.split("\n") ?? [];
+    const coverage = qs.some((q) => q.excluded.length > 0);
+    expect(lines.slice(0, 2)).toEqual(
+      coverage
+        ? [`${QUARTER_TABLE_HEADER} Coverage |`, `${QUARTER_TABLE_ALIGN} :------- |`]
+        : [QUARTER_TABLE_HEADER, QUARTER_TABLE_ALIGN],
+    );
+    const rows = rowsByQuarter(lines);
+    const listed = [...rows.keys()];
+    expect(listed).toEqual([...listed].sort().reverse());
+    const byId = new Map(qs.map((q) => [q.id, q]));
+    expect(listed.filter((id) => byId.has(id))).toEqual(qs.map((q) => q.id).reverse());
+    const none: string[] = [];
+    for (const q of qs) {
+      const c = rows.get(q.id) as string[];
+      const prev = byId.get(shiftQuarter(q.id, -4));
+      const like = prev && prev.basket === q.basket && prev.included.join() === q.included.join();
+      if (!prev) none.push(quarterLabel(q.id));
+      expect([q.id, c[1], c[2], c[4]?.replaceAll(",", "")]).toEqual([q.id, q.date, usdShort(q.value), `${q.value}`]);
+      const pair = like ? { cur: `${q.value}`, prev: `${prev.value}` } : null;
+      expect([q.id, yoyProblem(c[3], !!prev, pair)]).toEqual([q.id, null]);
+      if (coverage)
+        expect([q.id, c[5]]).toEqual([
+          q.id,
+          q.excluded.length ? expect.stringMatching(new RegExp(`^${q.coverage}%; left out: `)) : "all banks",
+        ]);
+    }
+    expect(g?.indexNotes.filter((n) => n.startsWith("¹ "))).toEqual(
+      none.length ? [`¹ No year-ago quarter yet: ${none.reverse().join(", ")}.`] : [],
+    );
   });
   test("count dates use ASCII hyphens, never U+2011, so a copied date matches a search", () => {
     const g = generate(repoText(), [...repoText().keys()]);
@@ -275,7 +322,7 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
     expect(yoyByQuarter(g?.index.split("\n") ?? [], 3)).toEqual(front);
   });
   test("a Coverage column only when a listed quarter leaves a bank out", () => {
-    const text = repoText();
+    const text = formsQuarters();
     expect(tableOf(text)[0]).not.toContain("Coverage");
     const q = "base_money/quarters/2025Q2.md";
     const body = text.get(q) as string;
@@ -290,7 +337,9 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
       "| Quarter | Count date | Total (USD) | YoY (USD) | Exact total (USD) | Coverage |",
       "| :------ | :--------- | ----------: | --------: | ----------------: | :------- |",
     ]);
-    expect(rows.at(-1)).toEndWith(" | 23,418,246,247,929 | 98.79%; left out: BCB |");
-    expect(rows.slice(2, -1).every((r) => r.endsWith(" | all banks |"))).toBe(true);
+    const byQuarter = rowsByQuarter(rows);
+    expect(byQuarter.get("2025Q2")?.slice(-2)).toEqual(["23,418,246,247,929", "98.79%; left out: BCB"]);
+    expect(byQuarter.size).toBe(5);
+    for (const [id, c] of byQuarter) if (id !== "2025Q2") expect([id, c.at(-1)]).toEqual([id, "all banks"]);
   });
 });
