@@ -218,16 +218,13 @@ describe("repository identity", () => {
       // F-2: a Ghostarchive 503 is retried as a rate limit, not called its Cloudflare challenge.
       expect(doc).not.toMatch(/503,? \(?its Cloudflare challenge|Ghostarchive also 503/);
     }
-    const [running] = docs;
     const rules = await read("docs/lint.md");
     expect(rules).not.toContain("reviewer to open");
   });
   test("docs: the rate-limited wording and distinct-URL counts (N-h, m-A)", async () => {
     const read = (p: string) => Bun.file(join(ROOT, p)).text();
     // README's contributor content moved to docs/running.md (verify, link-check) and docs/lint.md (the rules).
-    const [running, rules, agents, methodology] = await Promise.all(
-      ["docs/running.md", "docs/lint.md", "AGENTS.md", "docs/methodology/base_money.md"].map(read),
-    );
+    const [running, rules, agents] = await Promise.all(["docs/running.md", "docs/lint.md", "AGENTS.md"].map(read));
     for (const doc of [running, agents]) {
       // N-h: "a 429, or a 429 or 503" said 429 twice; a 429 is never a verdict, a 503 only when pacing gave up.
       expect(doc).not.toContain("429, or a 429");

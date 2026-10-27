@@ -1,8 +1,5 @@
 import "./no-network.ts";
-import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, test } from "bun:test";
 import { httpChallenge, httpHead, pacedNet } from "../scripts/lib/archive.ts";
 import {
   type Clock,
@@ -18,7 +15,7 @@ import {
 } from "../scripts/lib/pacer.ts";
 import type { HeadResult, Net } from "../scripts/lib/types.ts";
 import { verify, verifyExit } from "../scripts/lib/verify.ts";
-import { extract, files, goodText, onGood } from "./fixture.ts";
+import { extract, goodText, onGood } from "./fixture.ts";
 
 // Pacing for the local scripts (verify, link-check): per-host spacing, hosts in parallel, Retry-After, backoff, adaptive
 // slow-down, give-up vs blocked. A virtual clock: sleep() parks on a timer and the driver jumps time to the next one,
