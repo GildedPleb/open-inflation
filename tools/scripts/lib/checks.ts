@@ -449,13 +449,13 @@ const outputKind = (p: string) =>
     : issuerCsvOf(p)
       ? "issuer components CSV"
       : p === QUARTER_LIST
-        ? "quarter list (or its YoY footnotes)"
+        ? "quarter table (or its notes)"
         : QUARTER_FILE.test(p)
           ? "YoY column (or its footnotes)"
           : "quarter table (or its footnotes)";
 
 /**
- * L17: the quarter list, each quarter file's YoY column and footnotes, each issuer README's quarter table and the
+ * L17: the quarter table in base_money/README.md, each quarter file's YoY column and footnotes, each issuer README's quarter table and the
  * two components CSVs equal, byte for byte, what `bun run readme` builds; each committed CSV also passes its format
  * checks on its own. Runs once the repo is in generated mode (README markers) or has a components CSV.
  */

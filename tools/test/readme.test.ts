@@ -108,11 +108,13 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     expect(await ids(s)).toEqual(["L13", "L6"].sort() as CheckId[]);
   });
   test("a missing quarter link in the quarter list fails", async () => {
-    const s = snap((t) => edit(t, EVIDENCE_INDEX, "[2026 Q3](quarters/2026Q3.md)", "2026 Q3"));
+    const s = snap((t) => edit(t, EVIDENCE_INDEX, "[2026&nbsp;Q3](quarters/2026Q3.md)", "2026&nbsp;Q3"));
     expect(await ids(s)).toEqual(["L17", "L6"].sort() as CheckId[]);
   });
   test("a hand-edited quarter list line fails L17; prose around the list is free", async () => {
-    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "| 2026-09-30 |", "| 2026-10-01 |")))).toEqual(["L17"]);
+    expect(
+      await ids(snap((t) => edit(t, EVIDENCE_INDEX, "| 2026&#8209;09&#8209;30 |", "| 2026&#8209;10&#8209;01 |"))),
+    ).toEqual(["L17"]);
     expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "newest first.", "newest first. Edited.")))).toEqual([]);
   });
   test("the quarter list names each quarter's coverage and the issuers left out", async () => {
@@ -142,7 +144,7 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     const t = goodText();
     gap(t);
     const g = generate(new Map(Object.entries(t)), Object.keys(t));
-    expect(g?.index.split("\n")[3]).toBe("| 2026 Q2 | — | — | — | — | — |");
+    expect(g?.index.split("\n")[3]).toBe("| 2026&nbsp;Q2 | — | — | — | — | — |");
     const withGap = (edit: (t: Record<string, string>) => void): Snapshot => {
       const { [EVIDENCE_INDEX]: _, ...v } = goodText();
       gap(v);
@@ -154,7 +156,7 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     expect(await l17(withGap(() => {}))).toEqual([]);
     const dropped = await l17(
       withGap((u) => {
-        u[EVIDENCE_INDEX] = (u[EVIDENCE_INDEX] as string).replace("| 2026 Q2 | — | — | — | — | — |\n", "");
+        u[EVIDENCE_INDEX] = (u[EVIDENCE_INDEX] as string).replace("| 2026&nbsp;Q2 | — | — | — | — | — |\n", "");
       }),
     );
     expect(dropped.map((f) => f.file)).toEqual([EVIDENCE_INDEX]);
@@ -219,6 +221,7 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
   const yoyByQuarter = (rows: readonly string[], col: number) =>
     new Map(
       rows
+        .map((r) => r.replaceAll("&nbsp;", " ")) // the quarter table keeps its label on one line
         .filter((r) => /^\| \[?\d{4} Q\d/.test(r))
         .map((r) => {
           const c = r.split(" | ");
@@ -234,11 +237,11 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
       "| :------ | :--------- | ----------: | --------: | ----------------: |",
     ]);
     expect(rows.slice(-5)).toEqual([
-      "| [2026 Q2](quarters/2026Q2.md) | 2026-06-30 | $22.13T | -5.5%ᵖ | 22,125,479,242,256 |",
-      "| [2026 Q1](quarters/2026Q1.md) | 2026-03-31 | $22.45T | —¹ | 22,449,782,815,379 |",
-      "| [2025 Q4](quarters/2025Q4.md) | 2025-12-31 | $22.55T | —¹ | 22,554,451,077,005 |",
-      "| [2025 Q3](quarters/2025Q3.md) | 2025-09-30 | $22.88T | —¹ | 22,882,534,748,618 |",
-      "| [2025 Q2](quarters/2025Q2.md) | 2025-06-30 | $23.42T | —¹ | 23,418,246,247,929 |",
+      "| [2026&nbsp;Q2](quarters/2026Q2.md) | 2026&#8209;06&#8209;30 | $22.13T | -5.5%ᵖ | 22,125,479,242,256 |",
+      "| [2026&nbsp;Q1](quarters/2026Q1.md) | 2026&#8209;03&#8209;31 | $22.45T | —¹ | 22,449,782,815,379 |",
+      "| [2025&nbsp;Q4](quarters/2025Q4.md) | 2025&#8209;12&#8209;31 | $22.55T | —¹ | 22,554,451,077,005 |",
+      "| [2025&nbsp;Q3](quarters/2025Q3.md) | 2025&#8209;09&#8209;30 | $22.88T | —¹ | 22,882,534,748,618 |",
+      "| [2025&nbsp;Q2](quarters/2025Q2.md) | 2025&#8209;06&#8209;30 | $23.42T | —¹ | 23,418,246,247,929 |",
     ]);
   });
   test("each YoY cell is the front page's, byte for byte", () => {
