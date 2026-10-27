@@ -2614,8 +2614,8 @@ describe("L16 two live links (static)", () => {
   const block = (o: Parameters<typeof extract>[0]) => good(fed(extract(o)));
   test("the Original URL plus one archive and a Capture check passes", () => passes(block({ title: "FED H.4.1" })));
   test("extra archives stay and pass", () => passes(block({ title: "FED H.4.1", archive2: TODAY, archive3: GHOST })));
-  test("an adopted figure not yet link-checked (no Capture check) passes", () =>
-    passes(block({ title: "FED H.4.1", capture: null })));
+  test("an adopted figure with no Capture check line fails", () =>
+    fails(block({ title: "FED H.4.1", capture: null }), ["L16"], /has no Capture check line/));
   test("an extract that is not adopted is not judged", () =>
     passes(
       good({

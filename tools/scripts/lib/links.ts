@@ -153,6 +153,7 @@ export function twoLinkProblems(f: Figure): string[] {
     out.push(
       `has ${(original ? 1 : 0) + archives} link${(original ? 1 : 0) + archives === 1 ? "" : "s"}; it needs two: the Original URL plus an Archive URL (or two Archive URLs and a Capture check note saying why the original cannot be re-found)`,
     );
+  if (f.capture === null) out.push("has no Capture check line; run bun run link-check --write to date it");
   return out;
 }
 
