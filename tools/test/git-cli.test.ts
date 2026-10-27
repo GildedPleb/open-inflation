@@ -207,7 +207,8 @@ describe("repository identity", () => {
   });
   test("docs: pace env names, audit exit 3, Ghostarchive 503, who opens unverified captures (N-a, 2a, F-2, m-F)", async () => {
     const read = (p: string) => Bun.file(join(ROOT, p)).text();
-    const docs = await Promise.all(["docs/running.md", "AGENTS.md", "docs/methodology/base_money.md"].map(read));
+    // The methodology links docs/running.md for pacing and verify output rather than repeating them.
+    const docs = await Promise.all(["docs/running.md", "AGENTS.md"].map(read));
     for (const doc of docs) {
       // N-a: every default pace key's real variable, and the mapping rule's name, not an invented one.
       for (const key of Object.keys(DEFAULT_PACE.intervals)) expect(doc).toContain(`\`${envName(key)}\``);
@@ -222,11 +223,10 @@ describe("repository identity", () => {
     }
     const [running] = docs;
     const rules = await read("docs/lint.md");
-    expect(rules).toMatch(/^### L8\n\n.*for the researcher to open by hand while archiving \(not in PR review\)/m);
     expect(rules).not.toContain("reviewer to open");
     expect(running).toMatch(/audit uses 0, 2 and 3/);
   });
-  test("docs: the rate-limited wording, distinct-URL counts, and the attempt-reason URL rule (N-h, m-A, m-D)", async () => {
+  test("docs: the rate-limited wording and distinct-URL counts (N-h, m-A)", async () => {
     const read = (p: string) => Bun.file(join(ROOT, p)).text();
     // README's contributor content moved to docs/running.md (verify, audit) and docs/lint.md (the rules).
     const [running, rules, agents, methodology] = await Promise.all(
@@ -237,23 +237,12 @@ describe("repository identity", () => {
       expect(doc).not.toContain("429, or a 429");
       expect(doc).toMatch(/a 429 or 503 still there when pacing (gave|gives) up(; | \()a 429 is never a verdict/);
     }
-    for (const doc of [running, rules, agents, methodology]) {
+    for (const doc of [running, rules, agents]) {
       // m-A: verify's counts are of distinct URLs, and the docs show the lines as printed.
       expect(doc).toContain("archive.today (distinct URLs): N verified, M unverified (R rate-limited, B blocked");
       expect(doc).not.toMatch(/`(archive\.today|ghostarchive): N verified/);
     }
-    for (const doc of [running, methodology]) expect(doc).toContain("`L8 checking N distinct new archive URLs`");
-    for (const doc of [rules, methodology]) {
-      // m-D: the attempt-reason rule names IP addresses and malformed URLs.
-      for (const w of [
-        "`1.2.3.4`",
-        "`x/example.com`",
-        "`https:example.com`",
-        "`http//example.com`",
-        "`localhost:8080`",
-      ])
-        expect(doc).toContain(w);
-    }
+    expect(running).toContain("`L8 checking N distinct new archive URLs`");
   });
   test("LICENSE files are text that lint accepts (L10)", async () => {
     const fs = await skeletonFindings();

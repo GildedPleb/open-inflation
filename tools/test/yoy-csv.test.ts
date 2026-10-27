@@ -530,14 +530,17 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
     const [h, a, b] = (gen[COMPONENTS_CSV] as string).split("\n");
     const fs = await l17({ [COMPONENTS_CSV]: `${h}\n${b}\n${a}\n` }, COMPONENTS_CSV);
     expect(fs.map((f) => f.message)).toContainEqual(expect.stringContaining("out of order"));
-    await l17({ [COMPONENTS_CSV]: null }, COMPONENTS_CSV);
+    const gone = await lint(snap({ [COMPONENTS_CSV]: null }), { now: NOW }); // still listed in catalog.json: L19 too
+    expect(gone.map((f) => `${f.check} ${f.file}`).sort()).toEqual([`L17 ${COMPONENTS_CSV}`, "L19 catalog.json"]);
   });
   test("an issuer CSV edited, missing or stray", async () => {
     const fed = "base_money/issuers/FED/FED.csv";
     await l17(edit(fed, ",1001,1,1001,", ",1001,1.0,1001,"), fed);
-    const gone = await lint(snap({ [fed]: null }), { now: NOW }); // the bank page's Download link breaks too
+    // The bank page's Download link breaks too, and catalog.json still lists it (L19).
+    const gone = await lint(snap({ [fed]: null }), { now: NOW });
     expect(gone.map((f) => `${f.check} ${f.file}`).sort()).toEqual([
       `L17 ${fed}`,
+      "L19 catalog.json",
       "L5 base_money/issuers/FED/README.md",
     ]);
     const fs = await lint(snap({ "base_money/issuers/FX/FX.csv": gen[fed] as string }), { now: NOW });

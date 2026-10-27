@@ -1,5 +1,5 @@
-// `bun run audit`, local only: never in CI, never a merge gate. Re-checks every Original URL, Archive URL,
-// Archive URL 2 and Archive URL 3 in the repository by HTTP status and content (sha256), against the last saved copy in a store
+// `bun run audit`, local only: never in CI, never a merge gate. Re-checks every Original URL and
+// every numbered Archive URL in the repository by HTTP status and content (sha256), against the last saved copy in a store
 // outside the repository, and saves whatever still resolves there. It never writes to the repository and never
 // judges content: a changed link is for the researcher to open. Classes (methodology "Link audit"):
 //   ok          resolves, and its sha256 matches the last saved copy (on a first run, with no prior copy, any
@@ -50,7 +50,8 @@ export interface Citation {
 }
 export interface Link {
   readonly url: string;
-  readonly field: "Original URL" | "Archive URL" | "Archive URL 2" | "Archive URL 3";
+  /** "Original URL", "Archive URL", "Archive URL 2", ... */
+  readonly field: string;
   readonly cited: Citation[];
 }
 /** What one fetch saw. */
@@ -85,7 +86,7 @@ export interface Report {
   readonly links: AuditLink[];
 }
 
-/** Every Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the issuer files, once per URL, in first-cited order. */
+/** Every Original URL and Archive URL (Archive URL 2, 3, ...) in the issuer files, once per URL, in first-cited order. */
 export function auditLinks(fs: Files): Link[] {
   const by = new Map<string, Link>();
   for (const l of extractLinks(fs)) {

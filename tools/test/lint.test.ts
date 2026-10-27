@@ -121,7 +121,7 @@ describe("L1 CSV contract", () => {
     fails(good({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}\n\n` }), ["L1"], /blank/));
   test("CRLF line endings", () =>
     fails(good({ "base_money/base_money.csv": `${CSV_HEADER}${ROW}\r\n` }), ["L1"], /CR/));
-  test("missing file", () => fails(good({ "base_money/base_money.csv": null }), ["L1", "L11"], /missing/));
+  test("missing file", () => fails(good({ "base_money/base_money.csv": null }), ["L1", "L19"], /missing/));
   test("header without final newline fails", () =>
     fails(
       { files: files(skeletonText(), { "base_money/base_money.csv": "date,value,evidence_id" }), base: null },
@@ -415,13 +415,9 @@ describe("L7 extract schema", () => {
   test("missing Original URL", () => fails(good(fed(block.replace(/- Original URL.*\n/, ""))), ["L7"], /Original URL/));
   test("archive URL on another host", () =>
     fails(
-      good(
-        fed(
-          extract({ title: "FED H.4.1", archive: "https://archive.ph/20261002140500/https://example.test/FED-H.4.1" }),
-        ),
-      ),
+      good(fed(extract({ title: "FED H.4.1", archive: "https://mirror.example.test/FED-H.4.1" }))),
       ["L7"],
-      /web\.archive\.org/,
+      /is not an archive capture/,
     ));
   test("archive URL for a different original", () =>
     fails(
@@ -486,21 +482,19 @@ describe("L7 extract schema", () => {
         ),
       ),
     ));
-  test("snapshot more than 24h from Retrieved", () =>
-    fails(
+  test("a snapshot taken days after Retrieved passes: an archive is dated by its capture, not tied to Retrieved", () =>
+    passes(
       good(
         fed(
           extract({
             title: "FED H.4.1",
-            archive: "https://web.archive.org/web/20261003140301/https://example.test/FED-H.4.1",
+            archive: "https://web.archive.org/web/20261020140301/https://example.test/FED-H.4.1",
           }),
         ),
       ),
-      ["L7"],
-      /24h/,
     ));
-  test("snapshot more than 24h before Retrieved", () =>
-    fails(
+  test("a snapshot taken before Retrieved passes too: link-check, not the date, shows it holds the number", () =>
+    passes(
       good(
         fed(
           extract({
@@ -509,8 +503,6 @@ describe("L7 extract schema", () => {
           }),
         ),
       ),
-      ["L7"],
-      /24h/,
     ));
   test("no verbatim quote", () => fails(good(fed(block.replace(/> .*\n/, ""))), ["L7"], /quote/));
   test("fenced quote counts", () => passes(good(fed(block.replace(/> (.*)\n/, "```\n$1\n```\n")))));
@@ -538,9 +530,6 @@ describe("verify: L8 archive resolution (fake network)", () => {
   const TS = "20261002140500";
   const NEW = `https://web.archive.org/web/${TS}/${ORIG}`;
   const added = fedText + extract({ title: "FED new" });
-  // m-B: the note names the NEW capture (methodology: "- Re-archive: <new archive URL>"), which verify also HEADs.
-  const REPL = "https://web.archive.org/web/20261020000000/https://example.test/FED-new"; // the new capture
-  const noted = `${added}- Re-archive: ${REPL} (snapshot missing; recaptured)\n`;
   const DOWN: HeadResult = { kind: "network", message: "ECONNREFUSED" };
   const fake = (r: HeadResult, a: AvailResult = { kind: "network", message: "ETIMEDOUT" }) => {
     const heads: string[] = [];
@@ -548,7 +537,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
     const net: Net = {
       head: async (u) => {
         heads.push(u);
-        return u === REPL ? { kind: "ok", status: 200 } : r;
+        return r;
       },
       available: async (o, t) => {
         avail.push(`${o} ${t}`);
@@ -571,71 +560,9 @@ describe("verify: L8 archive resolution (fake network)", () => {
     await passes(onGood({ "base_money/FX/2026.md": fxFile(fxSection("2026Q3", fxRow("EUR", { source }))) }), f.opts);
     expect([f.heads, f.avail]).toEqual([[], []]);
   });
-  for (const status of [404, 410])
-    test(`HTTP ${status} passes when the same diff adds a Re-archive note`, () =>
-      passes(onGood({ [FED]: noted }), fake({ kind: "http", status }).opts));
-  for (const status of [403, 500, 503])
-    test(`HTTP ${status} is not a dead snapshot: a Re-archive note does not excuse it`, () =>
-      fails(onGood({ [FED]: noted }), ["L8"], new RegExp(`HTTP ${status}`), fake({ kind: "http", status }).opts));
-  test("a re-archive note already in base does not excuse a new failure", () => {
-    const withNote = `${fedText}- Re-archive: ${REPL}\n`;
-    return fails(
-      {
-        files: files(goodText(), { [FED]: withNote + extract({ title: "FED new" }) }),
-        base: files(goodText(), { [FED]: withNote }),
-      },
-      ["L8"],
-      /HTTP 404/,
-      fake({ kind: "http", status: 404 }).opts,
-    );
-  });
-  // N-c: a Re-archive URL this diff adds is checked even when the same URL is already committed elsewhere.
-  test("N-c: a Re-archive URL added here but already committed in another extract is still checked", async () => {
-    const withNote = `${fedText}- Re-archive: ${REPL}\n`;
-    const snap = {
-      files: files(goodText(), { [FED]: `${withNote}${extract({ title: "FED new" })}- Re-archive: ${REPL}\n` }),
-      base: files(goodText(), { [FED]: withNote }),
-    };
-    const f = fake({ kind: "http", status: 404 });
-    await passes(snap, f.opts);
-    expect(f.heads.sort()).toEqual([NEW, REPL].sort());
-    // And when that capture is dead too, it is a finding of its own.
-    const dead: Net = { ...f.opts.net, head: async () => ({ kind: "http", status: 404 }) } as Net;
-    const fs = await lint(snap, { ...f.opts, net: dead });
-    expect(fs.map((x) => x.message.split(" failed")[0]).sort()).toEqual([`archive URL ${REPL}`]);
-  });
-  test("m-B: a note already in base in the same extract does not excuse a dead URL this diff adds to it", () => {
-    const GHOST = "https://ghostarchive.org/archive/ZzZ99";
-    const block = extract({ title: "FED new", archive3: null });
-    const base = `${fedText}${block}- Re-archive: ${REPL}\n`;
-    const grown = base.replace(block, block.replace("- Notes:", `- Archive URL 3: ${GHOST}\n- Notes:`));
-    return fails(
-      { files: files(goodText(), { [FED]: grown }), base: files(goodText(), { [FED]: base }) },
-      ["L8"],
-      /ZzZ99 failed GET: Ghostarchive answered HTTP 404/,
-      fake({ kind: "http", status: 404 }).opts,
-    );
-  });
-  test("m-B: a note naming the dead URL itself (the old form) does not excuse it", () =>
-    fails(
-      onGood({ [FED]: `${added}- Re-archive: ${NEW}\n` }),
-      ["L8"],
-      /HTTP 404; recapture it and add "- Re-archive: <new archive URL>" to this extract in the same commit/,
-      fake({ kind: "http", status: 404 }).opts,
-    ));
-  test("m-B: a note in another extract does not excuse this one", () =>
-    fails(
-      onGood({ [FED]: `${added}${extract({ title: "FED other" })}- Re-archive: ${REPL}\n` }),
-      ["L8"],
-      /archive URL .*FED-new failed HEAD: HTTP 404/,
-      fake({ kind: "http", status: 404 }).opts,
-    ));
-  test("m-B: the new capture is verified too; if it is dead, it is a finding of its own", async () => {
-    const f = fake({ kind: "http", status: 404 });
-    const dead: Net = { ...f.opts.net, head: async () => ({ kind: "http", status: 404 }) } as Net;
-    const fs = await lint(onGood({ [FED]: noted }), { ...f.opts, net: dead });
-    expect(fs.map((x) => x.message.split(" failed")[0])).toEqual([`archive URL ${REPL}`]);
-  });
+  for (const status of [410, 403, 500, 503])
+    test(`HTTP ${status} fails and names the status: there is no note that excuses a dead link`, () =>
+      fails(onGood({ [FED]: added }), ["L8"], new RegExp(`HTTP ${status}`), fake({ kind: "http", status }).opts));
   test("web.archive.org unreachable: archive.org availability at the exact timestamp passes", async () => {
     const f = fake(DOWN, { kind: "ok", timestamp: TS });
     await passes(onGood({ [FED]: added }), f.opts);
@@ -736,8 +663,8 @@ describe("verify: L8 archive resolution (fake network)", () => {
     await lint(onGood({}), { ...f.opts, progress: (l) => quiet.push(l) });
     expect(quiet).toEqual([]);
   });
-  // Probe M2: the progress line says why a URL passed: the HEAD status and snapshot timestamp, the availability
-  // timestamp, or the Re-archive note that excused a dead snapshot.
+  // Probe M2: the progress line says why a URL passed: the HEAD status and snapshot timestamp, or the availability
+  // timestamp.
   const progressOf = async (files: Record<string, string>, f: ReturnType<typeof fake>) => {
     const lines: string[] = [];
     await lint(onGood(files), { ...f.opts, progress: (l) => lines.push(l) });
@@ -751,23 +678,6 @@ describe("verify: L8 archive resolution (fake network)", () => {
     expect(await progressOf({ [FED]: added }, fake(DOWN, { kind: "ok", timestamp: TS }))).toEqual([
       `L8 [1/1] ok (archive.org availability, ${TS}) ${NEW}`,
     ]));
-  test("progress: a dead snapshot excused by a Re-archive note says so; the new capture is checked too", async () => {
-    for (const status of [404, 410])
-      expect(await progressOf({ [FED]: noted }, fake({ kind: "http", status }))).toEqual([
-        `L8 [1/2] excused (HTTP ${status}, Re-archive note) ${NEW}`,
-        `L8 [2/2] ok (HTTP 200, 20261020000000) ${REPL}`,
-      ]);
-  });
-  test("progress: a note that cannot excuse the failure still logs fail", async () =>
-    expect(await progressOf({ [FED]: noted }, fake({ kind: "http", status: 500 }))).toEqual([
-      `L8 [1/2] fail ${NEW}`,
-      `L8 [2/2] ok (HTTP 200, 20261020000000) ${REPL}`,
-    ]));
-  test("a Re-archive note does not turn an unconfirmed snapshot into a pass or a fail: still no verdict", async () => {
-    const r = await unconfirmed({ kind: "http", status: 429 }, { [FED]: noted });
-    expect(r.fs).toEqual([]);
-    expect(r.nv).toEqual([[NEW, "unconfirmed"]]);
-  });
   const NEAR = `https://web.archive.org/web/20261002140501/${ORIG}`;
   test("HEAD redirected to another capture fails: the snapshot does not exist", () =>
     fails(
@@ -777,7 +687,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
       fake({ kind: "redirect", status: 302, location: NEAR, reason: "other-capture", timestamp: "20261002140501" })
         .opts,
     ));
-  test("a near-miss redirect does not use the fallback, and a Re-archive note does not excuse it", async () => {
+  test("a near-miss redirect does not use the fallback", async () => {
     const f = fake({
       kind: "redirect",
       status: 302,
@@ -785,7 +695,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
       reason: "other-capture",
       timestamp: "20261002140501",
     });
-    await fails(onGood({ [FED]: noted }), ["L8"], /nearest capture/, f.opts);
+    await fails(onGood({ [FED]: added }), ["L8"], /nearest capture/, f.opts);
     expect(f.avail).toEqual([]);
   });
   test("HEAD redirected off the snapshot fails and names the Location", () =>
@@ -805,7 +715,7 @@ describe("verify: L8 archive resolution (fake network)", () => {
   // m5: only URLs that pass L7 reach the network.
   for (const [name, archive] of [
     ["blank", ""],
-    ["another host", `https://archive.ph/${TS}/${ORIG}`],
+    ["not an archive", `https://mirror.example.test/${ORIG}`],
     ["13-digit timestamp", `https://web.archive.org/web/2026100214050/${ORIG}`],
     ["another original", `https://web.archive.org/web/${TS}/https://example.test/other`],
     ["http scheme", `http://web.archive.org/web/${TS}/${ORIG}`],
@@ -890,50 +800,6 @@ describe("verify: L8 archive resolution (fake network)", () => {
 });
 
 // #18: L8 in lint is offline: the form of what an archive line names. The link check itself is `bun run verify`.
-describe("L8 Re-archive note form (offline)", () => {
-  const note = (v: string) => good({ [FED]: `${fedText}- Re-archive: ${v}\n` });
-  test("a note naming a Wayback snapshot, an archive.today or a Ghostarchive capture passes", async () => {
-    await passes(note("https://ghostarchive.org/archive/AbC12 (Ghostarchive capture gone; recaptured)"));
-    await passes(note("https://web.archive.org/web/20261002140500/https://example.test/FED-new (snapshot gone)"));
-    await passes(note("https://archive.ph/AbC12 (archive.today capture gone; recaptured)"));
-    await passes(note("https://archive.today/20261002140500/https://example.test/FED-new"));
-  });
-  test("a note naming anything else fails L8", async () => {
-    for (const v of [
-      "https://example.test/FED-new",
-      "https://web.archive.org/web/2026/https://example.test/x",
-      "http://archive.ph/AbC12",
-      "http://ghostarchive.org/archive/AbC12",
-      "https://ghostarchive.org/archive/AbC12?x=1",
-      "see below",
-    ])
-      await fails(
-        note(v),
-        ["L8"],
-        /Re-archive note .* is not a Wayback snapshot, archive\.today or Ghostarchive capture URL/,
-      );
-  });
-  test("a Re-archive line inside a code fence is not a note", () =>
-    passes(good({ [FED]: `${fedText}\n\`\`\`text\n- Re-archive: see below\n\`\`\`\n` })));
-  test("an empty note fails L8 and does not swallow the next line", () =>
-    fails(
-      good({ [FED]: `${fedText}- Re-archive:\n- Re-archive: https://archive.ph/AbC12\n` }),
-      ["L8"],
-      /line \d+: Re-archive note names no URL/,
-    ));
-  // m-B: the note names the NEW capture, in the extract whose snapshot died (methodology).
-  test("a note naming its own extract's archive URL (the dead one) fails L8: it names the new capture", async () => {
-    const own = [...fedText.matchAll(/- Archive URL: (\S+)/g)].at(-1)?.[1] as string;
-    await fails(note(own), ["L8"], /Re-archive note .* names this extract's own archive URL; it names the new capture/);
-  });
-  test("a note outside any extract fails L8", () =>
-    fails(
-      good({ [FED]: fedText.replace(/\n/, "\n\n- Re-archive: https://archive.ph/AbC12\n") }),
-      ["L8"],
-      /line 3: Re-archive note is outside any extract \(### block\)/,
-    ));
-});
-
 describe("L9 aggregation", () => {
   // One EUR component at the fixture's fx_rate 1.1 (USD may not carry a fraction, so the tie comes from the FX).
   const one = (local: string, total: string, value = total) =>
@@ -1314,7 +1180,7 @@ describe("L11 catalog.json", () => {
   test("invalid JSON", () => fails(good({ "catalog.json": "{" }), ["L11"], /JSON/));
   test("missing catalog", () => fails(good({ "catalog.json": null }), ["L11"], /missing/));
   test("series path does not exist", () =>
-    fails(good({ "catalog.json": catalog([{ ...entry, path: "cpi_u.csv" }]) }), ["L11"], /cpi_u\.csv/));
+    fails(good({ "catalog.json": catalog([{ ...entry, path: "cpi_u.csv" }]) }), ["L19", "L18"], /cpi_u\.csv/));
   test("methodology path does not exist", () =>
     fails(
       good({ "catalog.json": catalog([{ ...entry, methodology: "methodology/cpi_u.md" }]) }),
@@ -1513,7 +1379,7 @@ describe("L10 byte-order marks", () => {
 describe("L11 catalog lists the base_money series (F2)", () => {
   const entry = JSON.parse(catalog()).series[0];
   test("empty series list fails", () =>
-    fails(good({ "catalog.json": '{"series": []}' }), ["L11"], /series has no "base_money" entry/));
+    fails(good({ "catalog.json": '{"series": []}' }), ["L11", "L18"], /series has no "base_money" entry/));
   test("a catalog without the base_money series fails", () =>
     fails(good({ "catalog.json": catalog([{ ...entry, id: "cpi_u" }]) }), ["L11"], /series has no "base_money" entry/));
 });
@@ -2189,7 +2055,7 @@ describe("L12 placement", () => {
     });
   const ROOT_CSV = () => goodText()["base_money/base_money.csv"] as string;
   test("a CSV at the repository root (its earlier path) fails L12", () =>
-    fails(good({ "base_money.csv": ROOT_CSV() }), ["L12"], /the CSV lives at base_money\/base_money\.csv/));
+    fails(good({ "base_money.csv": ROOT_CSV() }), ["L12", "L18"], /the CSV lives at base_money\/base_money\.csv/));
   test("an issuer not in the catalog basket is named", () =>
     fails(good({ "base_money/issuers/XYZ/2026.md": "# x\n" }), ["L12"], /XYZ is not in the catalog basket/));
   test("a basket issuer's year file passes", () =>
@@ -2642,171 +2508,179 @@ describe("L7 As of not after Retrieved (P6-n7)", () => {
 
 // Assay (3): "2 is 1 and 1 is none". Every extract carries exactly one Archive URL 2: an archive.today capture, or a
 // dated record of the attempt and why it failed.
-describe("L7 Archive URL 2", () => {
+describe("L7 Archive URL lines and Capture check", () => {
+  const ORIG = "https://example.test/FED-H.4.1";
+  const WB = `https://web.archive.org/web/20261002140500/${ORIG}`;
   const TODAY = "https://archive.ph/AbC12";
-  const with2 = (archive2: string | null) => good(fed(extract({ title: "FED H.4.1", archive2 })));
-  test("an archive.today short id passes", () => passes(with2(TODAY)));
-  test("the dated archive.today form for the Original URL passes", () =>
-    passes(with2("https://archive.is/20261002140500/https://example.test/FED-H.4.1")));
-  test("a dated attempt with a reason passes", () => passes(with2("attempted 2026-10-02: blocked by a CAPTCHA")));
-  test("missing fails", () => fails(with2(null), ["L7"], /has no Archive URL 2/));
-  test("repeated fails", () =>
-    fails(
-      good(fed(extract({ title: "FED H.4.1", fields: [`- Archive URL 2: ${TODAY}`] }))),
-      ["L7"],
-      /more than one Archive URL 2/,
-    ));
-  test("bold is the wrong form, not missing", () =>
-    fails(
-      good(fed(extract({ title: "FED H.4.1" }).replace("- Archive URL 2:", "- **Archive URL 2:**"))),
-      ["L7"],
-      /Archive URL 2 is in the wrong form/,
-    ));
-  for (const v of [
-    "https://web.archive.org/web/20261002140500/https://example.test/FED-H.4.1",
-    "https://mirror.example.test/FED-H.4.1.html",
-    "https://archive.ph.example.test/AbC12",
-  ])
-    test(`another host fails: ${v}`, () => fails(with2(v), ["L7"], /Archive URL 2 .*archive\.today/));
-  test("an attempt with an impossible date fails", () =>
-    fails(with2("attempted 2026-02-30: blocked by CAPTCHA"), ["L7"], /YYYY-MM-DD/));
-  test("an attempt with no reason fails", () => fails(with2("attempted 2026-10-02:"), ["L7"], /reason/));
-  test("the dated form for another original fails", () =>
-    fails(with2("https://archive.ph/20261002140500/https://example.test/other"), ["L7"], /not the Original URL/));
-  // Assay: an attempt is made at or after retrieval, and never in the future. The fixture's Retrieved is
-  // 2026-10-02T14:03:00Z and lint's clock (OFF.now) is 2026-10-22T16:00:00Z.
-  test("an attempt dated before Retrieved's UTC date fails", () =>
-    fails(
-      with2("attempted 2026-10-01: blocked by CAPTCHA"),
-      ["L7"],
-      /attempt date 2026-10-01 is before Retrieved .*2026-10-02/,
-    ));
-  test("an attempt on a later day, up to today, passes", () =>
-    passes(with2("attempted 2026-10-22: blocked by CAPTCHA")));
-  test("an attempt dated 2099-01-01 fails as in the future", () =>
-    fails(with2("attempted 2099-01-01: blocked by CAPTCHA"), ["L7"], /attempt date 2099-01-01 is in the future/));
-  // Probe M-1's cases.
-  for (const day of ["2027-01-01", "2099-12-31"])
-    test(`an attempt dated ${day} fails as in the future`, () =>
-      fails(with2(`attempted ${day}: blocked by CAPTCHA`), ["L7"], new RegExp(`attempt date ${day} is in the future`)));
-  test("an attempt dated 1999-01-01 fails as before Retrieved", () =>
-    fails(with2("attempted 1999-01-01: blocked by CAPTCHA"), ["L7"], /attempt date 1999-01-01 is before Retrieved/));
-  test("tomorrow's attempt passes only inside the 10 min skew past UTC midnight", async () => {
-    const tomorrow = with2("attempted 2026-10-23: blocked by CAPTCHA");
-    await passes(tomorrow, { ...OFF, now: Date.parse("2026-10-22T23:50:00Z") });
-    await fails(tomorrow, ["L7"], /in the future/, { ...OFF, now: Date.parse("2026-10-22T23:49:59Z") });
+  const GHOST = "https://ghostarchive.org/archive/AbC12";
+  const with2 = (archive2: string, archive3: string | null = null) =>
+    good(fed(extract({ title: "FED H.4.1", archive2, archive3 })));
+  const cap = (capture: string | null) => good(fed(extract({ title: "FED H.4.1", capture })));
+  test("any of Wayback, archive.today or Ghostarchive passes in any numbered slot", async () => {
+    await passes(with2(TODAY, GHOST));
+    await passes(good(fed(extract({ title: "FED H.4.1", archive: GHOST, archive2: WB }))));
+    await passes(good(fed(extract({ title: "FED H.4.1", archive: TODAY }))));
+    await passes(with2(`https://archive.is/20261002140500/${ORIG}`));
   });
-  // Assay M-3: the dated form's timestamp date has the attempt date's window.
-  const dated = (ts: string) => with2(`https://archive.is/${ts}/https://example.test/FED-H.4.1`);
-  test("a dated capture before Retrieved's UTC date fails", () =>
-    fails(dated("20261001235959"), ["L7"], /timestamp 20261001235959 date 2026-10-01 is before Retrieved/));
-  test("a dated capture later the same day as now passes", () => passes(dated("20261022235959")));
-  test("a dated capture in the future fails", () =>
-    fails(dated("20991231000000"), ["L7"], /timestamp 20991231000000 date 2099-12-31 is in the future/));
-  test("a dated capture with month 13 fails", () =>
-    fails(dated("20261302140500"), ["L7"], /timestamp 20261302140500 is not a real time/));
-  // Assay: a reason is at least 3 words and contains no URL.
-  for (const r of ["-", "blocked", "CAPTCHA blocked"])
-    test(`an attempt reason ${JSON.stringify(r)} is too short`, () =>
-      fails(with2(`attempted 2026-10-02: ${r}`), ["L7"], /too short: say what failed in at least 3 words/));
-  test("an attempt reason with a link fails", () =>
-    fails(
-      with2("attempted 2026-10-02: copy at https://raw.githubusercontent.com/x/y/main/h41.html instead"),
+  test("a Wayback or dated archive.today capture of another archive URL of the extract passes", async () => {
+    await passes(with2(`https://web.archive.org/web/20261003000000/${GHOST}`, GHOST));
+    await passes(with2(`https://archive.ph/20261003000000/${GHOST}`, GHOST));
+  });
+  test("a capture of some other page fails", async () => {
+    await fails(with2("https://archive.ph/20261002140500/https://example.test/other"), ["L7"], /not the Original URL/);
+    await fails(
+      with2("https://web.archive.org/web/20261002140500/https://example.test/other"),
       ["L7"],
-      /contains a URL/,
-    ));
-  test("Archive URL 2 is not read as the Archive URL", () =>
-    fails(
-      good(fed(extract({ title: "FED H.4.1" }).replace(/- Archive URL: .*\n/, ""))),
+      /not the Original URL or another archive URL/,
+    );
+  });
+  for (const v of ["https://mirror.example.test/FED-H.4.1.html", "https://archive.ph.example.test/AbC12"])
+    test(`a link that is not an archive capture fails: ${v}`, () =>
+      fails(with2(v), ["L7"], /Archive URL 2 .*is not an archive capture/));
+  test("an attempt record is not an archive URL", () =>
+    fails(with2("attempted 2026-10-02: blocked by a CAPTCHA"), ["L7", "L15"], /is not an archive capture/));
+  test("archive lines out of order, or one repeated, fail", async () => {
+    const block = extract({ title: "FED H.4.1", archive2: TODAY });
+    await fails(
+      good(fed(block.replace("- Archive URL 2:", "- Archive URL 3:"))),
       ["L7"],
-      /has no Archive URL$/,
+      /"Archive URL 3" is out of order/,
+    );
+    await fails(with2(WB), ["L7"], /Archive URL 2 repeats/);
+  });
+  test("an extract with no Archive URL fails; a bold one is the wrong form, not missing", async () => {
+    const block = extract({ title: "FED H.4.1" });
+    await fails(good(fed(block.replace(/- Archive URL: .*\n/, ""))), ["L7"], /has no Archive URL$/);
+    await fails(
+      good(fed(block.replace("- Archive URL:", "- **Archive URL:**"))),
+      ["L7"],
+      /Archive URL is in the wrong form/,
+    );
+  });
+  test("a Wayback timestamp that is not a real time fails", () =>
+    fails(with2(`https://archive.is/20261302140500/${ORIG}`), ["L7"], /timestamp 20261302140500 is not a real time/));
+  test("a Capture check date, and a date with a note ending in a period, pass", async () => {
+    await passes(cap("2026-10-22"));
+    await passes(cap("2026-10-02"));
+    await passes(
+      good(
+        fed(
+          extract({
+            title: "FED H.4.1",
+            archive2: TODAY,
+            capture: "2026-10-22; the release page now redirects to the index and the table is not linked from it.",
+          }),
+        ),
+      ),
+    );
+  });
+  for (const [what, v, re] of [
+    ["no date", "checked", /must read "YYYY-MM-DD"/],
+    ["an impossible date", "2026-02-30", /must read "YYYY-MM-DD"/],
+    ["a note without a closing period", "2026-10-22; gone", /must be non-empty text ending with a period/],
+    ["an empty note", "2026-10-22;", /must be non-empty text ending with a period/],
+    ["a date before Retrieved", "2026-10-01", /before Retrieved/],
+    ["a future date", "2026-10-24", /in the future/],
+  ] as const)
+    test(`a Capture check with ${what} fails`, () => fails(cap(v), ["L7"], re));
+  test("two Capture check lines fail", () =>
+    fails(
+      good(fed(extract({ title: "FED H.4.1", fields: ["- Capture check: 2026-10-03"] }))),
+      ["L7"],
+      /more than one Capture check/,
     ));
+  test("a bold Capture check is the wrong form", () =>
+    fails(
+      good(fed(extract({ title: "FED H.4.1", capture: null, fields: ["- **Capture check:** 2026-10-03"] }))),
+      ["L7"],
+      /Capture check is in the wrong form/,
+    ));
+});
+
+describe("L16 two live links (static)", () => {
+  const TODAY = "https://archive.ph/AbC12";
+  const GHOST = "https://ghostarchive.org/archive/AbC12";
+  const block = (o: Parameters<typeof extract>[0]) => good(fed(extract(o)));
+  test("the Original URL plus one archive and a Capture check passes", () => passes(block({ title: "FED H.4.1" })));
+  test("extra archives stay and pass", () => passes(block({ title: "FED H.4.1", archive2: TODAY, archive3: GHOST })));
+  test("an adopted figure not yet link-checked (no Capture check) passes", () =>
+    passes(block({ title: "FED H.4.1", capture: null })));
+  test("an extract that is not adopted is not judged", () =>
+    passes(
+      good({
+        [FED]: issuerFile(
+          "FED",
+          "2026Q3",
+          extract({ title: "FED H.4.1" }),
+          extract({ title: "FED other", capture: null, fields: ["- Adopted: no"] }),
+        ),
+      }),
+    ));
+  test("with the original gone (a Capture check note) one archive is not enough", () =>
+    fails(
+      block({
+        title: "FED H.4.1",
+        capture: "2026-10-22; the issuer removed the release and its search finds nothing.",
+      }),
+      ["L16"],
+      /has a Capture check note \(the original is gone\) but 1 Archive URL; with the original gone it needs two archives/,
+    ));
+  test("with the original gone, two archives pass", () =>
+    passes(
+      block({
+        title: "FED H.4.1",
+        archive2: GHOST,
+        capture: "2026-10-22; the issuer removed the release and its search finds nothing.",
+      }),
+    ));
+  test("an extract failing L7 is reported by L7 only, not again by L16", () =>
+    fails(
+      good(fed(extract({ title: "FED H.4.1", capture: null }).replace(/- Archive URL: .*\n/, ""))),
+      ["L7"],
+      /has no Archive URL/,
+    ));
+});
+
+describe("L18, L19 catalog.json lists every CSV, and only CSVs that exist", () => {
+  const entry = (id: string, path: string) => ({ ...(JSON.parse(catalog()).series[0] as object), id, path });
+  const base = () => JSON.parse(catalog()).series as object[];
+  test("L18: a CSV in the repo that no series lists fails, naming the file and the fix", async () => {
+    const fs = await fails(
+      good({ "base_money/issuers/FED/FED.csv": "x\n" }),
+      ["L18"],
+      /is a CSV in the repo but no catalog\.json series lists it: add a series entry with "path": "base_money\/issuers\/FED\/FED\.csv"/,
+    );
+    expect(fs.map((f) => f.file)).toEqual(["base_money/issuers/FED/FED.csv"]);
+  });
+  test("L18 has no exemptions: a CSV anywhere, a test fixture included, must be listed", async () => {
+    await fails(good({ "tools/test/fixtures/sample.csv": "a\n" }), ["L18"], /sample\.csv/);
+    await passes(
+      good({
+        "tools/test/fixtures/sample.csv": "a\n",
+        "catalog.json": catalog([...base(), entry("sample", "tools/test/fixtures/sample.csv")]),
+      }),
+    );
+  });
+  test("L19: a series path that is not a file in the repo fails on catalog.json", async () => {
+    const fs = await fails(
+      good({ "catalog.json": catalog([...base(), entry("gone", "base_money/issuers/FED/FED.csv")]) }),
+      ["L19"],
+      /lists "base_money\/issuers\/FED\/FED\.csv", which is not a file in the repo: fix the path or drop the entry/,
+    );
+    expect(fs.map((f) => f.file)).toEqual(["catalog.json"]);
+  });
+  test("neither runs on a catalog.json that is not JSON or has no series array (L11 reports it)", async () => {
+    await fails(good({ "catalog.json": "{" }), ["L11"], /catalog/);
+    await fails(good({ "catalog.json": '{"series": {}}' }), ["L11"], /series/);
+  });
 });
 
 // Archive URL 3 (methodology R7, #17): exactly one line, a Ghostarchive capture or a dated attempt record with
 // Archive URL 2's date and reason rules.
-describe("L7 Archive URL 3", () => {
-  const GHOST = "https://ghostarchive.org/archive/AbC12";
-  const with3 = (archive3: string | null) => good(fed(extract({ title: "FED H.4.1", archive3 })));
-  test("a Ghostarchive id passes", () => passes(with3(GHOST)));
-  test("a dated attempt with a reason passes", () =>
-    passes(with3("attempted 2026-10-02: Ghostarchive showed a challenge")));
-  test("missing fails", () => fails(with3(null), ["L7"], /has no Archive URL 3/));
-  test("repeated fails", () =>
-    fails(
-      good(fed(extract({ title: "FED H.4.1", fields: [`- Archive URL 3: ${GHOST}`] }))),
-      ["L7"],
-      /more than one Archive URL 3/,
-    ));
-  test("bold is the wrong form, not missing", () =>
-    fails(
-      good(fed(extract({ title: "FED H.4.1" }).replace("- Archive URL 3:", "- **Archive URL 3:**"))),
-      ["L7"],
-      /Archive URL 3 is in the wrong form/,
-    ));
-  test("Archive URL 3 is not read as Archive URL 2 or the Archive URL", async () => {
-    await fails(
-      good(fed(extract({ title: "FED H.4.1", archive2: null, archive3: GHOST }))),
-      ["L7"],
-      /has no Archive URL 2$/,
-    );
-    await fails(
-      good(fed(extract({ title: "FED H.4.1", archive3: GHOST }).replace(/- Archive URL: .*\n/, ""))),
-      ["L7"],
-      /has no Archive URL$/,
-    );
-  });
-  // One test, 15 values: a query, fragment, trailing slash or path; an empty or non-alphanumeric id; another page or
-  // path on the host, scheme, subdomain, host or archive; and a prefix.
-  test("not a Ghostarchive capture (15 values) fails", async () => {
-    for (const v of [
-      `${GHOST}?x=1`,
-      `${GHOST}#top`,
-      `${GHOST}/`,
-      `${GHOST}/page`,
-      "https://ghostarchive.org/archive/",
-      "https://ghostarchive.org/archive/AbC-12",
-      "https://ghostarchive.org/search?term=AbC12",
-      "https://ghostarchive.org/AbC12",
-      "https://ghostarchive.org/search/AbC12",
-      "http://ghostarchive.org/archive/AbC12",
-      "https://www.ghostarchive.org/archive/AbC12",
-      "https://ghostarchive.org.example.test/archive/AbC12",
-      "https://archive.ph/AbC12",
-      "https://web.archive.org/web/20261002140500/https://example.test/FED-H.4.1",
-      `x${GHOST}`,
-    ])
-      await fails(with3(v), ["L7"], /Archive URL 3 .* is not a Ghostarchive URL or "attempted YYYY-MM-DD: <reason>"/);
-  });
-  // The attempt rules are Archive URL 2's (one shared function), with Archive URL 3 in the message.
-  test("an attempt fails on Archive URL 2's date, form, reason and window rules", async () => {
-    const cases: [string, RegExp][] = [
-      ["attempted 2026-02-30: Ghostarchive showed a challenge", /Archive URL 3 attempt date .*YYYY-MM-DD/],
-      ["attempted on 2026-10-02", /Archive URL 3 .* must read "attempted YYYY-MM-DD: <reason>"/],
-      ["attempted 2026-10-02:", /Archive URL 3 .*reason/],
-      ["attempted 2026-10-02: challenge page", /Archive URL 3 attempt reason .* too short/],
-      ["attempted 2026-10-02: see ghostarchive.org/search instead", /Archive URL 3 attempt reason .* contains a URL/],
-      [
-        "attempted 2026-10-01: Ghostarchive showed a challenge",
-        /Archive URL 3 attempt date 2026-10-01 is before Retrieved/,
-      ],
-      [
-        "attempted 2099-01-01: Ghostarchive showed a challenge",
-        /Archive URL 3 attempt date 2099-01-01 is in the future/,
-      ],
-    ];
-    for (const [v, re] of cases) await fails(with3(v), ["L7"], re);
-  });
-  test("an attempt on a later day, up to today, passes", () =>
-    passes(with3("attempted 2026-10-22: Ghostarchive showed a challenge")));
-});
-
-describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
+describe("verify: a Ghostarchive Archive URL (fake network)", () => {
   const GHOST = "https://ghostarchive.org/archive/AbC12";
   const WAYBACK = "https://web.archive.org/web/20261002140500/https://example.test/FED-new";
   const added = fedText + extract({ title: "FED new", archive3: GHOST });
-  const REPL = "https://web.archive.org/web/20261020000000/https://example.test/FED-new"; // the new capture
-  const noted = `${added}- Re-archive: ${REPL} (Ghostarchive capture gone; recaptured)\n`;
   const fake = (r: HeadResult) => {
     const heads: string[] = [];
     const net: Net = {
@@ -2854,12 +2728,10 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
     }
   });
   // R5-n1: Ghostarchive answers 200 for its failed captures too; the page decides.
-  test("a 200 that is Ghostarchive's Archiving error page is a finding, which a Re-archive note does not excuse", async () => {
+  test("a 200 that is Ghostarchive's Archiving error page is a finding", async () => {
     const f = fake({ kind: "ok", status: 200, page: "error" });
-    const re =
-      /is Ghostarchive's "Archiving error" page \(HTTP 200\), not a capture; record the attempt as "attempted <YYYY-MM-DD>: <reason>" instead/;
+    const re = /is Ghostarchive's "Archiving error" page \(HTTP 200\), not a capture; cite another archive instead/;
     await fails(onGood({ [FED]: added }), ["L8"], re, f.opts);
-    await fails(onGood({ [FED]: noted }), ["L8"], re, f.opts);
     const { summary } = await run(onGood({ [FED]: added }), f.opts);
     expect(summary).toEqual([]);
   });
@@ -2882,11 +2754,10 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
       (await run(onGood({ [FED]: added }), fake({ kind: "ok", status: 200, page: "capture" }).opts)).summary,
     ).toEqual(["ghostarchive (distinct URLs): 1 verified, 0 unverified (0 rate-limited, 0 blocked)"]);
   });
-  test("HTTP 404, 410 and 500 fail (only 403/429/503 are no verdict); a Re-archive note excuses 404 and 410", async () => {
+  test("HTTP 404, 410 and 500 fail (only 403/429/503 are no verdict)", async () => {
     for (const status of [404, 410, 500]) {
       const { opts } = fake({ kind: "http", status });
       await fails(onGood({ [FED]: added }), ["L8"], new RegExp(`Ghostarchive answered HTTP ${status}`), opts);
-      if (status === 404 || status === 410) await passes(onGood({ [FED]: noted }), opts);
     }
     // the failure is a finding, not counted in the summary
     const { fs, summary } = await run(onGood({ [FED]: added }), fake({ kind: "http", status: 404 }).opts);
@@ -2906,9 +2777,6 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
       [{ kind: "network", message: "ECONNREFUSED" }, /network error: Ghostarchive: ECONNREFUSED/],
     ];
     for (const [r, re] of cases) await fails(onGood({ [FED]: added }), ["L8"], re, fake(r).opts);
-    // a network error is not a dead capture: a Re-archive note does not excuse it
-    const down = fake({ kind: "network", message: "ECONNREFUSED" }).opts;
-    await fails(onGood({ [FED]: noted }), ["L8"], /network error: Ghostarchive: ECONNREFUSED/, down);
   });
   test("N-d: a Ghostarchive network error while no canary answers is no verdict (offline), counted in the summary", async () => {
     const f = fake({ kind: "network", message: "FailedToOpenSocket: Was there a typo in the url or port?" });
@@ -2923,7 +2791,7 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
       "ghostarchive (distinct URLs): 0 verified, 1 unverified (0 rate-limited, 0 blocked, 1 offline)",
     );
   });
-  test("an attempt record and a committed Ghostarchive URL are never fetched", async () => {
+  test("an extract without one and a committed Ghostarchive URL are never fetched", async () => {
     const f = fake({ kind: "http", status: 404 });
     await passes(onGood({ [FED]: fedText + extract({ title: "FED new" }) }), f.opts);
     await passes({ files: files(goodText(), { [FED]: added }), base: files(goodText(), { [FED]: added }) }, f.opts);
@@ -2965,13 +2833,11 @@ describe("verify: Archive URL 3 on Ghostarchive (fake network)", () => {
   });
 });
 
-describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
+describe("verify: L8 an archive.today Archive URL (fake network)", () => {
   const ORIG = "https://example.test/FED-new";
   const WAYBACK = `https://web.archive.org/web/20261002140500/${ORIG}`;
   const TODAY = "https://archive.ph/AbC12";
   const added = fedText + extract({ title: "FED new", archive2: TODAY });
-  const REPL = "https://web.archive.org/web/20261020000000/https://example.test/FED-new"; // the new capture
-  const noted = `${added}- Re-archive: ${REPL} (archive.today capture gone; recaptured)\n`;
   /** Wayback answers 200; archive.today answers `r`. */
   const fake = (r: HeadResult) => {
     const heads: string[] = [];
@@ -3017,14 +2883,9 @@ describe("verify: L8 Archive URL 2 on archive.today (fake network)", () => {
     fails(onGood({ [FED]: added }), ["L8"], /archive\.today .*HTTP 404/, fake({ kind: "http", status: 404 }).opts));
   test("500 fails", () =>
     fails(onGood({ [FED]: added }), ["L8"], /HTTP 500/, fake({ kind: "http", status: 500 }).opts));
-  for (const status of [404, 410])
-    test(`HTTP ${status} passes when the same diff adds a Re-archive note for it`, () =>
-      passes(onGood({ [FED]: noted }), fake({ kind: "http", status }).opts));
   test("a network error fails, with no Wayback availability fallback", async () => {
     const f = fake({ kind: "network", message: "ECONNREFUSED" });
-    await fails(onGood({ [FED]: added }), ["L8"], /network error: .*ECONNREFUSED/, f.opts);
-    // a network error is not a dead capture: a Re-archive note does not excuse it
-    await fails(onGood({ [FED]: noted }), ["L8"], /network error: archive\.today: ECONNREFUSED/, f.opts);
+    await fails(onGood({ [FED]: added }), ["L8"], /network error: archive\.today: ECONNREFUSED/, f.opts);
     expect(f.avail).toEqual([]);
   });
   // N-d: offline (no canary host answers) a network error is no verdict, "offline", never a finding (audit's m-G).
@@ -3305,50 +3166,15 @@ describe("L9 whole-dollar USD", () => {
     fails(cov("93", "500", "5", "93", "93.94"), ["L9"], /coverage 93\.93\d*…?% is below the basket 1 floor 94%/));
 });
 
-describe("per-extract Archive attempt, Link audit and Rejected source lines (L7)", () => {
+describe("Rejected source lines (L7); Archive attempt and Link audit lines are gone (L7, L15)", () => {
   /** FED's adopted extract (retrieved 2026-10-02) carrying `lines`. */
   const withLines = (...lines: string[]) => good(fed(extract({ title: "FED H.4.1", fields: lines })));
-  const ATTEMPT = "- Archive attempt 2026-10-02: archive.today served a CAPTCHA.";
-  const AUDIT = "- Link audit 2026-10-20: Original URL now redirects to the release index.";
   const REJECTED = "- Rejected source: a press summary: it rounds the figure to billions.";
-  test("good lines of each kind pass", () => passes(withLines(ATTEMPT, AUDIT, REJECTED)));
-  test("an attempt naming Ghostarchive or Wayback passes", () =>
-    passes(
-      withLines(
-        "- Archive attempt 2026-10-03: Ghostarchive timed out.",
-        "- Archive attempt 2026-10-04: Wayback Save Page Now refused the page.",
-      ),
-    ));
-  test("an Archive attempt with no archive named fails", () =>
-    fails(
-      withLines("- Archive attempt 2026-10-02: the page timed out."),
-      ["L7"],
-      /line \d+: Archive attempt "the page timed out" must name the archive tried: archive\.today, Ghostarchive or Wayback/,
-    ));
-  test("an impossible date fails", () =>
-    fails(
-      withLines("- Archive attempt 2026-02-30: archive.today failed."),
-      ["L7"],
-      /Archive attempt date "2026-02-30" is not a real YYYY-MM-DD date/,
-    ));
-  test("a line with no date fails", () =>
-    fails(
-      withLines("- Link audit: the Original URL is gone."),
-      ["L7"],
-      /Link audit line must read "- Link audit YYYY-MM-DD: <text>\." \(non-empty text ending with a period\)/,
-    ));
-  test("a line with no closing period fails", () =>
-    fails(withLines("- Link audit 2026-10-20: still live"), ["L7"], /Link audit line must read/));
-  test("a line with empty text fails", () =>
-    fails(withLines("- Archive attempt 2026-10-02: ."), ["L7"], /Archive attempt line must read/));
-  test("a date before Retrieved fails", () =>
-    fails(
-      withLines("- Archive attempt 2026-10-01: archive.today served a CAPTCHA."),
-      ["L7"],
-      /Archive attempt date 2026-10-01 is before Retrieved 2026-10-02T14:03:00Z .*; it is made at or after retrieval/,
-    ));
-  test("a future date fails", () =>
-    fails(withLines("- Link audit 2026-10-24: checked early."), ["L7"], /Link audit date 2026-10-24 is in the future/));
+  test("a Rejected source line passes", () => passes(withLines(REJECTED)));
+  test("an Archive attempt line is archive narrative: L15, and no longer a defined line (L7)", () =>
+    fails(withLines("- Archive attempt 2026-10-02: archive.today served a CAPTCHA."), ["L7", "L15"], /./));
+  test("a Link audit line is archive narrative: L15, and no longer a defined line (L7)", () =>
+    fails(withLines("- Link audit 2026-10-20: Original URL now redirects to the release index."), ["L7", "L15"], /./));
   test("a Rejected source with a URL fails", () =>
     fails(
       withLines("- Rejected source: a mirror at mirror.example.com: it is not the issuer."),
@@ -3359,16 +3185,12 @@ describe("per-extract Archive attempt, Link audit and Rejected source lines (L7)
     await fails(withLines("- Rejected source: a mirror."), ["L7"], /Rejected source line must read/);
     await fails(withLines("- Rejected source: : no reason given."), ["L7"], /Rejected source line must read/);
   });
-  test("a line outside any extract fails", () =>
+  test("a Rejected source line outside any extract fails", () =>
     fails(
-      good({ [FED]: issuerFile("FED", "2026Q3", `${ATTEMPT}\n\n`, extract({ title: "FED H.4.1" })) }),
+      good({ [FED]: issuerFile("FED", "2026Q3", `${REJECTED}\n\n`, extract({ title: "FED H.4.1" })) }),
       ["L7"],
-      /line 5: Archive attempt, Link audit or Rejected source line outside an ### extract block/,
+      /line 5: Rejected source line outside an ### extract block/,
     ));
-  test("a line added to, edited in or removed from an extract passes (no history lock before v1)", async () => {
-    await passes(good(fed(extract({ title: "FED H.4.1", fields: [ATTEMPT, AUDIT] }))));
-    await passes(good(fed(extract({ title: "FED H.4.1", fields: [ATTEMPT.replace("CAPTCHA", "403")] }))));
-  });
 });
 
 // Probe's repo walk (2026-10-23), "Lint coverage gaps": every rule we state and can check mechanically is linted.
@@ -3507,23 +3329,14 @@ describe("L7 defined line types and superseded conversions", () => {
   const withLines = (...extra: string[]) =>
     fed(extract({ title: "FED H.4.1", fields: ["- As of: 2026-09-30", ...extra] }));
   test("defined record lines pass", () =>
-    passes(
-      good(
-        withLines(
-          "- Note 2026-10-23: a note.",
-          "- Capture check (Ghostarchive; opened and checked for the figure it backs): shows the figure.",
-          "- Rejected source: x: not the series used.",
-        ),
-      ),
-    ));
+    passes(good(withLines("- Note 2026-10-23: a note.", "- Rejected source: x: not the series used."))));
   test("an undefined `- <Label>:` line fails", () =>
     fails(good(withLines("- Archive check: fine.")), ["L7"], /"- Archive check:" is not a defined line type/));
   for (const label of [
-    "Capture check",
     "Capture check (Ghostarchive)",
-    "Capture check (Archive.is; opened and checked for the figure it backs)",
+    "Capture check (Ghostarchive; opened and checked for the figure it backs)",
   ])
-    test(`"- ${label}:" fails (the label is "Capture check (<archive>; opened and checked for the figure it backs)")`, () =>
+    test(`"- ${label}:" fails (the old capture record; the line is now "- Capture check: YYYY-MM-DD")`, () =>
       fails(good(withLines(`- ${label}: shows the figure.`)), ["L7"], /is not a defined line type/));
   test("a Note without a date fails", () =>
     fails(good(withLines("- Note: a note.")), ["L7"], /"- Note:" is not a defined line type/));

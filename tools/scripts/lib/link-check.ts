@@ -1,23 +1,22 @@
-// The live archive-link check (bun run archive-check): does each cited capture replay, exactly, with its figure?
-// R1: a Wayback link is fetched in its raw id_ form with redirects NOT followed (a 3xx to another timestamp is a
-// failure, never "close enough"), must answer 200, and must hold every figure of its extract. A Ghostarchive link's
-// page must answer 200 with its capture wrapper, and its saved WARC must hold the figures. The availability API and
-// CDX are never asked: a hit there is not a replay. archive.today is never fetched (CAPTCHA) and stays unchecked.
-// Local only: archives rate-limit, so this is a documented merge step (docs/running.md#archive-check), never CI.
+// The live link check (bun run link-check): does each link of a figure (its Original URL and every Archive URL)
+// answer, and show the figure? A Wayback link is fetched in its raw id_ form with redirects NOT followed (a 3xx to
+// another timestamp is dead, never "close enough"), must answer 200 and hold every figure of its extract. A
+// Ghostarchive link's page must answer 200 with its capture wrapper, and its saved WARC must hold the figures. An
+// Original URL is fetched live, following up to MAX_HOPS redirects. archive.today is never fetched (CAPTCHA): its
+// links stay unchecked. Local only: archives rate-limit, so this never runs in CI (docs/running.md#link-check).
 // Network, clock and PDF reader are injected: the suite runs it offline.
 import { createHash } from "node:crypto";
 import { brotliDecompressSync, gunzipSync, inflateRawSync, inflateSync } from "node:zlib";
 import { bounded } from "./archive.ts";
-import { type Citation, WAYBACK_URL } from "./archive-ledger.ts";
+import { WAYBACK_URL } from "./links.ts";
 import { type Clock, hostKey, type Pacer, RETRY_STATUSES, retryAfterMs } from "./pacer.ts";
 
-export const DAY_MS = 24 * 60 * 60_000;
 /** A body larger than this is not read (the largest cited capture, a BOE WARC, is about 4 MB). */
 export const MAX_BODY = 64 * 1024 * 1024;
 /** Tries for a request that ends in a network error or timeout before it is a failure (R3). */
 export const NETWORK_TRIES = 3;
 export const NETWORK_RETRY_MS = 15_000;
-const UA = "open-inflation-archive-check (+https://github.com/GildedPleb/open-inflation)";
+const UA = "open-inflation-link-check (+https://github.com/GildedPleb/open-inflation)";
 
 /** One URL, fetched: the bytes to search (one or more payloads), or why it failed. */
 export type Fetched =
@@ -28,7 +27,8 @@ export type Fetched =
       /** The capture's payloads: the cited document first (a WARC may hold sub-resources too). */
       readonly payloads: readonly Uint8Array[];
     }
-  | { readonly kind: "fail"; readonly reason: string; readonly captureUtc: string };
+  /** dead: the link is gone (404/410, a Wayback 3xx, no capture on the page); else no verdict (limited, 5xx, network). */
+  | { readonly kind: "fail"; readonly reason: string; readonly captureUtc: string; readonly dead: boolean };
 
 export interface CheckDeps {
   readonly fetch: typeof fetch;
@@ -108,6 +108,39 @@ function httpFailure(
   return `HTTP ${g.status} on ${what}`;
 }
 
+/** A 404 or 410: the link is gone. Anything else that is not a 200 (rate limit, 403, 5xx, network) is no verdict. */
+const gone = (g: Awaited<ReturnType<typeof pacedGet>>) => g.kind === "http" && (g.status === 404 || g.status === 410);
+
+/** Redirects an Original URL may follow (a publisher's http -> https, or a moved page) before it is a failure. */
+export const MAX_HOPS = 5;
+
+/** An Original URL, fetched live: redirects followed (up to MAX_HOPS, each paced), the final 200 body read. */
+export async function fetchOriginal(url: string, d: CheckDeps): Promise<Fetched> {
+  let at = url;
+  for (let hop = 0; ; hop++) {
+    let g: Awaited<ReturnType<typeof pacedGet>>;
+    try {
+      g = await pacedGet(at, d);
+    } catch (e) {
+      return { kind: "fail", reason: (e as Error).message, captureUtc: "", dead: false };
+    }
+    if (g.kind === "http" && g.status >= 300 && g.status < 400 && g.location) {
+      if (hop >= MAX_HOPS)
+        return {
+          kind: "fail",
+          reason: `redirected more than ${MAX_HOPS} times (last to ${g.location})`,
+          captureUtc: "",
+          dead: false,
+        };
+      at = new URL(g.location, at).toString();
+      continue;
+    }
+    if (g.kind !== "http" || g.status !== 200)
+      return { kind: "fail", reason: httpFailure(g as never, "the original"), captureUtc: "", dead: gone(g) };
+    return { kind: "capture", captureUtc: isoOf(d.clock.now()), sha256: sha(g.body), payloads: [g.body] };
+  }
+}
+
 /** The raw id_ form of a Wayback snapshot URL: the archived bytes, no toolbar, no rewriting. */
 export function waybackRaw(url: string): { raw: string; ts: string } | null {
   const m = WAYBACK_URL.exec(url);
@@ -122,6 +155,7 @@ export async function fetchWayback(url: string, d: CheckDeps): Promise<Fetched> 
       kind: "fail",
       reason: "not a web.archive.org/web/<14-digit timestamp>/<url> snapshot URL",
       captureUtc: "",
+      dead: true,
     };
   const captureUtc = tsIso(w.ts);
   const g = await pacedGet(w.raw, d);
@@ -132,10 +166,10 @@ export async function fetchWayback(url: string, d: CheckDeps): Promise<Fetched> 
       other && other !== w.ts
         ? `redirects (HTTP ${g.status}) to another capture, ${other}: no capture at ${w.ts} replays (${loc})`
         : `redirects (HTTP ${g.status}) to ${loc}: redirects are not followed, so the cited URL does not replay as is`;
-    return { kind: "fail", reason, captureUtc };
+    return { kind: "fail", reason, captureUtc, dead: true };
   }
   if (g.kind !== "http" || g.status !== 200)
-    return { kind: "fail", reason: httpFailure(g as never, "the id_ capture"), captureUtc };
+    return { kind: "fail", reason: httpFailure(g as never, "the id_ capture"), captureUtc, dead: gone(g) };
   return { kind: "capture", captureUtc, sha256: sha(g.body), payloads: [g.body] };
 }
 
@@ -147,22 +181,23 @@ const ARCHIVE_DATE = /Archive date:\s*([^<]+)</i;
 
 export async function fetchGhost(url: string, d: CheckDeps): Promise<Fetched> {
   const id = GHOST_URL.exec(url)?.[1];
-  if (!id) return { kind: "fail", reason: "not a ghostarchive.org/archive/<id> URL", captureUtc: "" };
+  if (!id) return { kind: "fail", reason: "not a ghostarchive.org/archive/<id> URL", captureUtc: "", dead: true };
   const g = await pacedGet(url, d);
   if (g.kind === "http" && g.status >= 300 && g.status < 400)
     return {
       kind: "fail",
       reason: `the capture page redirects (HTTP ${g.status}) to ${g.location ?? "(no Location)"}`,
       captureUtc: "",
+      dead: true,
     };
   if (g.kind !== "http" || g.status !== 200)
-    return { kind: "fail", reason: httpFailure(g as never, "the capture page"), captureUtc: "" };
+    return { kind: "fail", reason: httpFailure(g as never, "the capture page"), captureUtc: "", dead: gone(g) };
   const html = new TextDecoder().decode(g.body);
   const dateRaw = ARCHIVE_DATE.exec(html)?.[1]?.trim();
   const dateMs = dateRaw ? Date.parse(dateRaw) : Number.NaN;
   const captureUtc = Number.isNaN(dateMs) ? "" : isoOf(dateMs);
   if (GHOST_ERROR.test(html))
-    return { kind: "fail", reason: 'Ghostarchive\'s "Archiving error" page, not a capture', captureUtc };
+    return { kind: "fail", reason: 'Ghostarchive\'s "Archiving error" page, not a capture', captureUtc, dead: true };
   const tag = REPLAY.exec(html)?.[0];
   const source = tag ? attr(tag, "source") : null;
   if (!tag || !source)
@@ -170,6 +205,7 @@ export async function fetchGhost(url: string, d: CheckDeps): Promise<Fetched> {
       kind: "fail",
       reason: "HTTP 200 but no capture: the page has no replay wrapper with a saved file",
       captureUtc,
+      dead: true,
     };
   // The saved file (WARC) may move between storage paths (chimurai4 -> chimurai2): same host, same <id>.warc.
   let warcUrl = new URL(source, url).toString();
@@ -181,10 +217,10 @@ export async function fetchGhost(url: string, d: CheckDeps): Promise<Fetched> {
         warcUrl = next.toString();
         continue;
       }
-      return { kind: "fail", reason: `the saved file redirects off its capture, to ${next}`, captureUtc };
+      return { kind: "fail", reason: `the saved file redirects off its capture, to ${next}`, captureUtc, dead: true };
     }
     if (w.kind !== "http" || w.status !== 200)
-      return { kind: "fail", reason: httpFailure(w as never, "the saved file (WARC)"), captureUtc };
+      return { kind: "fail", reason: httpFailure(w as never, "the saved file (WARC)"), captureUtc, dead: gone(w) };
     const target = tag ? attr(tag, "url") : null;
     return { kind: "capture", captureUtc, sha256: sha(w.body), payloads: warcPayloads(w.body, target) };
   }
@@ -366,18 +402,20 @@ export function hasNumber(text: string, f: { value: number; decimals: number }):
   return false;
 }
 
-/** A citation's verdict on a fetched capture: pass, with how each figure matched, or fail with why. */
+/**
+ * A link's verdict on what was fetched: live (it shows every figure, and how each matched), dead (gone, or readable
+ * and without the figure) or unknown (no verdict: rate-limited, blocked, 5xx, network, an unreadable payload).
+ * `typeset`: the link is an HTML or text page that prints the figure, so it must appear as written; the number form
+ * (grouping dropped, written precision) is accepted only in a spreadsheet, a PDF's text layer or a JSON body.
+ */
 export async function judge(
-  c: Citation,
+  figures: readonly string[],
   f: Fetched,
   d: Pick<CheckDeps, "pdfText">,
-): Promise<{ pass: boolean; reason: string }> {
-  if (f.kind === "fail") return { pass: false, reason: f.reason };
-  if (c.figures.length === 0) {
-    if (/#/.test(c.anchor) && !/\/README\.md#/.test(c.anchor) && c.quarter !== "")
-      return { pass: false, reason: 'its extract has no "Value (published unit)" to look for' };
-    return { pass: true, reason: "replays (no figure: not cited by an extract)" };
-  }
+): Promise<{ status: "live" | "dead" | "unknown"; reason: string }> {
+  if (f.kind === "fail") return { status: f.dead ? "dead" : "unknown", reason: f.reason };
+  if (figures.length === 0)
+    return { status: "unknown", reason: 'its extract has no "Value (published unit)" to look for' };
   const texts: { kind: Kind; text: string }[] = [];
   const errors: string[] = [];
   for (const p of f.payloads) {
@@ -385,29 +423,26 @@ export async function judge(
     if ("text" in t) texts.push(t);
     else errors.push(t.error);
   }
-  if (texts.length === 0) return { pass: false, reason: errors[0] ?? "no readable payload" };
-  // The number form (grouping dropped, written precision) is accepted only where the figure is not typeset as
-  // printed: a spreadsheet cell, a PDF's text layer, a JSON API body, or a second snapshot named in a Note.
-  const loose = (k: Kind) => k !== "text" || !/^Archive URL/.test(c.source);
+  if (texts.length === 0) return { status: "unknown", reason: errors[0] ?? "no readable payload" };
   const how: string[] = [];
-  for (const fig of c.figures) {
+  for (const fig of figures) {
     if (texts.some((t) => t.text.includes(fig))) {
       how.push(`"${fig}" as written`);
       continue;
     }
     const n = figureNumber(fig);
-    const hit = n ? texts.find((t) => loose(t.kind) && hasNumber(t.text, n)) : undefined;
+    const hit = n ? texts.find((t) => t.kind !== "text" && hasNumber(t.text, n)) : undefined;
     if (n && hit) {
       how.push(`"${fig}" as the number ${n.value} (${hit.kind})`);
       continue;
     }
     const kinds = [...new Set(texts.map((t) => t.kind))].join("/");
     return {
-      pass: false,
-      reason: `the figure "${fig}" is not in the capture (${kinds}${errors.length ? `; ${errors[0]}` : ""})`,
+      status: errors.length ? "unknown" : "dead",
+      reason: `the figure "${fig}" is not in it (${kinds}${errors.length ? `; ${errors[0]}` : ""})`,
     };
   }
-  return { pass: true, reason: `shows ${how.join(", ")}` };
+  return { status: "live", reason: `shows ${how.join(", ")}` };
 }
 
 /** pdftotext on PATH, reading the PDF from stdin; null when it is not installed or fails. */
@@ -418,4 +453,4 @@ export async function pdftotext(bytes: Uint8Array): Promise<string | null> {
   return (await p.exited) === 0 ? out : null;
 }
 
-export { DAY_MS as DURABLE_AFTER_MS, hostKey, isoOf, tsIso };
+export { hostKey, isoOf, tsIso };

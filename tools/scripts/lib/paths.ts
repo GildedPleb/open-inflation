@@ -28,12 +28,6 @@ export const COMPONENTS_CSV = "base_money/components.csv";
 /** Not a place for the CSV (L12): the repository root. */
 export const ROOT_CSV = posix.basename(CSV_PATH);
 
-/**
- * The archive-link ledger: one row per cited archive link with its last live check (bun run archive-check writes
- * it; never hand-edited). Lint L16 checks its form, its coverage and the quarter files' check claims against it.
- */
-export const ARCHIVE_LEDGER = "base_money/archive_checks.csv";
-
 /** Top-level folders of earlier layouts: any file there now is misplaced (L12). */
 export const RETIRED_ROOTS = ["issuers/", "evidence/", "research/"];
 

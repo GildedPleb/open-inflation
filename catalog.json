@@ -17,6 +17,176 @@
         }
       ],
       "issuers": [{ "id": "CBR", "as_of_convention": "start_of_day" }]
+    },
+    {
+      "id": "base_money_components",
+      "path": "base_money/components.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_bcb",
+      "path": "base_money/issuers/BCB/BCB.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_boe",
+      "path": "base_money/issuers/BOE/BOE.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_boj",
+      "path": "base_money/issuers/BOJ/BOJ.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_cbr",
+      "path": "base_money/issuers/CBR/CBR.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_ecb",
+      "path": "base_money/issuers/ECB/ECB.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_fed",
+      "path": "base_money/issuers/FED/FED.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_pboc",
+      "path": "base_money/issuers/PBOC/PBOC.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_rbi",
+      "path": "base_money/issuers/RBI/RBI.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_snb",
+      "path": "base_money/issuers/SNB/SNB.csv",
+      "unit": "USD",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-10-26",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB"],
+          "floor_pct": "94"
+        }
+      ]
     }
   ]
 }

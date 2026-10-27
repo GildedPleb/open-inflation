@@ -68,7 +68,7 @@ export function networkCheck(online: () => Promise<boolean>, now: () => number):
 const SNAPSHOT = /^https?:\/\/web\.archive\.org\/web\/(\d{14})(?:[a-z]{2}_)?\//;
 /** archive.today under any of its three hosts. Its captures redirect between them (and between the dated form and the short id). */
 const TODAY = /^https?:\/\/archive\.(?:ph|today|is)\//;
-/** A Ghostarchive capture (Archive URL 3). A hop is followed only to another ghostarchive.org/archive/ URL. */
+/** A Ghostarchive capture. A hop is followed only to another ghostarchive.org/archive/ URL. */
 const GHOST = /^https?:\/\/ghostarchive\.org\/archive\//;
 export const MAX_HOPS = 5;
 /** Sent on every request by `bun run verify`, so an archive can see who is asking. */

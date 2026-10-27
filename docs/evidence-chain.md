@@ -19,7 +19,7 @@ Each roll-up lists every issuer's figure, the exchange rate used and the total, 
 
 ## Issuer extract
 
-Each extract quotes the bank's figure word for word, with `- Retrieved:`, `- Original URL:` (the bank's page), `- Archive URL:` (a web.archive.org snapshot), `- Archive URL 2:` (archive.today) and `- Archive URL 3:` (Ghostarchive), each a capture or a recorded attempt. See the [extract template](methodology/base_money.md#extract-template).
+Each extract quotes the bank's figure word for word, with `- Retrieved:`, `- Original URL:` (the bank's page), numbered `- Archive URL:` lines (Wayback, Ghostarchive or archive.today captures) and `- Capture check:` (the last date every link was confirmed). Each figure has two live links that show it: the original plus an archive, or two archives when the original is gone. See the [extract template](methodology/base_money.md#extract-template).
 
 ## FX rate tables
 
@@ -27,7 +27,7 @@ Each extract quotes the bank's figure word for word, with `- Retrieved:`, `- Ori
 
 ## Audit trail
 
-Each quarter file's Audit trail records overall notes: the basket version, any rejected source that belongs to no issuer, and a short archiving note. Notes about a specific source (capture checks, caveats, rejected sources, link-audit findings) sit under its extract in the year file.
+Each quarter file's Audit trail records overall notes: the basket version, and any rejected source that belongs to no issuer. Notes about a specific source (its links, Capture check, caveats, rejected sources) sit under its extract in the year file.
 
 ## Corrections and revisions
 

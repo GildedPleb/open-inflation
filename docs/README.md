@@ -13,4 +13,4 @@ How the data is built and checked. Back to the [project README](../README.md). S
 
 - [AGENTS.md](../AGENTS.md): start here; how to add a quarter and what done means.
 - [Running the checks](running.md): the commands you run, when, and what their output means.
-- [What the checks enforce](lint.md): the rule spec, L1–L17.
+- [What the checks enforce](lint.md): the rule spec, L1–L19.

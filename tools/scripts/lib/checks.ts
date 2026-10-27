@@ -1,11 +1,10 @@
-// All integrity checks, L1-L17 (docs/lint.md). Pure over a Snapshot: no network, no I/O. L8's link check
+// All integrity checks, L1-L19 (docs/lint.md). Pure over a Snapshot: no network, no I/O. L8's link check
 // (HEAD on each new archive URL) is not here; it is `bun run verify` (lib/verify.ts), run locally, never in CI.
 import { posix } from "node:path";
-import { ledgerLint } from "./archive-ledger.ts";
 import { type Decimal, parseDecimal, ratioHalfEven, usdPerUnit, wholeUsd } from "./decimal.ts";
+import { twoLinkLint } from "./links.ts";
 import { fencedBlocks, headingSlugs, headings, htmlAnchors, lines, links, memoText, slugs } from "./markdown.ts";
 import {
-  ARCHIVE_LEDGER,
   COMPONENTS_CSV,
   CSV_PATH,
   EVIDENCE_ROOT,
@@ -78,9 +77,8 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   linkIntegrity(ctx, emit);
   quarterHeadings(ctx, emit);
   indexCompleteness(ctx, emit);
-  extractSchema(ctx, emit);
+  const malformed = extractSchema(ctx, emit);
   extractLines(ctx, emit);
-  rearchiveNotes(ctx, emit);
   aggregation(ctx, rows, emit);
   fxTables(ctx, emit);
   catalog(ctx, emit);
@@ -89,9 +87,10 @@ export async function lint(snap: Snapshot, opts: LintOptions): Promise<Finding[]
   generatedOutputs(ctx, emit);
   docsAgree(ctx, rows, emit);
   evidenceWording(ctx, emit);
-  const ledger = ledgerLint(ctx.text);
-  for (const f of ledger.findings) emit("L16", f.file, f.message);
-  for (const n of ledger.notices) opts.onNotice?.({ check: "L16", ...n });
+  // L16 judges only extracts whose fields pass L7: a missing or malformed field is L7's finding, not a second one.
+  for (const f of twoLinkLint(ctx.text, (file, line) => malformed.has(`${file}:${line}`)))
+    emit("L16", f.file, f.message);
+  catalogCsvs(ctx, emit);
   const order = (c: CheckId) => Number(c.slice(1));
   return out.sort((a, b) => order(a.check) - order(b.check));
 }
@@ -501,29 +500,23 @@ function frontPageCoverage(readme: string, latest: string | undefined, e: (m: st
 
 // ---------- L7, L8 ----------
 
-const FIELDS = ["Retrieved", "Original URL", "Archive URL", "Archive URL 2", "Archive URL 3"] as const;
+const FIELDS = ["Retrieved", "Original URL"] as const;
 type Field = (typeof FIELDS)[number];
-const FIELD_LINE = /^\s*[-*]\s+(Retrieved|Original URL|Archive URL [23]|Archive URL):\s*(.*?)\s*$/;
+/** A link-block line: Retrieved, Original URL, Archive URL / Archive URL <n>, or Capture check. */
+const FIELD_LINE = /^\s*[-*]\s+(Retrieved|Original URL|Archive URL(?: [1-9]\d*)?|Capture check):[ \t]*(.*?)\s*$/;
 /** A field label in another form: no list marker, or bold. Reported as the wrong form, not as missing. */
 const NEAR_FIELD =
-  /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(Retrieved|Original URL|Archive URL [23]|Archive URL)(?::(?:\*\*|__)|(?:\*\*|__)?\s*:)/;
+  /^\s*(?:[-*+]\s+)?(?:\*\*|__)?(Retrieved|Original URL|Archive URL(?: [1-9]\d*)?|Capture check)(?::(?:\*\*|__)|(?:\*\*|__)?\s*:)/;
 const RETRIEVED = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?Z$/;
-/** A `- Re-archive: <new archive URL>` line: the new capture of a dead snapshot of the extract it sits in. */
-const REARCHIVE_LINE = /^\s*-\s+Re-archive:[ \t]*(\S*)/;
-const WAYBACK_SNAPSHOT = /^https:\/\/web\.archive\.org\/web\/\d{14}\/https?:\/\/\S+$/;
+/** A Wayback snapshot: https://web.archive.org/web/<timestamp>/<captured URL>. */
 const ARCHIVE = /^https:\/\/web\.archive\.org\/web\/(\d+)\/(.+)$/;
 /**
- * Archive URL 2 on archive.today (Assay, "2 is 1 and 1 is none"): one of its three hosts, either a short id
- * (/<id>) or the dated form (/<YYYYMMDDhhmmss>/<Original URL>). Any other host, self-hosted copies included, fails.
+ * An archive.today capture: one of its three hosts, either a short id (/<id>) or the dated form
+ * (/<YYYYMMDDhhmmss>/<captured URL>). Any other host, self-hosted copies included, fails.
  */
 const ARCHIVE_TODAY = /^https:\/\/archive\.(?:ph|today|is)\/(?:(\d{14})\/(\S+)|([A-Za-z0-9]+))$/;
-/**
- * Archive URL 3 on Ghostarchive (the user, 2026-10-22; captured by hand in a browser): https://ghostarchive.org/archive/<id>,
- * the id letters and digits only, with no query, fragment or trailing path. Any other host, and http://, fails.
- */
+/** A Ghostarchive capture: https://ghostarchive.org/archive/<id>, the id letters and digits only, nothing after it. */
 const GHOSTARCHIVE = /^https:\/\/ghostarchive\.org\/archive\/[A-Za-z0-9]+$/;
-/** Or a dated record of the attempt: `attempted <YYYY-MM-DD>: <reason>`. */
-const ATTEMPTED = /^attempted (\S+): (.*)$/;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SKEW_MS = 10 * 60 * 1000;
 
@@ -531,7 +524,11 @@ interface Extract {
   readonly title: string;
   readonly line: number;
   readonly fields: Map<Field, string[]>;
-  readonly wrongForm: Map<Field, number>;
+  readonly wrongForm: Map<string, number>;
+  /** Each Archive URL line in file order: its label ("Archive URL", "Archive URL 2", ...), value and line. */
+  readonly archives: { readonly label: string; readonly url: string; readonly line: number }[];
+  /** Each `- Capture check:` value, with its line. */
+  readonly captures: { readonly value: string; readonly line: number }[];
   quote: boolean;
   /** The verbatim quote's lines: each `>` line after its marker, and each line of a fenced `text` block. */
   readonly quoteLines: string[];
@@ -539,36 +536,29 @@ interface Extract {
   readonly quarter: string | null;
   /** Each `- As of:` value. */
   readonly asOf: string[];
-  /** Each `- Archive attempt`, `- Link audit` and `- Rejected source` line: its kind, the text after the label, its line. */
+  /** Each `- Rejected source` line: the text after the label, its line. */
   readonly notes: {
-    readonly kind: NoteKind;
     readonly rest: string;
     readonly line: number;
   }[];
-  /** Each `- Re-archive:` URL in this extract (the new capture of one of its dead archive URLs), with its line. */
-  readonly rearchive: { readonly url: string; readonly line: number }[];
 }
 const AS_OF_LINE = /^\s*[-*]\s+As of:\s*(.*?)\s*$/;
-/** The per-extract record lines: failed archive attempts, link-audit findings and rejected sources. */
-type NoteKind = "Archive attempt" | "Link audit" | "Rejected source";
-const NOTE_LINE = /^\s*[-*]\s+(Archive attempt|Link audit|Rejected source)\b(.*)$/;
+/** The per-extract record line: a rejected source. */
+const NOTE_LINE = /^\s*[-*]\s+Rejected source\b(.*)$/;
 
 /** Extract blocks (### sections) of one issuer file, plus field lines found outside any block. */
 export const extracts: (body: string) => {
   readonly blocks: readonly Extract[];
   readonly stray: readonly number[];
-  readonly strayNotes: readonly number[];
   readonly strayRecords: readonly number[];
 } = memoText(parseExtracts);
 function parseExtracts(body: string): {
   blocks: Extract[];
   stray: number[];
-  strayNotes: number[];
   strayRecords: number[];
 } {
   const blocks: Extract[] = [];
   const stray: number[] = [];
-  const strayNotes: number[] = [];
   const strayRecords: number[] = [];
   let cur: Extract | null = null;
   let quarter: string | null = null;
@@ -586,12 +576,13 @@ function parseExtracts(body: string): {
                 line: l.line,
                 fields: new Map(),
                 wrongForm: new Map(),
+                archives: [],
+                captures: [],
                 quote: false,
                 quoteLines: [],
                 quarter,
                 asOf: [],
                 notes: [],
-                rearchive: [],
               }
             : h[1].length < 3
               ? null
@@ -601,23 +592,17 @@ function parseExtracts(body: string): {
       }
       const f = FIELD_LINE.exec(l.text);
       const near = f ? null : NEAR_FIELD.exec(l.text);
-      const note = REARCHIVE_LINE.exec(l.text);
       const rec = NOTE_LINE.exec(l.text);
       if (rec) {
-        if (cur)
-          cur.notes.push({
-            kind: rec[1] as NoteKind,
-            rest: rec[2] ?? "",
-            line: l.line,
-          });
+        if (cur) cur.notes.push({ rest: rec[1] ?? "", line: l.line });
         else strayRecords.push(l.line);
-      } else if (note) {
-        if (cur) cur.rearchive.push({ url: note[1] ?? "", line: l.line });
-        else strayNotes.push(l.line);
       } else if (f) {
+        const [label, value] = [f[1] as string, f[2] ?? ""];
         if (!cur) stray.push(l.line);
-        else cur.fields.set(f[1] as Field, [...(cur.fields.get(f[1] as Field) ?? []), f[2] ?? ""]);
-      } else if (near && cur) cur.wrongForm.set(near[1] as Field, l.line);
+        else if (label === "Capture check") cur.captures.push({ value, line: l.line });
+        else if (label.startsWith("Archive URL")) cur.archives.push({ label, url: value, line: l.line });
+        else cur.fields.set(label as Field, [...(cur.fields.get(label as Field) ?? []), value]);
+      } else if (near && cur) cur.wrongForm.set(near[1] as string, l.line);
       else if (cur && AS_OF_LINE.test(l.text)) cur.asOf.push(AS_OF_LINE.exec(l.text)?.[1] ?? "");
       else if (cur && /^\s*>\s*\S/.test(l.text)) {
         cur.quote = true;
@@ -628,7 +613,7 @@ function parseExtracts(body: string): {
       if (textFence) cur.quoteLines.push(l.text);
     }
   }
-  return { blocks, stray, strayNotes, strayRecords };
+  return { blocks, stray, strayRecords };
 }
 
 const utcMs = (y: string, mo: string, d: string, h: string, mi: string, s: string) => {
@@ -695,7 +680,7 @@ function dateWindowProblem(
   day: string,
   retrieved?: string,
   now?: number,
-  why = "archive.today is tried at or after retrieval",
+  why = "it is made at or after retrieval",
 ): string | null {
   const rMs = retrieved === undefined ? null : instantMs(retrieved);
   if (rMs !== null && day < utcDate(rMs))
@@ -738,96 +723,63 @@ const hostWord = (word: string): boolean => {
   const parts = w.split(/[/:@\\]+/).filter((x) => x !== "");
   return parts.length > 1 && parts.some((x) => x.toLowerCase() === "localhost" || hostAlone(x));
 };
-/** A word counts toward the minimum only if it has a letter or a digit ("-", "—", "..." do not). */
-const reasonWords = (reason: string) => reason.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w));
-const MIN_REASON_WORDS = 3;
-
 /**
- * L7 on one `attempted <YYYY-MM-DD>: <reason>` record, shared by Archive URL 2 and Archive URL 3 (`label`): a real
- * date inside dateWindowProblem's window, and a reason of at least 3 words (with a letter or digit) and no URL (no
- * scheme://, no bare host or host/path). null when it passes.
+ * L7 on one `- Rejected source: <what>: <reason>.` line (`rest` is the text after its label): both parts non-empty,
+ * no URL. null when it passes.
  */
-function attemptProblem(
-  label: "Archive URL 2" | "Archive URL 3",
-  v: string,
-  retrieved: string | undefined,
-  now: number | undefined,
-): string | null {
-  const m = ATTEMPTED.exec(v);
-  if (!m) return `${label} ${show(v)} must read "attempted YYYY-MM-DD: <reason>"`;
-  const day = m[1] ?? "";
-  if (!isIsoDate(day)) return `${label} attempt date ${show(day)} is not a real YYYY-MM-DD date`;
-  const reason = (m[2] ?? "").trim();
-  if (reason === "") return `${label} ${show(v)} needs a reason after the date`;
-  if (reasonWords(reason).length < MIN_REASON_WORDS)
-    return `${label} attempt reason ${show(reason)} is too short: say what failed in at least ${MIN_REASON_WORDS} words (a word has a letter or digit)`;
-  if (URLISH.test(reason) || reason.split(/\s+/).some(hostWord))
-    return `${label} attempt reason ${show(reason)} contains a URL (a scheme://, a bare host, IP address or host/path, or a malformed URL such as x/example.com or localhost:8080); a reason is prose (record links in their own fields)`;
-  return dateWindowProblem(`${label} attempt date`, day, retrieved, now);
+function noteProblem(rest: string): string | null {
+  const m = /^:\s*(.*?\S)\s*:\s+(.*\S)\s*\.$/.exec(rest);
+  if (!m || /^[.\s]*$/.test(m[2] ?? ""))
+    return `Rejected source line must read "- Rejected source: <what>: <reason>." (both parts non-empty)`;
+  const text = `${m[1]} ${m[2]}`;
+  if (URLISH.test(text) || text.split(/\s+/).some(hostWord))
+    return `Rejected source line contains a URL; name the source in words (its links live in extract fields)`;
+  return null;
 }
 
-/** The archives an Archive attempt line names (one of them, in any case). */
-const ARCHIVE_NAMES = /archive\.(?:today|ph|is)\b|ghostarchive|wayback/i;
-
 /**
- * L7 on one per-extract record line, `rest` being the text after its label:
- * - `- Archive attempt YYYY-MM-DD: <text>.` and `- Link audit YYYY-MM-DD: <text>.`: a real date on or after the
- *   extract's Retrieved date (UTC) and not in the future, and non-empty text; an Archive attempt names archive.today,
- *   Ghostarchive or Wayback.
- * - `- Rejected source: <what>: <reason>.`: both parts non-empty, no URL.
- * null when it passes.
+ * L7 on one Archive URL value: a Wayback snapshot (a real 14-digit timestamp), an archive.today capture (a short id,
+ * or the dated form at a real time) or a Ghostarchive capture. A Wayback or dated archive.today URL captures the
+ * Original URL, or one of the extract's other archive URLs (a capture of a surviving capture). null when it passes.
  */
-function noteProblem(kind: NoteKind, rest: string, retrieved: string | undefined, now: number): string | null {
-  if (kind === "Rejected source") {
-    const m = /^:\s*(.*?\S)\s*:\s+(.*\S)\s*\.$/.exec(rest);
-    if (!m || /^[.\s]*$/.test(m[2] ?? ""))
-      return `Rejected source line must read "- Rejected source: <what>: <reason>." (both parts non-empty)`;
-    const text = `${m[1]} ${m[2]}`;
-    if (URLISH.test(text) || text.split(/\s+/).some(hostWord))
-      return `Rejected source line contains a URL; name the source in words (its links live in extract fields)`;
+export function archiveProblem(label: string, v: string, captured: readonly string[]): string | null {
+  const embeds = (u: string) => captured.some((c) => sameUrl(u, c) === true);
+  const w = ARCHIVE.exec(v);
+  if (w) {
+    const ts = w[1] ?? "";
+    if (ts.length !== 14)
+      return `${label} ${show(v)} needs a 14-digit timestamp (https://web.archive.org/web/<YYYYMMDDhhmmss>/<URL>)`;
+    if (ts14Ms(ts) === null) return `${label} timestamp ${ts} is not a real time`;
+    if (urlParts(w[2] ?? "") === null) return `${label} ${show(v)} has a malformed percent-escape`;
+    if (!embeds(w[2] ?? ""))
+      return `${label} snapshots ${show(w[2])}, not the Original URL or another archive URL of this extract`;
     return null;
   }
-  const m = /^ (\S+): (.*\S)\s*$/.exec(rest);
-  const text = (m?.[2] ?? "").replace(/\.$/, "").trim();
-  if (!m || !(m[2] ?? "").endsWith(".") || text === "")
-    return `${kind} line must read "- ${kind} YYYY-MM-DD: <text>." (non-empty text ending with a period)`;
-  const day = m[1] ?? "";
-  if (!isIsoDate(day)) return `${kind} date ${show(day)} is not a real YYYY-MM-DD date`;
-  if (kind === "Archive attempt" && !ARCHIVE_NAMES.test(text))
-    return `Archive attempt ${show(text)} must name the archive tried: archive.today, Ghostarchive or Wayback`;
-  return dateWindowProblem(`${kind} date`, day, retrieved, now, "it is made at or after retrieval");
-}
-
-/**
- * L7 on one Archive URL 2 value: an archive.today URL (short id, or the dated form of the Original URL at a real
- * time, its date inside dateWindowProblem's window), or an attempt record (attemptProblem). null when it passes.
- */
-export function archive2Problem(
-  v: string,
-  original: string | undefined,
-  retrieved?: string | undefined,
-  now?: number | undefined,
-): string | null {
-  if (v.startsWith("attempted")) return attemptProblem("Archive URL 2", v, retrieved, now);
-  const a = ARCHIVE_TODAY.exec(v);
-  if (!a)
-    return `Archive URL 2 ${show(v)} is not an archive.today URL or "attempted YYYY-MM-DD: <reason>" (archive.today: https://archive.ph/, https://archive.today/ or https://archive.is/, then <id> or <YYYYMMDDhhmmss>/<Original URL>)`;
-  if (a[1] === undefined) return null;
-  const tsMs = ts14Ms(a[1]);
-  if (tsMs === null) return `Archive URL 2 timestamp ${a[1]} is not a real time`;
-  if (original !== undefined && sameUrl(a[2] ?? "", original) === false)
-    return `Archive URL 2 captures ${show(a[2])}, not the Original URL ${show(original)}`;
-  return dateWindowProblem(`Archive URL 2 timestamp ${a[1]} date`, utcDate(tsMs), retrieved, now);
-}
-
-/**
- * L7 on one Archive URL 3 value: https://ghostarchive.org/archive/<id> (letters and digits; no timestamp to check), or
- * an attempt record with Archive URL 2's date and reason rules (attemptProblem). null when it passes.
- */
-export function archive3Problem(v: string, retrieved?: string | undefined, now?: number | undefined): string | null {
-  if (v.startsWith("attempted")) return attemptProblem("Archive URL 3", v, retrieved, now);
+  const t = ARCHIVE_TODAY.exec(v);
+  if (t) {
+    if (t[1] === undefined) return null;
+    if (ts14Ms(t[1]) === null) return `${label} timestamp ${t[1]} is not a real time`;
+    if (!embeds(t[2] ?? ""))
+      return `${label} captures ${show(t[2])}, not the Original URL or another archive URL of this extract`;
+    return null;
+  }
   if (GHOSTARCHIVE.test(v)) return null;
-  return `Archive URL 3 ${show(v)} is not a Ghostarchive URL or "attempted YYYY-MM-DD: <reason>" (Ghostarchive: https://ghostarchive.org/archive/<id>, the id letters and digits only, no query, fragment or path after it)`;
+  return `${label} ${show(v)} is not an archive capture: a Wayback snapshot (https://web.archive.org/web/<YYYYMMDDhhmmss>/<URL>), archive.today (https://archive.ph/<id>, archive.today or archive.is) or Ghostarchive (https://ghostarchive.org/archive/<id>)`;
+}
+
+/**
+ * L7 on a `- Capture check:` value: `YYYY-MM-DD` (a real date, on or after the Retrieved UTC date, not in the future),
+ * optionally `; <note>.`, the evidence that the original cannot be re-found (only when two archives are cited, L16).
+ */
+export function captureProblem(v: string, retrieved: string | undefined, now: number): string | null {
+  const m = /^(\S+?)(?:;\s*(.*))?$/.exec(v);
+  const day = m?.[1] ?? "";
+  if (!isIsoDate(day))
+    return `Capture check ${show(v)} must read "YYYY-MM-DD" or "YYYY-MM-DD; <why the original cannot be re-found>." (a real date)`;
+  const note = m?.[2];
+  if (note !== undefined && (note.trim() === "" || !note.trim().endsWith(".")))
+    return `Capture check note ${show(note)} must be non-empty text ending with a period`;
+  return dateWindowProblem("Capture check date", day, retrieved, now, "the check is made at or after retrieval");
 }
 
 /** Everything L7 has to say about one extract block; empty means the block passes. */
@@ -845,52 +797,50 @@ function blockProblems(b: Extract, now: number): string[] {
     if (vs.length > 1) out.push(`has more than one ${f}`);
     return vs.length === 1 ? vs[0] : undefined;
   };
-  const [retrieved, original, archive, archive2, archive3] = FIELDS.map(one);
-  if (archive2 !== undefined) {
-    const m = archive2Problem(archive2, original, retrieved, now);
-    if (m) out.push(m);
-  }
-  if (archive3 !== undefined) {
-    const m = archive3Problem(archive3, retrieved, now);
-    if (m) out.push(m);
-  }
+  const [retrieved, original] = FIELDS.map(one);
   if (!b.quote) out.push("has no verbatim quote (blockquote or fenced block)");
-  let rMs: number | null = null;
   if (retrieved !== undefined) {
     const m = RETRIEVED.exec(retrieved);
-    rMs = m ? utcMs(m[1] ?? "", m[2] ?? "", m[3] ?? "", m[4] ?? "", m[5] ?? "", m[6] ?? "0") : null;
+    const rMs = m ? utcMs(m[1] ?? "", m[2] ?? "", m[3] ?? "", m[4] ?? "", m[5] ?? "", m[6] ?? "0") : null;
     if (rMs === null) out.push(`Retrieved ${show(retrieved)} is not a UTC ISO 8601 time (YYYY-MM-DDTHH:MM:SSZ)`);
     else if (rMs > now + SKEW_MS)
       out.push(`Retrieved ${retrieved} is in the future (now ${new Date(now).toISOString()}; 10 min skew allowed)`);
   }
   if (original !== undefined && !/^https?:\/\/\S+$/.test(original))
     out.push(`Original URL ${show(original)} is not an http(s) URL`);
-  if (archive === undefined) return out;
-  const a = ARCHIVE.exec(archive);
-  const ts = a?.[1] ?? "";
-  if (!a || ts.length !== 14) {
-    out.push(`Archive URL ${show(archive)} is not https://web.archive.org/web/<14-digit timestamp>/<Original URL>`);
-    return out;
+  else if (original !== undefined && urlParts(original) === null)
+    out.push(`Original URL ${show(original)} has a malformed percent-escape`);
+  if (b.archives.length === 0) {
+    const wrong = [...b.wrongForm].find(([k]) => k.startsWith("Archive URL"));
+    out.push(
+      wrong === undefined
+        ? "has no Archive URL"
+        : `${wrong[0]} is in the wrong form (line ${wrong[1]}); expected "- ${wrong[0]}: <value>" (a list item, no bold)`,
+    );
   }
-  if (original !== undefined) {
-    const want = urlParts(original);
-    const got = urlParts(a[2] ?? "");
-    if (want === null) out.push(`Original URL ${show(original)} has a malformed percent-escape`);
-    if (got === null) out.push(`Archive URL ${show(archive)} has a malformed percent-escape`);
-    if (want !== null && got !== null && want.join("\u0000") !== got.join("\u0000"))
-      out.push(`Archive URL snapshots ${show(a[2])}, not the Original URL ${show(original)}`);
+  const seen = new Set<string>();
+  for (const [k, a] of b.archives.entries()) {
+    const want = k === 0 ? "Archive URL" : `Archive URL ${k + 1}`;
+    if (a.label !== want)
+      out.push(
+        `line ${a.line}: "${a.label}" is out of order; archive lines are numbered Archive URL, Archive URL 2, Archive URL 3, ... in order (this one is ${want})`,
+      );
+    if (seen.has(a.url)) out.push(`line ${a.line}: ${a.label} repeats ${show(a.url)}`);
+    seen.add(a.url);
+    const others = [...(original ? [original] : []), ...b.archives.filter((x) => x !== a).map((x) => x.url)];
+    const m = archiveProblem(a.label, a.url, others);
+    if (m) out.push(`line ${a.line}: ${m}`);
   }
-  const sMs = utcMs(
-    ts.slice(0, 4),
-    ts.slice(4, 6),
-    ts.slice(6, 8),
-    ts.slice(8, 10),
-    ts.slice(10, 12),
-    ts.slice(12, 14),
-  );
-  if (sMs === null) out.push(`Archive URL timestamp ${ts} is not a real time`);
-  else if (rMs !== null && Math.abs(sMs - rMs) > DAY_MS)
-    out.push(`snapshot ${ts} is more than 24h from Retrieved ${retrieved}`);
+  if (b.captures.length > 1) out.push("has more than one Capture check");
+  const wrongCapture = b.wrongForm.get("Capture check");
+  if (b.captures.length === 0 && wrongCapture !== undefined)
+    out.push(
+      `Capture check is in the wrong form (line ${wrongCapture}); expected "- Capture check: YYYY-MM-DD" (a list item, no bold)`,
+    );
+  for (const c of b.captures) {
+    const m = captureProblem(c.value, retrieved, now);
+    if (m) out.push(`line ${c.line}: ${m}`);
+  }
   return out;
 }
 
@@ -898,20 +848,23 @@ function blockProblems(b: Extract, now: number): string[] {
 const issuerTexts = (texts: Texts | null) =>
   [...(texts ?? [])].filter(([p]) => EXTRACT_FILE.test(p) && !isFxPath(p)).sort(([a], [b]) => a.localeCompare(b));
 
-function extractSchema(ctx: Ctx, emit: Emit) {
+/** L7 over every extract; returns the `file:line` of each extract whose fields fail it (L16 skips those). */
+function extractSchema(ctx: Ctx, emit: Emit): Set<string> {
+  const malformed = new Set<string>();
   const startOfDay = catalogModel(ctx.text.get("catalog.json")).startOfDay;
   for (const [p, body] of issuerTexts(ctx.text)) {
     const { blocks, stray, strayRecords } = extracts(body);
     const iss = extractOf(p)?.issuer ?? "";
     for (const line of stray) emit("L7", p, `line ${line}: extract field outside an ### extract block`);
-    for (const line of strayRecords)
-      emit("L7", p, `line ${line}: Archive attempt, Link audit or Rejected source line outside an ### extract block`);
+    for (const line of strayRecords) emit("L7", p, `line ${line}: Rejected source line outside an ### extract block`);
     for (const b of blocks) {
       const at = `extract "${b.title}" (line ${b.line})`;
-      for (const m of blockProblems(b, ctx.now)) emit("L7", p, `${at} ${m}`);
-      const retrieved = b.fields.get("Retrieved");
+      for (const m of blockProblems(b, ctx.now)) {
+        emit("L7", p, `${at} ${m}`);
+        malformed.add(`${p}:${b.line}`);
+      }
       for (const n of b.notes) {
-        const m = noteProblem(n.kind, n.rest, retrieved?.length === 1 ? retrieved[0] : undefined, ctx.now);
+        const m = noteProblem(n.rest);
         if (m) emit("L7", p, `${at} line ${n.line}: ${m}`);
       }
       for (const v of b.asOf) {
@@ -927,6 +880,7 @@ function extractSchema(ctx: Ctx, emit: Emit) {
       }
     }
   }
+  return malformed;
 }
 
 /** YYYY-MM-DD or YYYY-MM, optionally one parenthetical note to the end of the line (Assay). Only the date counts. */
@@ -980,82 +934,35 @@ function asOfProblem(v: string, q: string, startOfDay: boolean): string | null {
 }
 
 export interface ArchiveRef {
-  /** web.archive.org (Archive URL), archive.today (Archive URL 2) or Ghostarchive (Archive URL 3). */
   readonly host: "wayback" | "today" | "ghost";
   readonly file: string;
   readonly ts: string;
   readonly original: string;
-  /** The extract (### title) the URL sits in, in `file`: a Re-archive note excuses a dead URL of its own extract. */
+  /** The extract (### title) the URL sits in, in `file`. */
   readonly block: string;
 }
 
-/** The key of one extract, for Re-archive notes: its file and its ### title. */
-export const blockKey = (file: string, title: string) => `${file}\n${title}`;
-
 /**
- * Archive URLs, Wayback, archive.today and Ghostarchive (first file and extract that cites each), and the Re-archive
- * notes of each extract (by blockKey), over one tree. A Re-archive note names the new capture, so its URL is also an
- * archive URL to verify. With `now`, only URLs of extract blocks that pass L7: a malformed, blank or off-host URL never
- * reaches the network.
+ * Every Archive URL (Wayback, archive.today and Ghostarchive; the first file and extract that cites each) over one
+ * tree. With `now`, only URLs of extract blocks that pass L7: a malformed, blank or off-host URL never reaches the
+ * network.
  */
-export function archiveRefs(
-  texts: Texts | null,
-  now?: number,
-): { urls: Map<string, ArchiveRef>; notes: Map<string, Set<string>> } {
+export function archiveRefs(texts: Texts | null, now?: number): Map<string, ArchiveRef> {
   const urls = new Map<string, ArchiveRef>();
-  const notes = new Map<string, Set<string>>();
   for (const [p, body] of issuerTexts(texts)) {
     for (const b of extracts(body).blocks) {
       if (now !== undefined && blockProblems(b, now).length > 0) continue;
-      const block = b.title;
-      const add = (u: string) => {
-        if (urls.has(u)) return;
+      for (const { url: u } of b.archives) {
+        if (urls.has(u)) continue;
         const w = ARCHIVE.exec(u);
         const t = ARCHIVE_TODAY.exec(u);
-        if (w)
-          urls.set(u, {
-            host: "wayback",
-            file: p,
-            ts: w[1] ?? "",
-            original: w[2] ?? "",
-            block,
-          });
-        else if (t)
-          urls.set(u, {
-            host: "today",
-            file: p,
-            ts: t[1] ?? "",
-            original: t[2] ?? "",
-            block,
-          });
-        else if (GHOSTARCHIVE.test(u)) urls.set(u, { host: "ghost", file: p, ts: "", original: "", block });
-      };
-      for (const u of b.fields.get("Archive URL") ?? []) {
-        const a = ARCHIVE.exec(u);
-        if (!urls.has(u))
-          urls.set(u, {
-            host: "wayback",
-            file: p,
-            ts: a?.[1] ?? "",
-            original: a?.[2] ?? "",
-            block,
-          });
+        if (w) urls.set(u, { host: "wayback", file: p, ts: w[1] ?? "", original: w[2] ?? "", block: b.title });
+        else if (t) urls.set(u, { host: "today", file: p, ts: t[1] ?? "", original: t[2] ?? "", block: b.title });
+        else if (GHOSTARCHIVE.test(u)) urls.set(u, { host: "ghost", file: p, ts: "", original: "", block: b.title });
       }
-      // Archive URL 2: only archive.today URLs are fetched; a dated "attempted" record has nothing to HEAD.
-      for (const u of b.fields.get("Archive URL 2") ?? []) if (ARCHIVE_TODAY.test(u)) add(u);
-      // Archive URL 3: only Ghostarchive URLs; an attempt record has nothing to HEAD.
-      for (const u of b.fields.get("Archive URL 3") ?? []) if (GHOSTARCHIVE.test(u)) add(u);
-      // A Re-archive note's URL (the new capture) is verified like any new archive URL (its form is L8 offline).
-      const set = notes.get(blockKey(p, block)) ?? new Set<string>();
-      for (const n of b.rearchive)
-        if (WAYBACK_SNAPSHOT.test(n.url) || ARCHIVE_TODAY.test(n.url) || GHOSTARCHIVE.test(n.url)) {
-          set.add(n.url);
-          add(n.url);
-        }
-      if (set.size > 0) notes.set(blockKey(p, block), set);
     }
   }
-  return { urls, notes };
+  return urls;
 }
 
 /** One link as written in an extract, for `bun run audit` (which re-checks every one of them, locally). */
@@ -1063,62 +970,23 @@ export interface ExtractLink {
   readonly file: string;
   readonly quarter: string | null;
   readonly extract: string;
-  readonly field: "Original URL" | "Archive URL" | "Archive URL 2" | "Archive URL 3";
+  /** "Original URL", "Archive URL", "Archive URL 2", ... */
+  readonly field: string;
   readonly url: string;
 }
-/** Every Original URL, Archive URL, Archive URL 2 and Archive URL 3 in the issuer files, in file and extract order; attempts skipped. */
+/** Every Original URL and Archive URL in the issuer files, in file and extract order. */
 export function extractLinks(fs: Files): ExtractLink[] {
   const out: ExtractLink[] = [];
   for (const [file, body] of issuerTexts(decodeAll(fs)))
-    for (const b of extracts(body).blocks)
-      for (const field of ["Original URL", "Archive URL", "Archive URL 2", "Archive URL 3"] as const)
-        for (const url of b.fields.get(field) ?? [])
-          if (/^https?:\/\/\S+$/.test(url))
-            out.push({
-              file,
-              quarter: b.quarter,
-              extract: b.title,
-              field,
-              url,
-            });
+    for (const b of extracts(body).blocks) {
+      const links = [
+        ...(b.fields.get("Original URL") ?? []).map((url) => ({ field: "Original URL", url })),
+        ...b.archives.map((a) => ({ field: a.label, url: a.url })),
+      ];
+      for (const { field, url } of links)
+        if (/^https?:\/\/\S+$/.test(url)) out.push({ file, quarter: b.quarter, extract: b.title, field, url });
+    }
   return out;
-}
-
-// ---------- L8 (offline) ----------
-
-/**
- * L8 in lint is offline: each `- Re-archive: <new archive URL>` note sits in an extract and names the new capture, a
- * Wayback snapshot, an archive.today or a Ghostarchive capture URL, not one of that extract's own archive URLs (the
- * dead one). Whether a new archive URL resolves is `bun run verify` (lib/verify.ts), run locally; lint and CI never
- * contact an archive.
- */
-function rearchiveNotes(ctx: Ctx, emit: Emit) {
-  for (const [p, body] of issuerTexts(ctx.text)) {
-    const { blocks, strayNotes } = extracts(body);
-    for (const line of strayNotes)
-      emit(
-        "L8",
-        p,
-        `line ${line}: Re-archive note is outside any extract (### block); put it in the extract whose snapshot died`,
-      );
-    for (const b of blocks)
-      for (const { url: u, line } of b.rearchive) {
-        const own = ["Archive URL", "Archive URL 2", "Archive URL 3"] as const;
-        if (u === "") emit("L8", p, `line ${line}: Re-archive note names no URL`);
-        else if (!WAYBACK_SNAPSHOT.test(u) && !ARCHIVE_TODAY.test(u) && !GHOSTARCHIVE.test(u))
-          emit(
-            "L8",
-            p,
-            `line ${line}: Re-archive note ${show(u)} is not a Wayback snapshot, archive.today or Ghostarchive capture URL`,
-          );
-        else if (own.some((f) => (b.fields.get(f) ?? []).includes(u)))
-          emit(
-            "L8",
-            p,
-            `line ${line}: Re-archive note ${show(u)} names this extract's own archive URL; it names the new capture (- Re-archive: <new archive URL>)`,
-          );
-      }
-  }
 }
 
 // ---------- L9 ----------
@@ -1984,9 +1852,11 @@ function catalog(ctx: Ctx, emit: Emit) {
     if (typeof s.id !== "string" || !/^[a-z][a-z0-9_]*$/.test(s.id)) e(`series[${i}].id must be snake_case`);
     if (ids.has(s.id)) e(`series[${i}] has duplicate id ${show(s.id)}`);
     ids.add(s.id);
-    for (const k of ["path", "methodology"]) {
-      if (typeof s[k] !== "string" || !ctx.files.has(s[k])) e(`series[${i}].${k} ${show(s[k])} does not exist`);
-    }
+    // Whether a CSV path exists is L19; here only its form.
+    if (typeof s.path !== "string" || !s.path.endsWith(".csv"))
+      e(`series[${i}].path ${show(s.path)} must be a repo path to a .csv file`);
+    if (typeof s.methodology !== "string" || !ctx.files.has(s.methodology))
+      e(`series[${i}].methodology ${show(s.methodology)} does not exist`);
     if (s.unit !== "USD") e(`series[${i}].unit must be "USD"`);
     if (s.frequency !== "quarterly") e(`series[${i}].frequency must be "quarterly"`);
     if (s.last_updated !== null && !(typeof s.last_updated === "string" && isIsoDate(s.last_updated)))
@@ -1998,6 +1868,36 @@ function catalog(ctx: Ctx, emit: Emit) {
     if ("baskets" in s) for (const m of basketsProblems(s.baskets)) e(`series[${i}].${m}`);
     if ("issuers" in s) for (const m of issuersProblems(s.issuers, seriesBaskets(s))) e(`series[${i}].${m}`);
   }
+}
+
+// ---------- L18, L19 ----------
+
+/** Each catalog series' path (strings only; L11 reports the rest), from catalog.json text, leniently. */
+const catalogPaths = (t: string | undefined): string[] =>
+  seriesList(parseJson(t)).flatMap((s) => (typeof s.path === "string" ? [s.path] : []));
+
+/**
+ * L18: every CSV in the repo (each tracked *.csv, wherever it sits) is a catalog.json series path. L19: every
+ * catalog.json series path is a file in the repo. Skipped when catalog.json is missing, not JSON or has no series
+ * array (L11 reports each). No CSV is exempt: a fixture or scratch CSV committed to the repo is listed or removed.
+ */
+function catalogCsvs(ctx: Ctx, emit: Emit) {
+  const F = "catalog.json";
+  const t = ctx.text.get(F);
+  const j = parseJson(t);
+  if (t === undefined || typeof j !== "object" || j === null || !Array.isArray((j as { series?: unknown }).series))
+    return;
+  const listed = catalogPaths(t);
+  for (const p of [...ctx.files.keys()].filter((x) => x.endsWith(".csv")).sort())
+    if (!listed.includes(p))
+      emit(
+        "L18",
+        p,
+        `is a CSV in the repo but no catalog.json series lists it: add a series entry with "path": "${p}"`,
+      );
+  for (const p of listed)
+    if (!ctx.files.has(p))
+      emit("L19", F, `lists ${show(p)}, which is not a file in the repo: fix the path or drop the entry`);
 }
 
 function basketsProblems(v: unknown): string[] {
@@ -2136,14 +2036,13 @@ function placement(ctx: Ctx, emit: Emit) {
       );
     else if (p === ROOT_CSV) emit("L12", p, `the CSV lives at ${CSV}`);
     else if (p.startsWith(EVIDENCE_ROOT)) {
-      if (p === CSV || p === QUARTER_LIST || p === ARCHIVE_LEDGER || p === COMPONENTS_CSV || QUARTER_FILE.test(p))
-        continue;
+      if (p === CSV || p === QUARTER_LIST || p === COMPONENTS_CSV || QUARTER_FILE.test(p)) continue;
       const iss = (extractOf(p) ?? folderReadmeOf(p) ?? issuerCsvOf(p))?.issuer; // upper-case issuer ids; FX in its own folder
       if (iss === undefined)
         emit(
           "L12",
           p,
-          `${EVIDENCE_ROOT} holds only the CSV ${CSV}, the components CSVs ${COMPONENTS_CSV} and ${ISSUER_CSV_TEXT}, the archive-link ledger ${ARCHIVE_LEDGER}, the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX rate tables ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
+          `${EVIDENCE_ROOT} holds only the CSV ${CSV}, the components CSVs ${COMPONENTS_CSV} and ${ISSUER_CSV_TEXT}, the quarter list ${QUARTER_LIST}, quarters ${QUARTER_TEXT}, extracts ${ISSUER_TEXT} (<ISS> an upper-case issuer id), FX rate tables ${FX_TEXT} and the folder READMEs ${FOLDER_README_TEXT} and ${folderReadmePath(FX_ID)}`,
         );
       else if (iss !== FX_ID && basket.size > 0 && !basket.has(iss))
         emit(
@@ -2309,6 +2208,14 @@ export const NARRATIVE = [
   /\bPREREAD\b/,
   /\barchive log\b/i,
   /moved from the [^.;)]*quarter file/i,
+  // Archiving history: which archive was tried, failed or blocked. The evidence cites the live links only.
+  /\bArchive attempt\b/i,
+  /\battempted \d{4}-\d{2}-\d{2}/i,
+  /\bArchiving (?:error|note)\b/i,
+  /\bCAPTCHA\b/i,
+  /\bresubmi(?:t|ssion)/i,
+  /\bRe-archive\b/i,
+  /\bLink audit \d{4}-/i,
 ];
 /** One pass over a line: any NARRATIVE pattern (most lines match none). */
 const ANY_NARRATIVE = new RegExp(NARRATIVE.map((r) => `(?:${r.source})`).join("|"), "i");
@@ -2328,7 +2235,7 @@ function evidenceWording(ctx: Ctx, emit: Emit) {
         emit(
           "L15",
           p,
-          `line ${l.line}: "${hit}" is process narrative (team, PR, review or migration history); evidence states the fact for a cold reader`,
+          `line ${l.line}: "${hit}" is process narrative (team, PR, review, migration or archiving history); evidence states the fact for a cold reader`,
         );
     }
   }
@@ -2349,7 +2256,7 @@ function evidenceWording(ctx: Ctx, emit: Emit) {
       for (const iss of basket) {
         if (!new RegExp(`\\b${iss}\\b`, "i").test(l.text)) continue;
         const ext = extracts(ctx.text.get(extractPath(iss, q.slice(0, 4))) ?? "").blocks;
-        if (ext.some((b) => b.quarter === q && b.notes.some((n) => n.kind === "Rejected source")))
+        if (ext.some((b) => b.quarter === q && b.notes.length > 0))
           emit(
             "L15",
             p,
@@ -2364,12 +2271,10 @@ function evidenceWording(ctx: Ctx, emit: Emit) {
 
 /**
  * The `- <Label>:` lines an extract may hold, exactly: the template's fields and the methodology's record lines
- * (Capture check (<archive>; opened and checked for the figure it backs), Archive attempt <date>, Link audit <date>,
- * Rejected source, Re-archive, Note <date>). attemptProblem checks the Archive attempt and Link audit forms;
- * DATED_NOTE checks the Note form.
+ * (Capture check, Rejected source, Note <date>). captureProblem checks the Capture check form; DATED_NOTE the Note form.
  */
 const LINE_LABEL =
-  /^(?:Retrieved|Original URL|Archive URL(?: [23])?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Notes|Rejected source|Re-archive|Capture check \((?:archive\.today|Ghostarchive|Wayback); opened and checked for the figure it backs\)|(?:Archive attempt|Link audit|Note) \d{4}-\d{2}-\d{2})$/;
+  /^(?:Retrieved|Original URL|Archive URL(?: [1-9]\d*)?|Series|Reference period|As of|Convention|Status|Published unit|Value \(published unit\)|Multiplier|Value \(local currency units\)|Components|Source page|Adopted|Notes|Rejected source|Capture check|Note \d{4}-\d{2}-\d{2})$/;
 /** `- Note <YYYY-MM-DD>: <text>.`: a real date, then non-empty text ending with a period. */
 const DATED_NOTE = /^- Note (\d{4}-\d{2}-\d{2}): \S.*\.$/;
 /** A Notes line that converts at a rate other than the quarter's FX table row. */
@@ -2417,7 +2322,7 @@ function extractLines(ctx: Ctx, emit: Emit) {
         emit(
           "L7",
           p,
-          `extract "${block.title}" line ${l.line}: "- ${(lab[1] as string).trim()}:" is not a defined line type (the template's fields, Capture check (<archive>; opened and checked for the figure it backs), Archive attempt <date>, Link audit <date>, Rejected source, Re-archive, Note <date>)`,
+          `extract "${block.title}" line ${l.line}: "- ${(lab[1] as string).trim()}:" is not a defined line type (the template's fields, Archive URL <n>, Capture check, Rejected source, Note <date>)`,
         );
       else if (lab && /^Note /.test(lab[1] as string)) {
         const n = DATED_NOTE.exec(l.text);
