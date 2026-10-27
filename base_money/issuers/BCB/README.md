@@ -5,7 +5,7 @@
 - **Currency:** Brazilian real, BRL
 - **What it is:** Brazil's central bank; in its own words, "O Banco Central do Brasil tem o objetivo fundamental de assegurar a estabilidade de preços".
 - **Official website:** [bcb.gov.br, English](https://www.bcb.gov.br/en)
-- **Data pages used here:** [SGS time-series pages](https://www3.bcb.gov.br/sgspub/) (series 1788) · [SGS JSON API, series 1788](https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json) · [monetary and credit statistics tables, September 2026](https://www.bcb.gov.br/content/estatisticas/hist_estatisticasmonetariascredito/202609_Tabelas_de_estatisticas_monetarias_e_de_credito.xlsx) (Table 28; no archive could capture this workbook)
+- **Data pages used here:** [SGS time-series pages](https://www3.bcb.gov.br/sgspub/) and the [SGS JSON API](https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json) (series 1788); each figure's exact query and its archived copies are in the year files ([2025](2025.md), [2026](2026.md))
 
 ## Quarters
 
