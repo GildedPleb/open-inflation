@@ -1,4 +1,13 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2025-03-31,2025Q1,PBOC,2025-03-31,end-of-month stock,as published,CNY,37681773000000,0.13781318045257848461,5193044982222,base_money/issuers/PBOC/2025.md#pboc-reserve-money-2025-03-file-2026011515582620291
+2025-03-31,2025Q1,FED,2025-03,monthly average,as published,USD,5775200000000,1,5775200000000,base_money/issuers/FED/2025.md#fed-h6-monetary-base-2025-03-release-2025-04-22
+2025-03-31,2025Q1,ECB,2025-03-28,weekly stock,as published,EUR,4548983000000,1.083072,4926876115776,base_money/issuers/ECB/2025.md#ecb-liability-items-1--21--22-statement-2025-03-28-published-2025-04-01
+2025-03-31,2025Q1,BOJ,2025-03-31,end-of-month stock,as published,JPY,653764200000000,0.00667026861171699384,4360782822724,base_money/issuers/BOJ/2025.md#boj-monetary-base-end-of-period-2025-03-mblongxlsx-retrieved-2026-10-26
+2025-03-31,2025Q1,BOE,2025-03,monthly average,as published,GBP,795345000000,1.291963,1027556312235,base_money/issuers/BOE/2025.md#boe-lpmavaa--lpmbl22-2025-03-retrieved-2026-10-27
+2025-03-31,2025Q1,SNB,2025-03,monthly average,as published,CHF,511778000000,1.13256183221322968127,579620229366,base_money/issuers/SNB/2025.md#snb-snbmoba-n2-monetary-base-2025-03-retrieved-2026-10-27
+2025-03-31,2025Q1,RBI,2025-03-31,stock on 31 March (fiscal year-end; quarter-end count date per the RBI rule),final,INR,48292430000000,0.01170686022008897214,565352727698,base_money/issuers/RBI/2025.md#rbi-reserve-money-2025-03-31-wss-2025-07-04
+2025-03-31,2025Q1,CBR,2025-04-01,stock at the beginning of the reporting date,as published,RUB,26937300000000,0.01179806356070357714,317807977554,base_money/issuers/CBR/2025.md#cbr-monetary-base-broad-definition-mar-2025-row-of-01042025-retrieved-2026-10-26
+2025-03-31,2025Q1,BCB,2025-03,end-of-month stock,as published,BRL,443277392000,0.17372858903720484599,77009955864,base_money/issuers/BCB/2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2025-sgs-values-page-retrieved-2026-10-27
 2025-06-30,2025Q2,PBOC,2025-06-30,end-of-month stock,as published,CNY,37915942000000,0.13960436124024514526,5293230863732,base_money/issuers/PBOC/2025.md#pboc-reserve-money-2025-06-file-2026011515582620291
 2025-06-30,2025Q2,FED,2025-06,monthly average,as published,USD,5748600000000,1,5748600000000,base_money/issuers/FED/2025.md#fed-h6-monetary-base-2025-06-release-2025-07-22
 2025-06-30,2025Q2,ECB,2025-06-27,weekly stock,as published,EUR,4430135000000,1.171921,5191768239335,base_money/issuers/ECB/2025.md#ecb-liability-items-1--21--22-statement-2025-06-27-published-2025-07-01
