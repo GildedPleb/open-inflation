@@ -3,8 +3,23 @@ import { join } from "node:path";
 import { BASE_PREFIXES } from "./paths.ts";
 import type { Files, Snapshot } from "./types.ts";
 
+/**
+ * The env every git child gets: this process's env with each inherited GIT_* variable removed. A commit hook runs with
+ * git's own (GIT_INDEX_FILE for `git commit -a` or `git commit <path>`; GIT_DIR, GIT_WORK_TREE, GIT_PREFIX), and
+ * those would point a `git -C <dir>` at the hook's repo or index instead of <dir>.
+ */
+export const gitEnv = (env: Readonly<Record<string, string | undefined>> = process.env): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) if (v !== undefined && !k.startsWith("GIT_")) out[k] = v;
+  return out;
+};
+
+/** git -C <dir> <args>, in the clean git env. */
+const spawnGit = (dir: string, args: readonly string[], input?: Uint8Array) =>
+  Bun.spawnSync(["git", "-C", dir, ...args], input ? { stdin: input, env: gitEnv() } : { env: gitEnv() });
+
 function git(dir: string, args: string[], input?: Uint8Array): Uint8Array {
-  const r = Bun.spawnSync(["git", "-C", dir, ...args], input ? { stdin: input } : {});
+  const r = spawnGit(dir, args, input);
   if (r.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${new TextDecoder().decode(r.stderr).trim()}`);
   return r.stdout;
 }
@@ -23,14 +38,14 @@ export class NotGitCheckout extends Error {
 
 /** merge-base(a, b) as a full sha, or null when either ref is unknown or they share no history. */
 export function mergeBase(dir: string, a: string, b: string): string | null {
-  const r = Bun.spawnSync(["git", "-C", dir, "merge-base", a, b]);
+  const r = spawnGit(dir, ["merge-base", a, b]);
   const sha = new TextDecoder().decode(r.stdout).trim();
   return r.exitCode === 0 && sha !== "" ? sha : null;
 }
 
 /** A ref's commit sha, or null when it does not name a commit. */
 export function revParse(dir: string, ref: string): string | null {
-  const r = Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  const r = spawnGit(dir, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
   const sha = new TextDecoder().decode(r.stdout).trim();
   return r.exitCode === 0 && sha !== "" ? sha : null;
 }
@@ -38,7 +53,7 @@ export function revParse(dir: string, ref: string): string | null {
 /** True inside a git work tree. False when git is missing too: either way lint cannot list the files. */
 export function isGitCheckout(dir: string): boolean {
   try {
-    const r = Bun.spawnSync(["git", "-C", dir, "rev-parse", "--is-inside-work-tree"]);
+    const r = spawnGit(dir, ["rev-parse", "--is-inside-work-tree"]);
     return r.exitCode === 0 && new TextDecoder().decode(r.stdout).trim() === "true";
   } catch {
     return false;
@@ -67,7 +82,7 @@ export function loadSnapshot(dir: string, base: string | null): Snapshot {
 }
 
 function readTree(dir: string, ref: string): Files {
-  const r = Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  const r = spawnGit(dir, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
   if (r.exitCode !== 0) throw new UnknownBase(ref);
   const sha = new TextDecoder().decode(r.stdout).trim();
   const paths = zsplit(git(dir, ["ls-tree", "-r", "-z", "--name-only", sha, "--", ...BASE_PREFIXES]));

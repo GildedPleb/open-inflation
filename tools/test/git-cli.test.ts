@@ -1,11 +1,20 @@
 import "./no-network.ts";
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { CANARIES } from "../scripts/lib/archive.ts";
 import { lint } from "../scripts/lib/checks.ts";
-import { loadSnapshot, NotGitCheckout } from "../scripts/lib/git.ts";
+import { gitEnv, loadSnapshot, NotGitCheckout } from "../scripts/lib/git.ts";
 import { type LintGit, lintMain } from "../scripts/lib/lint-main.ts";
 import { DEFAULT_PACE, envName } from "../scripts/lib/pacer.ts";
 import { REPO_ROOT } from "../scripts/lib/root.ts";
@@ -40,15 +49,17 @@ function repo(files: Record<string, string>): string {
   return dir;
 }
 /**
- * The test process's env without what selects lint's base (LINT_BASE; on a GitHub push GITHUB_EVENT_NAME and
- * GITHUB_REF): CI sets them for the whole job, and a spawned lint must not pick them up.
+ * The test process's git env (no GIT_*, see gitEnv) without what selects lint's base (LINT_BASE; on a GitHub push
+ * GITHUB_EVENT_NAME and GITHUB_REF): CI sets them for the whole job, and a spawned lint must not pick them up.
  */
 const childEnv = () => {
-  const { LINT_BASE: _b, GITHUB_EVENT_NAME: _e, GITHUB_REF: _r, ...rest } = process.env;
+  const { LINT_BASE: _b, GITHUB_EVENT_NAME: _e, GITHUB_REF: _r, ...rest } = gitEnv();
   return rest;
 };
-const git = (dir: string, ...args: string[]) => {
-  const r = Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", dir, ...args]);
+const git = (dir: string, ...args: string[]) => gitIn(gitEnv(), dir, ...args);
+/** The test git helper in a given env (gitEnv plus, say, a private GIT_INDEX_FILE). */
+const gitIn = (env: Record<string, string>, dir: string, ...args: string[]) => {
+  const r = Bun.spawnSync(["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", dir, ...args], { env });
   if (r.exitCode !== 0) throw new Error(dec.decode(r.stderr));
   return dec.decode(r.stdout).trim();
 };
@@ -57,8 +68,9 @@ class UnresolvedConflicts extends Error {}
 /**
  * A copy of `src`'s tracked tree as its own git checkout: every tracked file as it stands in the working tree
  * (committed, staged or not), never an untracked one. `git stash create` writes that tree as a commit object without
- * touching the working tree, the index, the stash list or a merge in progress (MERGE_HEAD); it prints nothing when
- * the tree is clean, and then the copy is HEAD. The copy is a real `git clone --shared` (it borrows src's objects,
+ * touching the working tree, the stash list or a merge in progress (MERGE_HEAD); it prints nothing when the tree is
+ * clean, and then the copy is HEAD. It does lock and refresh the index, so it runs on a private copy of src's index:
+ * src's own is never written, and a commit hook (`git commit` holds index.lock) does not make it fail. The copy is a real `git clone --shared` (it borrows src's objects,
  * the stash commit included, read-only instead of re-hashing every file, the slow part of archive + add + commit),
  * with the origin remote dropped so nothing of src's branches leaks in, checked out at that commit.
  * Tests that lint "this repository" use it, never the live working tree, so untracked evidence cannot change their
@@ -72,10 +84,16 @@ const trackedTree = (src: string): string => {
     const paths = [...new Set(unmerged.split("\n").map((l) => l.split("\t")[1]))].join(", ");
     throw new UnresolvedConflicts(`${src} has unresolved merge conflicts (${paths}): resolve them, then run the tests`);
   }
-  const at = git(src, "stash", "create") || git(src, "rev-parse", "HEAD");
+  const index = join(mkdtempSync(join(tmpdir(), "obm-index-")), "index");
+  dirs.push(dirname(index));
+  const live = resolve(src, git(src, "rev-parse", "--git-path", "index"));
+  if (existsSync(live)) copyFileSync(live, index);
+  const at = gitIn({ ...gitEnv(), GIT_INDEX_FILE: index }, src, "stash", "create") || git(src, "rev-parse", "HEAD");
   const dir = mkdtempSync(join(tmpdir(), "obm-tree-"));
   dirs.push(dir);
-  const r = Bun.spawnSync(["git", "clone", "-q", "--shared", "--no-checkout", "--template=", src, dir]);
+  const r = Bun.spawnSync(["git", "clone", "-q", "--shared", "--no-checkout", "--template=", src, dir], {
+    env: gitEnv(),
+  });
   if (r.exitCode !== 0) throw new Error(dec.decode(r.stderr));
   git(dir, "remote", "remove", "origin");
   git(dir, "checkout", "-q", "--detach", at);
@@ -193,6 +211,22 @@ describe("git snapshot loader", () => {
     expect(git(dir, "status", "--porcelain")).toBe(status);
     expect(git(dir, "stash", "list")).toBe("");
   });
+  test("the tracked tree while a commit holds src's index.lock (a pre-commit hook): built, and src's index untouched", () => {
+    const dir = repo({ "a.txt": "a\n" });
+    git(dir, "init", "-q", "--template=");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "base");
+    writeFileSync(join(dir, "a.txt"), "changed\n");
+    const lock = join(dir, ".git", "index.lock");
+    writeFileSync(lock, "");
+    const index = readFileSync(join(dir, ".git", "index"));
+    try {
+      expect(text(loadSnapshot(trackedTree(dir), "HEAD").files, "a.txt")).toBe("changed\n");
+      expect(readFileSync(join(dir, ".git", "index"))).toEqual(index);
+    } finally {
+      unlinkSync(lock);
+    }
+  });
   test("the tracked tree mid-merge: MERGE_HEAD is left alone; an unresolved conflict is a clear error", () => {
     const dir = repo({ "a.txt": "a\n" });
     git(dir, "init", "-q", "--template=", "-b", "main");
@@ -205,7 +239,9 @@ describe("git snapshot loader", () => {
     writeFileSync(join(dir, "a.txt"), "main\n");
     git(dir, "commit", "-qam", "main");
     expect(
-      Bun.spawnSync(["git", "-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "side"]).exitCode,
+      Bun.spawnSync(["git", "-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "side"], {
+        env: gitEnv(),
+      }).exitCode,
     ).toBe(1);
     expect(() => trackedTree(dir)).toThrow(UnresolvedConflicts);
     expect(() => trackedTree(dir)).toThrow(/unresolved merge conflicts \(a\.txt\): resolve them/);
@@ -214,6 +250,36 @@ describe("git snapshot loader", () => {
     const mergeHead = git(dir, "rev-parse", "MERGE_HEAD");
     expect(text(loadSnapshot(trackedTree(dir), "HEAD").files, "a.txt")).toBe("resolved\n");
     expect(git(dir, "rev-parse", "MERGE_HEAD")).toBe(mergeHead);
+  });
+  test("a hook's git env (GIT_DIR, GIT_INDEX_FILE, GIT_WORK_TREE) never redirects git away from the repo it is handed", () => {
+    // `git commit -a` and `git commit <path>` run the pre-commit hook with GIT_INDEX_FILE set to a temporary index,
+    // and git may export GIT_DIR, GIT_WORK_TREE and GIT_PREFIX too. Bun.spawn inherits the process's own environ (not
+    // later edits to process.env), so a child bun started with that env is what the hook's `bun test` looks like.
+    const dir = repo({ "a.txt": "a\n", "b.txt": "b\n" });
+    git(dir, "init", "-q", "--template=");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "base");
+    writeFileSync(join(dir, "a.txt"), "changed\n");
+    const bogus = mkdtempSync(join(tmpdir(), "obm-bogus-"));
+    dirs.push(bogus);
+    const probe = [
+      `import { loadSnapshot } from ${JSON.stringify(join(ROOT, "tools/scripts/lib/git.ts"))};`,
+      `import { realGit } from ${JSON.stringify(join(ROOT, "tools/scripts/lib/lint-main.ts"))};`,
+      "const dir = process.argv.at(-1) ?? '';",
+      "const s = loadSnapshot(dir, 'HEAD');",
+      "console.log(JSON.stringify([[...s.files.keys()].sort(), [...(s.base?.keys() ?? [])], realGit.hasHead(dir)]));",
+    ].join("\n");
+    const r = Bun.spawnSync(["bun", "-e", probe, dir], {
+      env: {
+        ...process.env,
+        GIT_DIR: join(bogus, "no-such.git"),
+        GIT_INDEX_FILE: join(bogus, "index"),
+        GIT_WORK_TREE: bogus,
+        GIT_PREFIX: "sub/",
+      },
+    });
+    expect(dec.decode(r.stderr)).toBe("");
+    expect(JSON.parse(dec.decode(r.stdout))).toEqual([["a.txt", "b.txt"], [], true]);
   });
   test("this repository's tracked skeleton lints clean", async () => {
     expect(await skeletonFindings()).toEqual([]);
@@ -241,7 +307,9 @@ describe("git snapshot loader", () => {
     // The old copy (HEAD only, what this suite linted before) reproduces the symptom.
     const head = mkdtempSync(join(tmpdir(), "obm-head-"));
     dirs.push(head);
-    expect(Bun.spawnSync(["git", "clone", "-q", "--shared", "--template=", dir, head]).exitCode).toBe(0);
+    expect(
+      Bun.spawnSync(["git", "clone", "-q", "--shared", "--template=", dir, head], { env: gitEnv() }).exitCode,
+    ).toBe(0);
     expect(await found(head)).toContainEqual(["L17", "base_money/README.md"]);
     // The live working tree would let the untracked file in.
     expect(loadSnapshot(dir, null).files.has(junk)).toBe(true);
@@ -384,8 +452,15 @@ describe("no network in lint or CI", () => {
 });
 
 describe("CLI", () => {
-  test("a spawned process never inherits CI's base selectors (LINT_BASE, GITHUB_EVENT_NAME, GITHUB_REF)", () => {
-    const keys = ["LINT_BASE", "GITHUB_EVENT_NAME", "GITHUB_REF"] as const;
+  test("a spawned process never inherits CI's base selectors or a hook's GIT_* (GIT_DIR, GIT_INDEX_FILE, ...)", () => {
+    const keys = [
+      "LINT_BASE",
+      "GITHUB_EVENT_NAME",
+      "GITHUB_REF",
+      "GIT_DIR",
+      "GIT_INDEX_FILE",
+      "GIT_WORK_TREE",
+    ] as const;
     const saved = keys.map((k) => process.env[k]);
     try {
       for (const k of keys) process.env[k] = "set";
