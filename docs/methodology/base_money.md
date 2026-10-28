@@ -259,8 +259,9 @@ FX is supporting data: it only translates each central bank's figure into US dol
 
 ## Update cadence
 
-- Quarterly. A quarter is run once every basket issuer's figure for it is available under [Status and vintages](#status-and-vintages). An issuer that is missing, blocked or (RBI) not yet final at run time is excluded, with its reason, provided the [coverage floor](#coverage) still holds.
-- In practice the RBI is last for Q1: its final figure for 31 March is available only after its balance sheet (by end-May). The other issuers are normally published within about 4 weeks of quarter end.
+- Quarterly, on a fixed date: the first weekday on or after the 5th of February, May, August and November runs the quarter that ended about five weeks earlier (Q4, Q1, Q2 and Q3). By then the issuers normally have published (most within about 4 weeks of quarter end). An issuer whose figure is missing, blocked or (RBI) not yet final at run time is excluded, with its reason, provided the [coverage floor](#coverage) still holds.
+- The RBI is the known late one for Q1: its final figure for 31 March is available only after its balance sheet (by end-May). So Q1 is published in May without the RBI, and the first weekday on or after 5 June adds it as a [revision](#revisions).
+- Every run first re-reads the earlier provisional rows (see [Revisions](#revisions)).
 - A run does, in order: fetch each source, archive each URL read in the [save order](#links) until each figure has two live links, append the extracts, run `bun run link-check --quarter <YYYYQn> --write` (it confirms every link shows the number and dates each Capture check), write the quarter's FX table rows, write the roll-up, append the CSV row, run `bun run readme`, run `bun test` and `bun run lint`, then commit.
 - Back data is ingested the same way, one quarter at a time, newest first, using the vintage that is live (or archived) at the time.
 
