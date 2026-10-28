@@ -23,7 +23,7 @@ Each extract quotes the bank's figure word for word, with `- Retrieved:`, `- Ori
 
 ## FX rate tables
 
-`base_money/FX/<YYYY>.md` is a rate table, not an extract file: supporting data, regenerable and not archived. Under each quarter heading it has one row per non-USD currency of the quarter's machine block, anchored `fx-<yyyyqn>-<ccy>`, giving the market close on the linked issuer extract's count date (its As of), the date rule, the pair, the rate and one source link, per the [FX rule](methodology/base_money.md#fx-rule). The machine block's `fx_rate` is derived from that row (lint L9).
+`base_money/FX/<YYYY>.md` is a rate table, not an extract file: supporting data, regenerable, and not archived except for rates older than 730 days, whose by-date link is saved to the Wayback Machine and cited in the Cross-check cell (see the [FX rule](methodology/base_money.md#fx-rule)). Under each quarter heading it has one row per non-USD currency of the quarter's machine block, anchored `fx-<yyyyqn>-<ccy>`, giving the market close on the linked issuer extract's count date (its As of), the date rule, the pair, the rate and one source link, per the [FX rule](methodology/base_money.md#fx-rule). The machine block's `fx_rate` is derived from that row (lint L9).
 
 ## Audit trail
 
