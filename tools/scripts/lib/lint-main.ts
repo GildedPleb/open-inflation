@@ -19,8 +19,7 @@ export interface LintGit {
 }
 
 export const realGit: LintGit = {
-  hasHead: (dir) =>
-    isGitCheckout(dir) && Bun.spawnSync(["git", "-C", dir, "rev-parse", "--verify", "--quiet", "HEAD"]).exitCode === 0,
+  hasHead: (dir) => isGitCheckout(dir) && revParse(dir, "HEAD") !== null,
   mergeBase,
   revParse,
   loadSnapshot,
