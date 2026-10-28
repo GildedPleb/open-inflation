@@ -10,13 +10,14 @@ The series itself is [base_money/base_money.csv](base_money.csv) (`date,value,ev
 | :------ | :--------- | ----------: | --------: | ----------------: |
 | [2026&nbsp;Q2](quarters/2026Q2.md) | 2026-06-30 | $22.13T | -5.5%ᵖ | 22,125,479,242,256 |
 | [2026&nbsp;Q1](quarters/2026Q1.md) | 2026-03-31 | $22.45T | -1.6% | 22,449,782,815,379 |
-| [2025&nbsp;Q4](quarters/2025Q4.md) | 2025-12-31 | $22.55T | —¹ | 22,554,451,077,005 |
+| [2025&nbsp;Q4](quarters/2025Q4.md) | 2025-12-31 | $22.55T | +1.6% | 22,554,451,077,005 |
 | [2025&nbsp;Q3](quarters/2025Q3.md) | 2025-09-30 | $22.88T | —¹ | 22,882,534,748,618 |
 | [2025&nbsp;Q2](quarters/2025Q2.md) | 2025-06-30 | $23.42T | —¹ | 23,418,246,247,929 |
 | [2025&nbsp;Q1](quarters/2025Q1.md) | 2025-03-31 | $22.82T | —¹ | 22,823,251,123,439 |
+| [2024&nbsp;Q4](quarters/2024Q4.md) | 2024-12-31 | $22.20T | —¹ | 22,204,278,846,192 |
 
 Total is rounded for easy reading; Exact total is the full figure, to the dollar.
 
-¹ No year-ago quarter yet: 2025 Q4, 2025 Q3, 2025 Q2, 2025 Q1.
+¹ No year-ago quarter yet: 2025 Q3, 2025 Q2, 2025 Q1, 2024 Q4.
 
 ᵖ Uses a provisional bank figure that may be revised: 2026 Q2.
