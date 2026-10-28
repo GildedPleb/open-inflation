@@ -46,8 +46,31 @@ describe("quarterly deadline: the 15th of Feb/May/Aug/Nov", () => {
       "2026Q3",
     ]);
   });
-  test("only the latest passed deadline is checked (an older gap is not chased)", () => {
-    expect(messages("2027-01-20", rows(["2026Q3"]))).toEqual([]);
+  test("a gap below the newest row is not chased", () => {
+    expect(messages("2027-01-20", rows(["2026Q1", "2026Q3"]))).toEqual([]);
+  });
+  test("a missed quarter keeps failing: every quarter after the newest row up to the due one, each with its deadline", () => {
+    expect(messages("2027-02-16", UP_TO_Q2)).toEqual([
+      "2026Q3 base money overdue: deadline 2026-11-15",
+      "2026Q4 base money overdue: deadline 2027-02-15",
+    ]);
+    expect(messages("2027-05-16", UP_TO_Q2)).toEqual([
+      "2026Q3 base money overdue: deadline 2026-11-15",
+      "2026Q4 base money overdue: deadline 2027-02-15",
+      "2027Q1 base money overdue: deadline 2027-05-15",
+    ]);
+  });
+  test("a missed quarter clears once a quarter at or after the due one lands", () => {
+    expect(messages("2027-02-16", rows(["2026Q2", "2026Q4"]))).toEqual([]);
+    expect(messages("2027-02-16", rows(["2026Q2", "2026Q3"]))).toEqual([
+      "2026Q4 base money overdue: deadline 2027-02-15",
+    ]);
+  });
+  test("a row newer than the due quarter passes", () => {
+    expect(messages("2026-10-28", rows(["2026Q1", "2026Q3"]))).toEqual([]);
+  });
+  test("an empty series names only the due quarter", () => {
+    expect(messages("2027-02-16", rows([]))).toEqual(["2026Q4 base money overdue: deadline 2027-02-15"]);
   });
 });
 
@@ -113,6 +136,13 @@ describe("overdueMain on this checkout's CSVs", () => {
   });
   test("--today overrides today", () => {
     expect(run(["--today", "2026-06-16"]).code).toBe(EXIT.clean);
+  });
+  test("a late quarter exits 1 and names it on stderr", () => {
+    const r = run(["--today", "2030-02-16"]);
+    expect(r.code).toBe(EXIT.findings);
+    expect(r.out).toEqual([]);
+    expect(r.err[0]).toBe("2026Q3 base money overdue: deadline 2026-11-15");
+    expect(r.err.at(-1)).toBe("2029Q4 base money overdue: deadline 2030-02-15");
   });
   test("bad usage exits 2", () => {
     expect(run(["--today", "2026-11-31"])).toEqual({

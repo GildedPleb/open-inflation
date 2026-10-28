@@ -60,25 +60,40 @@ export function isDate(s: string): boolean {
 const deadlinesOf = (y: number): Deadline[] =>
   RUNS.map((r) => ({ quarter: `${y + r.yearOffset}Q${r.quarter}`, deadline: `${y}-${r.month}-${GRACE_DAY}` }));
 
+/** The quarter after `q` (2026Q4 -> 2027Q1). */
+const nextQuarter = (q: string): string => {
+  const y = Number(q.slice(0, 4));
+  const n = Number(q.slice(5));
+  return n === 4 ? `${y + 1}Q1` : `${y}Q${n + 1}`;
+};
+
+/** A quarter's deadline: the 15th of the run month after it (2026Q4 -> 2027-02-15). */
+const deadlineOf = (q: string): Deadline => {
+  const y = Number(q.slice(0, 4));
+  const run = RUNS.find((r) => `Q${r.quarter}` === q.slice(4)) as (typeof RUNS)[number];
+  return { quarter: q, deadline: `${y - run.yearOffset}-${run.month}-${GRACE_DAY}` };
+};
+
 /**
- * Which deadlines have passed with nothing on main. Only the latest passed quarterly deadline is checked (a quarter
- * left out under the coverage floor is a documented gap, so an older missing quarter is not chased), plus, from
- * 16 June to year end, whether that year's Q1 counts the RBI. Dates compare as YYYY-MM-DD strings.
+ * Which deadlines have passed with nothing on main. The quarter due at the latest passed quarterly deadline must be
+ * reached: if the newest base_money.csv quarter is older, every quarter after it up to the due one is overdue, each
+ * with its own deadline, until a quarter at or after the due one lands (an older gap below the newest row is not
+ * chased; a quarter left out under the coverage floor is a documented gap). Plus, from 16 June to year end, whether
+ * that year's Q1 counts the RBI. Dates compare as YYYY-MM-DD strings, quarters as YYYYQn strings.
  */
 export function cadence(today: string, rows: CadenceRows): CadenceResult {
   if (!isDate(today)) throw new Error(`not a date (YYYY-MM-DD): ${today}`);
   const y = Number(today.slice(0, 4));
   const all = [...deadlinesOf(y - 1), ...deadlinesOf(y), ...deadlinesOf(y + 1)];
-  const passed = all.filter((d) => d.deadline < today);
+  const due = all.filter((d) => d.deadline < today).at(-1) as Deadline;
   const next = all.find((d) => d.deadline >= today) as Deadline;
   const overdue: Overdue[] = [];
-  const last = passed.at(-1);
-  if (last && !rows.quarters.has(last.quarter)) {
-    overdue.push({
-      ...last,
-      kind: "quarter",
-      message: `${last.quarter} base money overdue: deadline ${last.deadline}`,
-    });
+  const newest = [...rows.quarters].sort().at(-1);
+  if (newest === undefined || newest < due.quarter) {
+    for (let q = newest === undefined ? due.quarter : nextQuarter(newest); q <= due.quarter; q = nextQuarter(q)) {
+      const d = deadlineOf(q);
+      overdue.push({ ...d, kind: "quarter", message: `${q} base money overdue: deadline ${d.deadline}` });
+    }
   }
   const rbi: Deadline = { quarter: `${y}Q1`, deadline: `${y}-${RBI_MONTH}-${GRACE_DAY}` };
   const counted = rows.components.some((c) => c.quarter === rbi.quarter && c.issuer === LATE_Q1_ISSUER);
