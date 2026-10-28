@@ -44,16 +44,17 @@ US dollars, trillions (T), converted at the market close on each report's count 
 | :------ | ---------: | --: | :------- |
 | 2026 Q2 | $22.13T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
 | 2026 Q1 | $22.45T | -1.6% | [Sources](base_money/quarters/2026Q1.md) |
-| 2025 Q4 | $22.55T | —¹ | [Sources](base_money/quarters/2025Q4.md) |
+| 2025 Q4 | $22.55T | +1.6% | [Sources](base_money/quarters/2025Q4.md) |
 | 2025 Q3 | $22.88T | —¹ | [Sources](base_money/quarters/2025Q3.md) |
 | 2025 Q2 | $23.42T | —¹ | [Sources](base_money/quarters/2025Q2.md) |
 | 2025 Q1 | $22.82T | —¹ | [Sources](base_money/quarters/2025Q1.md) |
+| 2024 Q4 | $22.20T | —¹ | [Sources](base_money/quarters/2024Q4.md) |
 
 <!-- END GENERATED table -->
 
 <!-- BEGIN GENERATED yoy-notes -->
 
-¹ No year-ago quarter yet: 2025 Q4, 2025 Q3, 2025 Q2, 2025 Q1.
+¹ No year-ago quarter yet: 2025 Q3, 2025 Q2, 2025 Q1, 2024 Q4.
 
 ᵖ Uses a provisional bank figure that may be revised: 2026 Q2.
 
