@@ -191,11 +191,21 @@ FX is supporting data: it only translates each central bank's figure into US dol
 - **Columns.** Report count date links the extract it converts and is that extract's As of. Date in report is the date as the report prints it, copied from the extract's quote.
 - **Conversion.** `fx_rate` is USD per one local unit: the rate itself for USD-per-unit pairs (EUR, GBP), or 1 / rate rounded half-to-even to 20 decimal places for units-per-USD pairs. USD is `"1"`.
 - **Links.** Each FX rate needs one live source link (its by-date URL) and one cross-check value written inline in its row. The two-live-links rule for issuer figures does not apply to FX rates (user ruling, 2026-10-28).
-- **Not archived.** FX rates are cited by provider, access site, by-date URL and date, and are not archived.
+- **Not archived.** FX rates read from Yahoo's hourly chart are cited by provider, access site, by-date URL and date, and need not be archived. Older rates, under the amendment below, are archived.
+- **Amendment 2026-10-28: dates older than 730 days.** Yahoo serves hourly bars for the last 730 days only, so older rates use a daily close instead (methodology owner decision within the user's rulings of 2026-10-28):
+  - **Source.** The MarketWatch (Dow Jones) daily close, from Tullett Prebon (TP ICAP) via FactSet. Cited as "Tullett Prebon, via MarketWatch" with the CSV link for that one date: `https://www.marketwatch.com/investing/currency/<pair>/downloaddatapartial?startdate=<MM/DD/YYYY>%2000:00:00&enddate=<MM/DD/YYYY>%2023:59:59&daterange=d30&frequency=p1d&csvdownload=true&downloadpartial=false&newdates=false`, where `<pair>` is `usdcny`, `eurusd`, `usdjpy`, `gbpusd`, `usdchf`, `usdinr`, `usdbrl` or `usdhkd`. The rate is the row's Close as printed. A month average uses one CSV link for the whole month (first to last day).
+  - **Archived.** Each link is saved to the Wayback Machine when it is read, and the capture is cited in the row's Cross-check cell after the cross-check value.
+  - **Cross-check.** The TradingView ICE close (FX_IDC) for the same date, written inline as for every other row.
+  - **Close time.** MarketWatch does not document it. Measured against ICE hourly closes it is about 20:00–22:00 UTC (INR about 00:00 UTC on D+1). Every value is tagged to its trading date D, never to the evening before.
+  - **Measured gap.** Against our 22:00 UTC rates for 2024Q4–2026Q2: median 0.01–0.07% per pair, every published row within 0.25%, and quarter totals within 0.08%.
+  - **Local-market holidays.** If the rate date is a holiday in the currency's home market, MarketWatch can print a stale or offshore value (gaps up to 1.7% were measured on such days). Use the last local business day before it and say so in the row.
+  - **Inside the window.** Rates within 730 days still use Yahoo's hourly chart at 22:00 UTC, as above.
 
 **Why these sources.**
 
-- Central-bank reference rates (Fed H.10, ECB, Bank of Russia): not market prices, fixed at one time of day, so not used.
+- Central-bank reference rates (Fed H.10, ECB, Bank of Russia): not market prices, fixed at one time of day, so not used. The Fed and the Eurosystem are also banks in our basket, so their rates would not be an independent measure.
+- Yahoo Finance daily bars: each value is stamped about one day early (the price near 00:00 UTC at the start of the labelled date), so not used.
+- MarketWatch (Tullett Prebon): a market close with a free by-date CSV link, so it is the source for dates older than Yahoo's 730-day hourly window (amendment 2026-10-28).
 - ICE Data Services direct: the underlying data, but sold only, with no free page by date.
 - Yahoo Finance: serves ICE's data with a free by-date URL anyone can open, so it is the adopted access route.
 - TradingView: also ICE, but no public by-date page, so it is the cross-check.
