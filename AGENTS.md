@@ -96,7 +96,7 @@ bun run link-check --write         # two live links per figure; drops dead archi
 ## Beautify
 
 - gates: done — 2026-10-28 — pre-commit hook (lefthook) runs test/typecheck/check/lint; main is unprotected (user: require `lint`); no secrets scan; budget 5 s stated, suite 1.5 s; overdue stays CI-only
-- hygiene: unstarted
+- hygiene: done — 2026-10-28 — tsconfig gains noImplicitOverride/noImplicitReturns/noFallthroughCasesInSwitch/noUnusedLocals/noUnusedParameters/isolatedModules and drops skipLibCheck (all clean; typecheck 2.1→3.0 s); next: noPropertyAccessFromIndexSignature (240 hits, 177 in checks.ts: give CSV/JSON rows named fields first), exact pins for typescript/@types/bun/@biomejs/biome, Biome→Oxfmt then Oxlint (type-aware waits for TS 7), target/lib es2025 (needs TS 7), readme.ts:256 `as unknown as` tuple
 - deps: unstarted
 - shape: unstarted
 - tests: unstarted
