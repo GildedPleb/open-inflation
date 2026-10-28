@@ -1191,12 +1191,19 @@ describe("L11 catalog.json", () => {
     fails(good({ "catalog.json": catalog([{ ...entry, unit: "EUR" }]) }), ["L11"], /unit/));
   test("the local-currency CSVs (components and the issuer CSVs) are not cataloged as USD", async () => {
     const { series } = (await Bun.file(new URL("../../catalog.json", import.meta.url)).json()) as {
-      series: { id: string; path: string; unit: string }[];
+      series: { id: string; path: string; unit: string; baskets?: { issuers: string[] }[] }[];
     };
     const local = series.filter(
       (s) => s.path === "base_money/components.csv" || s.path.startsWith("base_money/issuers/"),
     );
-    expect(local.length).toBe(10);
+    // Every local-currency CSV is cataloged, once: components.csv and one per basket issuer, derived from the baskets
+    // (the source of truth for which banks there are), and each such file exists. A new bank moves both sides.
+    const issuers = [...new Set(series.find((s) => s.id === "base_money")?.baskets?.flatMap((b) => b.issuers) ?? [])];
+    expect(issuers.length).toBeGreaterThan(0);
+    const want = ["base_money/components.csv", ...issuers.map((i) => `base_money/issuers/${i}/${i}.csv`)].sort();
+    expect(local.map((s) => s.path).sort()).toEqual(want);
+    for (const path of want)
+      expect([path, await Bun.file(new URL(`../../${path}`, import.meta.url)).exists()]).toEqual([path, true]);
     for (const s of local) expect([s.path, s.unit]).toEqual([s.path, "local currency (see local_currency column)"]);
     expect(series.find((s) => s.id === "base_money")?.unit).toBe("USD");
   });
