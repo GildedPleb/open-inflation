@@ -87,7 +87,7 @@ The basket is ten of the largest central banks. Together they cover most of the 
 - **[BCB](base_money/issuers/BCB/README.md)**: Banco Central do Brasil. Its figure is the BCB's own restricted monetary base, which leaves out some deposits banks hold at the BCB, so it is narrower than the euro-area, Swiss and Russian figures.
 - **[HKMA](base_money/issuers/HKMA/README.md)**: Hong Kong Monetary Authority. Its figure is the HKMA's monetary base under the Currency Board: the notes in circulation (backed by Certificates of Indebtedness and government-issued notes and coins), banks' clearing balances (the Aggregate Balance) and Exchange Fund Bills and Notes.
 
-More banks will be added over time. Each row keeps the basket it was first published with.
+More banks will be added over time, one for each year of history filled in. Until v1, an added bank is filled in for every published quarter, so earlier totals are revised when it joins: HKMA joined on 28 October 2026, which raised each total from 2024 Q4 on by about $0.26 trillion.
 
 ### Caveats
 
