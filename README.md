@@ -4,9 +4,9 @@ Quarterly base money of the world's largest central banks, summed in US dollars,
 
 <!-- BEGIN GENERATED latest -->
 
-**Latest: $22.13 trillion at 30 Jun 2026 (2026 Q2).** Covers 100.00% of the basket.
+**Latest: $22.39 trillion at 30 Jun 2026 (2026 Q2).** Covers 100.00% of the basket.
 
-Updated 26 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q3
+Updated 28 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q3
 
 <!-- END GENERATED latest -->
 
@@ -42,13 +42,13 @@ US dollars, trillions (T), converted at the market close on each report's count 
 
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
-| 2026 Q2 | $22.13T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
-| 2026 Q1 | $22.45T | -1.6% | [Sources](base_money/quarters/2026Q1.md) |
-| 2025 Q4 | $22.55T | +1.6% | [Sources](base_money/quarters/2025Q4.md) |
-| 2025 Q3 | $22.88T | —¹ | [Sources](base_money/quarters/2025Q3.md) |
-| 2025 Q2 | $23.42T | —¹ | [Sources](base_money/quarters/2025Q2.md) |
-| 2025 Q1 | $22.82T | —¹ | [Sources](base_money/quarters/2025Q1.md) |
-| 2024 Q4 | $22.20T | —¹ | [Sources](base_money/quarters/2024Q4.md) |
+| 2026 Q2 | $22.39T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
+| 2026 Q1 | $22.71T | -1.6% | [Sources](base_money/quarters/2026Q1.md) |
+| 2025 Q4 | $22.82T | +1.6% | [Sources](base_money/quarters/2025Q4.md) |
+| 2025 Q3 | $23.14T | —¹ | [Sources](base_money/quarters/2025Q3.md) |
+| 2025 Q2 | $23.69T | —¹ | [Sources](base_money/quarters/2025Q2.md) |
+| 2025 Q1 | $23.08T | —¹ | [Sources](base_money/quarters/2025Q1.md) |
+| 2024 Q4 | $22.46T | —¹ | [Sources](base_money/quarters/2024Q4.md) |
 
 <!-- END GENERATED table -->
 
@@ -74,7 +74,7 @@ Base money is the money a central bank issues directly: the currency in circulat
 
 ### Which central banks
 
-The basket is nine of the largest central banks. Together they cover most of the world's base money, but this is not a global total.
+The basket is ten of the largest central banks. Together they cover most of the world's base money, but this is not a global total.
 
 - **[PBOC](base_money/issuers/PBOC/README.md)**: People's Bank of China
 - **[FED](base_money/issuers/FED/README.md)**: Federal Reserve (United States)
@@ -85,6 +85,7 @@ The basket is nine of the largest central banks. Together they cover most of the
 - **[RBI](base_money/issuers/RBI/README.md)**: Reserve Bank of India
 - **[CBR](base_money/issuers/CBR/README.md)**: Bank of Russia
 - **[BCB](base_money/issuers/BCB/README.md)**: Banco Central do Brasil. Its figure is the BCB's own restricted monetary base, which leaves out some deposits banks hold at the BCB, so it is narrower than the euro-area, Swiss and Russian figures.
+- **[HKMA](base_money/issuers/HKMA/README.md)**: Hong Kong Monetary Authority. Its figure is the HKMA's monetary base under the Currency Board: the notes in circulation (backed by Certificates of Indebtedness and government-issued notes and coins), banks' clearing balances (the Aggregate Balance) and Exchange Fund Bills and Notes.
 
 More banks will be added over time. Each row keeps the basket it was first published with.
 
