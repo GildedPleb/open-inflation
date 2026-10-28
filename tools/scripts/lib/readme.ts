@@ -426,8 +426,10 @@ export interface Generated {
   readonly blocks: Readonly<Record<BlockName, string>>;
   /** The generated quarter table (the lines under "## Quarters"). */
   readonly index: string;
-  /** The footnotes under the quarter list: the README's yoy-notes, one per paragraph. */
+  /** The front page's YoY footnotes (its yoy-notes block), one per paragraph. */
   readonly indexNotes: readonly string[];
+  /** Every note under the quarter table, in order: rounding, Remaining's banks, then ¹ ² ³ ᵖ (each only when used). */
+  readonly listNotes: readonly string[];
 }
 
 /** The inputs every output is built from, or null when one cannot be read (other checks report why). */
@@ -506,6 +508,7 @@ function generated(m: Model): Generated {
     blocks: { latest, table, "yoy-notes": indexNotes.join("\n\n") },
     index: quarterList(m),
     indexNotes,
+    listNotes: listNotes(m, indexNotes),
   };
 }
 
@@ -516,39 +519,110 @@ function leftOut(q: Quarter, cat: Catalog): string[] {
   return [...basketOrder.filter((i) => out.includes(i)), ...out.filter((i) => !basketOrder.includes(i))];
 }
 
-/** The quarter table's columns and alignment (Form, YOY_LAYOUT.md section 2); Coverage only when a quarter leaves a bank out. */
-export const QUARTER_TABLE_HEADER = "| Quarter | Count date | Total (USD) | YoY (USD) | Exact total (USD) |";
-export const QUARTER_TABLE_ALIGN = "| :------ | :--------- | ----------: | --------: | ----------------: |";
+/**
+ * The quarter table's own columns: the five biggest banks as of 2026 Q2 (about 92% of it), largest first. A fixed
+ * list, never ranked per row, so a column means the same bank in every quarter; every other bank is in Remaining.
+ */
+export const TOP_BANKS = ["PBOC", "FED", "ECB", "BOJ", "BOE"] as const;
+/** The quarter table's columns and alignment; Coverage (last) only when a quarter leaves a bank out. */
+export const QUARTER_TABLE_HEADER = `| Quarter | ${TOP_BANKS.join(" | ")} | Remaining | Total | YoY |`;
+export const QUARTER_TABLE_ALIGN = `| :------ | ${TOP_BANKS.map((b) => `${"-".repeat(b.length - 1)}:`).join(" | ")} | --------: | ----: | --: |`;
 const COVERAGE_HEADER = " Coverage |";
 const COVERAGE_ALIGN = " :------- |";
+/** The units line, the first paragraph under "## Quarters" (cells are bare numbers); a regenerate replaces any line under the heading that starts with QUARTER_UNITS_LEAD. */
+export const QUARTER_UNITS_LEAD = "Figures are USD trillions";
+export const QUARTER_UNITS = `${QUARTER_UNITS_LEAD}; YoY is the percent change in Total from a year earlier.`;
+/** The rounding note, the first under the quarter table. */
+export const QUARTER_ROUNDING_NOTE =
+  "Each figure is rounded to 2 decimals on its own, so the columns may not add up exactly to Total, which is the exact quarter total, rounded.";
+/** The mark on a top-five bank's dash when that quarter does not count it. */
+export const NOT_COUNTED_MARK = "³";
 
 /**
  * A cell kept on one line at phone width: GitHub strips CSS (no `white-space: nowrap`), so spaces become `&nbsp;`.
  * Hyphens stay ASCII `-`: a U+2011 survives GitHub's render and a copy, so a search for the date would not match.
  */
 const nowrap = (s: string) => s.replaceAll(" ", "&nbsp;");
-/** The note under the quarter table (README copy is Form's). */
-export const QUARTER_TABLE_NOTE = "Total is rounded for easy reading; Exact total is the full figure, to the dollar.";
+
+/** The banks a quarter counts outside TOP_BANKS (Remaining's), in catalog order, any outside the catalog last, sorted. */
+function remainingBanks(m: Model, id: string): string[] {
+  const top: readonly string[] = TOP_BANKS;
+  const here = m.rows.filter((r) => r.quarter === id && !top.includes(r.issuer)).map((r) => r.issuer);
+  return [...m.cat.order.filter((i) => here.includes(i)), ...here.filter((i) => !m.cat.order.includes(i)).sort()];
+}
+const banksCount = (n: number) => `${n} bank${n === 1 ? "" : "s"}`;
+const bankList = (banks: readonly string[]) =>
+  banks.length ? `${banks.join(", ")} (${banksCount(banks.length)})` : "no other banks";
 
 /**
- * The quarter table: every CSV row newest first (the linked quarter, its ISO count date, the rounded total as the bank
- * tables show USD, its YoY, the same cell as the front page, and the exact total), with any gap quarter as a row of
- * dashes. A last Coverage column only when a listed quarter leaves issuers out. (Form owns the layout, YOY_LAYOUT.md
- * section 2.)
+ * Which banks Remaining sums, from each quarter's set (newest first): one list when every quarter has the same set,
+ * else each distinct set with its quarters, in order of its newest quarter. Null when there are no quarters.
+ */
+export function remainingNote(perQuarter: readonly { readonly label: string; readonly banks: readonly string[] }[]) {
+  const sets = new Map<string, { banks: readonly string[]; labels: string[] }>();
+  for (const q of perQuarter) {
+    const g = sets.get(q.banks.join()) ?? { banks: q.banks, labels: [] };
+    g.labels.push(q.label);
+    sets.set(q.banks.join(), g);
+  }
+  const groups = [...sets.values()];
+  const lead = "Remaining is the sum of every other bank counted";
+  if (groups.length === 0) return null;
+  if (groups.length === 1) return `${lead}: ${bankList((groups[0] as { banks: readonly string[] }).banks)}.`;
+  return `${lead}, which differs by quarter: ${groups.map((g) => `${g.labels.join(", ")}: ${bankList(g.banks)}`).join("; ")}.`;
+}
+
+/**
+ * The notes under the quarter table: the rounding note; which banks Remaining sums (one list when every quarter has
+ * the same set, else each set with its quarters, newest first); the front page's ¹ and ²; ³ naming each top-five bank
+ * a quarter does not count (bank order, its quarters newest first); then ᵖ. All from the data, deterministic.
+ */
+function listNotes(m: Model, yoyNotes: readonly string[]): string[] {
+  const newest = [...m.qs].reverse();
+  const remaining = remainingNote(newest.map((q) => ({ label: quarterLabel(q.id), banks: remainingBanks(m, q.id) })));
+  const missing = TOP_BANKS.map((b) => ({
+    b,
+    qs: newest.filter((q) => !m.comp(b, q.id)).map((q) => quarterLabel(q.id)),
+  })).filter((x) => x.qs.length);
+  const notCounted = missing.length
+    ? [
+        `${NOT_COUNTED_MARK} Not counted in that quarter: ${missing.map((x) => `${x.b} in ${x.qs.join(", ")}`).join("; ")}.`,
+      ]
+    : [];
+  const prov = yoyNotes.filter((n) => n.startsWith(`${PROVISIONAL_MARK} `));
+  return [
+    ...(m.qs.length ? [QUARTER_ROUNDING_NOTE] : []),
+    ...(remaining ? [remaining] : []),
+    ...yoyNotes.filter((n) => !prov.includes(n)),
+    ...notCounted,
+    ...prov,
+  ];
+}
+
+/**
+ * The quarter table: every CSV row newest first: the linked quarter; each TOP_BANKS bank's usd_value (—³ when the
+ * quarter does not count it); Remaining, the exact sum of every other counted bank's usd_value; the exact total; each
+ * in USD trillions, 2 dp, half-to-even, each rounded once from whole dollars (bigint, no float); and the front page's
+ * YoY cell. A gap quarter is a row of dashes; a last Coverage column only when a listed quarter leaves issuers out.
  */
 function quarterList(m: Model): string {
   const { qs, cat } = m;
   const coverage = qs.some((q) => leftOut(q, cat).length > 0);
+  const top: readonly string[] = TOP_BANKS;
   const out: string[] = [];
   for (let i = qs.length - 1; i >= 0; i--) {
     const q = qs[i] as Quarter;
     const left = leftOut(q, cat);
+    const rest = m.rows.filter((r) => r.quarter === q.id && !top.includes(r.issuer)).reduce((a, r) => a + r.usd, 0n);
     const cells = [
       `[${nowrap(quarterLabel(q.id))}](${relLink(QUARTER_LIST, q.evidenceId)})`,
-      nowrap(q.date),
-      usdShort(q.value),
+      ...TOP_BANKS.map((b) => {
+        const c = m.comp(b, q.id);
+        return c ? trillions(c.usd) : `${DASH}${NOT_COUNTED_MARK}`;
+      }),
+      trillions(rest),
+      trillions(q.value),
       yoyCell(m.total.get(q.id) as Yoy),
-      group(q.value.toString()),
     ];
     if (coverage) cells.push(left.length ? `${q.coverage}%; left out: ${left.join(", ")}` : "all banks");
     out.push(`| ${cells.join(" | ")} |`);
@@ -569,21 +643,26 @@ function quarterList(m: Model): string {
  * note paragraphs that used to follow (each starting "¹ ", "² ", "ᵖ " or a quarter file's "YoY: " line) removed.
  */
 function withNotes(head: string, rest: string, notes: readonly string[]): string {
-  const NOTE = /^\n\n(?:[¹²ᵖ] |YoY: |Total is rounded)[^\n]*/;
+  const NOTE = /^\n\n(?:[¹²³ᵖ] |YoY: |Total is rounded|Each figure is rounded|Remaining is the sum)[^\n]*/;
   let r = rest;
   for (let m = NOTE.exec(r); m; m = NOTE.exec(r)) r = r.slice(m[0].length);
   return head + notes.map((n) => `\n\n${n}`).join("") + r;
 }
 
 /**
- * The quarter-list file with its list replaced and the YoY footnotes under it; a problem string when the
- * "## Quarters" heading is missing.
+ * The quarter-list file with its list replaced and `notes` (Generated.listNotes) under it; for a table, the units
+ * line goes between the heading and the table. A problem string when the "## Quarters" heading is missing.
  */
 export function fillIndex(index: string, list: string, notes: readonly string[] = []): string | { problem: string } {
-  const f = fillList(index, QUARTERS_HEADING, list, "quarter table");
+  const h = `\n${QUARTERS_HEADING}\n`;
+  const at0 = index.indexOf(`${h}\n${QUARTER_UNITS_LEAD}`);
+  const eol = at0 < 0 ? -1 : index.indexOf("\n", at0 + h.length + 1);
+  const src = at0 < 0 ? index : index.slice(0, at0 + h.length) + (eol < 0 ? "" : index.slice(eol + 1));
+  const f = fillList(src, QUARTERS_HEADING, list, "quarter table");
   if (typeof f !== "string") return f;
-  const at = f.indexOf(`\n${QUARTERS_HEADING}\n`) + QUARTERS_HEADING.length + 3 + list.length;
-  return withNotes(f.slice(0, at), f.slice(at), list.startsWith("|") ? [QUARTER_TABLE_NOTE, ...notes] : notes);
+  const at = f.indexOf(h) + h.length + 1 + list.length;
+  const filled = withNotes(f.slice(0, at), f.slice(at), notes);
+  return list.startsWith("|") ? filled.replace(`${h}\n`, () => `${h}\n${QUARTER_UNITS}\n\n`) : filled;
 }
 
 // ---------- quarter files: the YoY column ----------
@@ -1093,7 +1172,7 @@ export function outputs(text: Texts, paths: readonly string[]): Outputs | null {
   const index = text.get(QUARTER_LIST);
   if (index !== undefined) {
     const g = generated(m);
-    fill(QUARTER_LIST, fillIndex(index, g.index, g.indexNotes));
+    fill(QUARTER_LIST, fillIndex(index, g.index, g.listNotes));
   }
   for (const p of paths) {
     const r = folderReadmeOf(p);
