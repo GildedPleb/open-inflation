@@ -69,10 +69,12 @@ Requires Bun and git; work in a clone, because lint reads the tree and its base 
 bun install --frozen-lockfile      # first, once: installs biome and TypeScript
 bun run check                      # biome format and code lint (its options are in package.json)
 bun run typecheck                  # tsc -p tools
-bun test                           # unit tests; offline; whole suite about 1 s
+bun test                           # unit tests; offline; budget 5 s (about 1.5 s now)
 git fetch origin main              # so origin/main is current
 bun run lint                       # repository rules L1-L19 on the working tree; no network calls
 ```
+
+`bun install` also installs a pre-commit hook ([lefthook.yml](lefthook.yml)) that runs `bun test`, `bun run typecheck`, `bun run check` and `bun run lint`, the same commands as CI except the calendar-only `bun run overdue`.
 
 Local research scripts, never in CI and never a merge gate:
 
@@ -90,3 +92,14 @@ bun run link-check --write         # two live links per figure; drops dead archi
   - A lost link is fixed with `bun run link-check --write` (drop) or a new capture (repair); nothing is written about it.
 - **Pacing** is per host; override with `OBM_RATE_<KEY>_MS`: `OBM_RATE_ARCHIVE_TODAY_MS`, `OBM_RATE_GHOSTARCHIVE_ORG_MS`, `OBM_RATE_WEB_ARCHIVE_ORG_MS`, `OBM_RATE_ARCHIVE_ORG_MS` and `OBM_RATE_DEFAULT_MS`. See [Tuning and limits](docs/running.md#tuning-and-limits).
 - **Exit codes.** `0` clean, `1` findings, `2` usage or error, `3` incomplete. See [Exit codes](docs/running.md#exit-codes).
+
+## Beautify
+
+- gates: done — 2026-10-28 — pre-commit hook (lefthook) runs test/typecheck/check/lint; main is unprotected (user: require `lint`); no secrets scan; budget 5 s stated, suite 1.5 s; overdue stays CI-only
+- hygiene: done — 2026-10-28 — tsconfig gains noImplicitOverride/noImplicitReturns/noFallthroughCasesInSwitch/noUnusedLocals/noUnusedParameters/isolatedModules and drops skipLibCheck (all clean; typecheck 2.1→3.0 s); next: noPropertyAccessFromIndexSignature (240 hits, 177 in checks.ts: give CSV/JSON rows named fields first), exact pins for typescript/@types/bun/@biomejs/biome, Biome→Oxfmt then Oxlint (type-aware waits for TS 7), target/lib es2025 (needs TS 7), readme.ts:256 `as unknown as` tuple
+- deps: unstarted
+- shape: unstarted
+- tests: unstarted
+- system: unstarted
+- security: unstarted
+- cost: unstarted
