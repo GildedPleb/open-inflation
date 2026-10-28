@@ -11,9 +11,10 @@ For contributors. Run every command from the repository root.
 | `bun run lint` | Checks the data files in the working tree | Before every push | Yes | Never |
 | `bun run readme` | Rewrites the generated README parts | After adding a quarter | Through lint L13 | Never |
 | `bun run verify` | Checks each archive URL your change adds | While archiving new sources | No | Yes |
+| `bun run overdue` | Fails once a quarterly deadline has passed without its quarter (see [Overdue check](#overdue-check)) | Every push and pull request, in CI | Yes | Never |
 | `bun run link-check` | Checks each figure has two live links that show its number; `--write` drops dead archives and dates the Capture check | One day to one week after a new quarter whose links were not confirmed at build time, and on the whole repository quarterly (mid January, April, July and October) | No | Yes |
 
-CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check` and `bun run lint` on every push and pull request. CI never runs `verify` or `link-check`: archives rate-limit. Lint L16 checks the two-link rule offline in CI; whether the links are live is `link-check`'s job, and a slow archive never blocks publishing.
+CI runs `bun install --frozen-lockfile`, `bun test`, `bun run typecheck`, `bun run check`, `bun run lint` and `bun run overdue` on every push and pull request. CI never runs `verify` or `link-check`: archives rate-limit. Lint L16 checks the two-link rule offline in CI; whether the links are live is `link-check`'s job, and a slow archive never blocks publishing.
 
 ## Requirements
 
@@ -221,7 +222,7 @@ One request at a time per host, hosts in parallel, the `OBM_RATE_*` overrides as
 
 `bun run overdue` checks that main is keeping to the [update cadence](methodology/base_money.md#update-cadence). Each quarter is due by the 15th of its run month (February for Q4, May for Q1, August for Q2, November for Q3), ten days after the run date. The check fails if the newest quarter in `base_money/base_money.csv` is older than the quarter due at the most recent passed deadline, and it lists every missing quarter after the newest row, each with its own deadline. A missed quarter keeps failing until a quarter at or after it lands. It also fails after 15 June if that year's Q1 still has no RBI component. Dates are UTC.
 
-A scheduled GitHub Actions workflow runs it once a day, so a failure reaches the repository owner through GitHub's failed-workflow email. It is not a test and not a merge gate. Run it locally with `bun run overdue`, or `bun run overdue --today YYYY-MM-DD` to check a given date; it makes no network calls and exits 0 on time, 1 overdue, 2 on bad usage. A failure line such as `2026Q3 base money overdue: deadline 2026-11-15` means that quarter's run hasn't landed on main by its deadline.
+It runs in CI as the last step of the `lint` job on every push and pull request, against the pull request merged into `main`. Once a deadline passes, every pull request and push fails until the due quarter is in the tree; the pull request that adds it passes. It is a merge gate, not a test. There is no escape hatch: a quarter that cannot land (a below-floor gap, or no final RBI figure by 15 June) freezes merges until it or a later quarter does, and the fix is decided then. Run it locally with `bun run overdue`, or `bun run overdue --today YYYY-MM-DD` to check a given date; it makes no network calls and exits 0 on time, 1 overdue, 2 on bad usage. A failure line such as `2026Q3 base money overdue: deadline 2026-11-15` means that quarter hasn't landed by its deadline.
 
 ## Archive host quirks
 
