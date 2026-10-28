@@ -12,6 +12,6 @@ Baskets are recorded now:
 - The basket is recorded in the roll-up's machine block as `basket_version`: optional while one basket exists (absent means 1), required on every block once the catalog lists more.
 - Each [quarter file](../base_money/) names its basket and warns that rows on different baskets are not strictly comparable.
 
-**Publishing is merging to `main`**: the CSV on `main` is the published series. Every merge passes `bun run overdue` in CI (see [Overdue check](running.md#overdue-check)), so once a quarter's deadline has passed, nothing merges until that quarter is in. When the v1 release path is written, `bun run overdue` is its first step.
+**Publishing is merging to `main`**: the CSV on `main` is the published series. Every merge passes `bun run overdue` in CI (see [Overdue check](running.md#overdue-check)), so once a quarter's deadline has passed, nothing merges until that quarter is in. When the v1 release path is written, `bun run overdue` is its first step. Before v1 is published, branch protection is turned on for `main`, requiring the `lint` check, so a red overdue gate actually blocks merges (until then it only shows red).
 
 Versioning rules are written in [Versioning](methodology/base_money.md#versioning) when v1 is cut.
