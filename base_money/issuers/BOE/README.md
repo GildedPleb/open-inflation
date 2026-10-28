@@ -16,12 +16,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | [756,193,000,000](2026.md#boe-lpmavaa--lpmbl22-2026-06-retrieved-2026-10-26) | as published | [1.332387](../../FX/2026.md#fx-2026q2-gbp) | $1.01T | -2.6% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | [747,579,000,000](2026.md#boe-lpmavaa--lpmbl22-2026-03-retrieved-2026-10-26) | as published | [1.334998](../../FX/2026.md#fx-2026q1-gbp) | $998.0B | -6.0% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12 | [761,900,000,000](2025.md#boe-lpmavaa--lpmbl22-2025-12-retrieved-2026-10-26) | as published | [1.339579](../../FX/2025.md#fx-2025q4-gbp) | $1.02T | -6.7% |
-| [2025 Q3](../../quarters/2025Q3.md) | 2025-09 | [760,985,000,000](2025.md#boe-lpmavaa--lpmbl22-2025-09-retrieved-2026-10-26) | as published | [1.350336](../../FX/2025.md#fx-2025q3-gbp) | $1.03T | —¹ |
+| [2025 Q3](../../quarters/2025Q3.md) | 2025-09 | [760,985,000,000](2025.md#boe-lpmavaa--lpmbl22-2025-09-retrieved-2026-10-26) | as published | [1.350336](../../FX/2025.md#fx-2025q3-gbp) | $1.03T | -9.3% |
 | [2025 Q2](../../quarters/2025Q2.md) | 2025-06 | [776,370,000,000](2025.md#boe-lpmavaa--lpmbl22-2025-06-retrieved-2026-10-26) | as published | [1.356310](../../FX/2025.md#fx-2025q2-gbp) | $1.05T | —¹ |
 | [2025 Q1](../../quarters/2025Q1.md) | 2025-03 | [795,345,000,000](2025.md#boe-lpmavaa--lpmbl22-2025-03-retrieved-2026-10-27) | as published | [1.291963](../../FX/2025.md#fx-2025q1-gbp) | $1.03T | —¹ |
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12 | [816,387,000,000](2024.md#boe-lpmavaa--lpmbl22-2024-12-retrieved-2026-10-28) | as published | [1.263390](../../FX/2024.md#fx-2024q4-gbp) | $1.03T | —¹ |
+| [2024 Q3](../../quarters/2024Q3.md) | 2024-09 | [838,730,000,000](2024.md#boe-lpmavaa--lpmbl22-2024-09-retrieved-2026-10-28) | as published | [1.320795](../../FX/2024.md#fx-2024q3-gbp) | $1.11T | —¹ |
 
-¹ No year-ago quarter yet: 2025 Q3, 2025 Q2, 2025 Q1, 2024 Q4.
+¹ No year-ago quarter yet: 2025 Q2, 2025 Q1, 2024 Q4, 2024 Q3.
 
 Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month.
 
