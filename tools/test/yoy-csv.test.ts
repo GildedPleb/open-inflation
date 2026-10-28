@@ -239,7 +239,7 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
     expect(cell(t[Q27], "[ECB]")).toBe("-10.0%");
     expect(cell(t[Q27], "**Total**")).toBe("+7.9%");
     expect(t[QUARTER_LIST]).toContain(
-      "| [2027&nbsp;Q3](quarters/2027Q3.md) | 2027-09-30 | $0.0B | +7.9% | 1,316 | 99.92%; left out: BOJ |\n",
+      "| [2027&nbsp;Q3](quarters/2027Q3.md) | —³ | 0.00 | 0.00 | —³ | —³ | 0.00 | 0.00 | +7.9% | 99.92%; left out: BOJ |\n",
     );
     expect(cell(t[ECB_README], "[2027 Q3]")).toBe("-10.0%");
     expect(t[ECB_README]).toContain(
@@ -280,7 +280,7 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
       expect(cell(t[Q27], "**Total**")).toBe("+7.9%ᵖ");
       const qp = "ᵖ Uses a provisional bank figure, from this quarter or a year earlier, that may be revised.";
       expect(t[Q27]?.split(qp).length).toBe(2);
-      expect(t[QUARTER_LIST]).toContain("| $0.0B | +7.9%ᵖ | 1,316 |");
+      expect(t[QUARTER_LIST]).toContain("| 0.00 | 0.00 | +7.9%ᵖ |");
       expect(t[QUARTER_LIST]).toContain("ᵖ Uses a provisional bank figure that may be revised: 2027 Q3.");
       expect(cell(t[ECB_README], "[2027 Q3]")).toBe("-10.0%ᵖ");
       expect(t[ECB_README]).toContain(
@@ -620,7 +620,7 @@ describe("G8 L17: any drift from the generator fails, naming the file and the fi
     ); // a stray Count date note
     await l17(edit(ECB_README, " What each column means, with units: [", " Columns: ["), ECB_README); // m2
     await l17(edit(QUARTER_LIST, "| —¹ |", "| +0.0% |"), QUARTER_LIST);
-    await l17(edit(QUARTER_LIST, "| 1,221 |", "| $1,221 |"), QUARTER_LIST);
+    await l17(edit(QUARTER_LIST, "| 0.00 | —¹ |", "| $0.00T | —¹ |"), QUARTER_LIST);
   });
   test("an extract that lost its Status line", async () => {
     const fs = await l17(edit(extractPath("ECB", "2026"), "- Status: final\n", ""), Q3);

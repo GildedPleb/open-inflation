@@ -11,13 +11,19 @@ import {
   fillIndex,
   fillList,
   generate,
+  NOT_COUNTED_MARK,
+  QUARTER_ROUNDING_NOTE,
   QUARTER_TABLE_ALIGN,
   QUARTER_TABLE_HEADER,
+  QUARTER_UNITS,
+  QUARTER_UNITS_LEAD,
   type Quarter,
   quarterLabel,
   quarters,
+  remainingNote,
   shiftQuarter,
-  usdShort,
+  TOP_BANKS,
+  trillions,
   YEARS_HEADING,
   yearLists,
   yoy,
@@ -131,7 +137,7 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     expect(await ids(s)).toEqual(["L17", "L6"].sort() as CheckId[]);
   });
   test("a hand-edited quarter list line fails L17; prose around the list is free", async () => {
-    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "| 2026-09-30 |", "| 2026-10-01 |")))).toEqual(["L17"]);
+    expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "| 0.00 | —¹ |", "| 0.01 | —¹ |")))).toEqual(["L17"]);
     expect(await ids(snap((t) => edit(t, EVIDENCE_INDEX, "newest first.", "newest first. Edited.")))).toEqual([]);
   });
   test("the quarter list names each quarter's coverage and the issuers left out", async () => {
@@ -162,7 +168,7 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     const t = goodText();
     gap(t);
     const g = generate(new Map(Object.entries(t)), Object.keys(t));
-    expect(g?.index.split("\n")[3]).toBe("| 2026&nbsp;Q2 | — | — | — | — | — |");
+    expect(g?.index.split("\n")[3]).toBe("| 2026&nbsp;Q2 | — | — | — | — | — | — | — | — | — |");
     const withGap = (edit: (t: Record<string, string>) => void): Snapshot => {
       const { [EVIDENCE_INDEX]: _, ...v } = goodText();
       gap(v);
@@ -174,7 +180,10 @@ describe("L13 generated README, L17 quarter list; L6 links (G3)", () => {
     expect(await l17(withGap(() => {}))).toEqual([]);
     const dropped = await l17(
       withGap((u) => {
-        u[EVIDENCE_INDEX] = (u[EVIDENCE_INDEX] as string).replace("| 2026&nbsp;Q2 | — | — | — | — | — |\n", "");
+        u[EVIDENCE_INDEX] = (u[EVIDENCE_INDEX] as string).replace(
+          "| 2026&nbsp;Q2 | — | — | — | — | — | — | — | — | — |\n",
+          "",
+        );
       }),
     );
     expect(dropped.map((f) => f.file)).toEqual([EVIDENCE_INDEX]);
@@ -221,7 +230,7 @@ describe("bun run readme: each issuer and FX folder README's ## Years list", () 
   });
 });
 
-describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section 2), on this repository's data", () => {
+describe("the quarter table in base_money/README.md (top five banks, Remaining, Total, YoY), on this repository's data", () => {
   /** Every input the generator reads: catalog.json and the CSV, roll-ups and extracts under base_money/. */
   const repoText = (): Map<string, string> => {
     const t = new Map<string, string>();
@@ -242,31 +251,68 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
         .map((r) => r.replaceAll("&nbsp;", " ")) // the quarter table keeps its label on one line
         .filter((r) => /^\| \[?\d{4} Q\d/.test(r))
         .map((r) => {
-          const c = r.split(" | ");
+          const c = r.replace(/ \|$/, "").split(" | ");
           return [(/\d{4} Q\d/.exec(c[0] as string) as RegExpExecArray)[0], c[col]];
         }),
     );
 
-  /** Section 2's exact section (2026-10-27) is dated: it shows the series as it stood, 2025 Q2 to 2026 Q2. */
+  /** A dated window, 2025 Q2 to 2026 Q2: the series as it stood when this layout was set (Assay, 2026-10-28). */
   const formsQuarters = () => quarterWindow(repoText(), "2025Q2", "2026Q2");
-  test("on section 2's quarters (2025 Q2 to 2026 Q2): the table and its notes are section 2's, byte for byte", () => {
+  /** `text` with `issuer` dropped from quarter `id`'s roll-up components (so that quarter does not count it). */
+  const drop = (text: Map<string, string>, id: string, issuer: string) => {
+    const p = `base_money/quarters/${id}.md`;
+    const body = text.get(p) as string;
+    const out = body.replace(new RegExp(`  - issuer: ${issuer}\\n(?:    .*\\n)+`), "");
+    expect(out).not.toBe(body);
+    text.set(p, out);
+    return text;
+  };
+  /** Whole-dollar usd_value per issuer per quarter, from the committed components.csv. */
+  const usd = (text: Map<string, string>) => {
+    const m = new Map<string, Map<string, bigint>>();
+    for (const l of (text.get("base_money/components.csv") ?? "").split("\n").slice(1)) {
+      const c = l.split(",");
+      if (c.length < 10) continue;
+      const q = m.get(c[1] as string) ?? new Map<string, bigint>();
+      q.set(c[2] as string, BigInt(c[9] as string));
+      m.set(c[1] as string, q);
+    }
+    return m;
+  };
+  const top: readonly string[] = TOP_BANKS;
+
+  test("on the dated window: the table, its units line and its notes, byte for byte", () => {
     const text = formsQuarters();
     const g = generate(text, [...text.keys()]);
     expect(g?.index.split("\n")).toEqual([
-      "| Quarter | Count date | Total (USD) | YoY (USD) | Exact total (USD) |",
-      "| :------ | :--------- | ----------: | --------: | ----------------: |",
-      "| [2026&nbsp;Q2](quarters/2026Q2.md) | 2026-06-30 | $22.13T | -5.5%ᵖ | 22,125,479,242,256 |",
-      "| [2026&nbsp;Q1](quarters/2026Q1.md) | 2026-03-31 | $22.45T | —¹ | 22,449,782,815,379 |",
-      "| [2025&nbsp;Q4](quarters/2025Q4.md) | 2025-12-31 | $22.55T | —¹ | 22,554,451,077,005 |",
-      "| [2025&nbsp;Q3](quarters/2025Q3.md) | 2025-09-30 | $22.88T | —¹ | 22,882,534,748,618 |",
-      "| [2025&nbsp;Q2](quarters/2025Q2.md) | 2025-06-30 | $23.42T | —¹ | 23,418,246,247,929 |",
+      "| Quarter | PBOC | FED | ECB | BOJ | BOE | Remaining | Total | YoY |",
+      "| :------ | ---: | --: | --: | --: | --: | --------: | ----: | --: |",
+      "| [2026&nbsp;Q2](quarters/2026Q2.md) | 5.99 | 5.49 | 4.53 | 3.45 | 1.01 | 1.66 | 22.13 | -5.5%ᵖ |",
+      "| [2026&nbsp;Q1](quarters/2026Q1.md) | 5.93 | 5.46 | 4.78 | 3.66 | 1.00 | 1.63 | 22.45 | —¹ |",
+      "| [2025&nbsp;Q4](quarters/2025Q4.md) | 5.71 | 5.37 | 5.00 | 3.81 | 1.02 | 1.65 | 22.55 | —¹ |",
+      "| [2025&nbsp;Q3](quarters/2025Q3.md) | 5.42 | 5.48 | 5.12 | 4.22 | 1.03 | 1.61 | 22.88 | —¹ |",
+      "| [2025&nbsp;Q2](quarters/2025Q2.md) | 5.29 | 5.75 | 5.19 | 4.52 | 1.05 | 1.61 | 23.42 | —¹ |",
+    ]);
+    expect(g?.listNotes).toEqual([
+      "Each figure is rounded to 2 decimals on its own, so the columns may not add up exactly to Total, which is the exact quarter total, rounded.",
+      "Remaining is the sum of every other bank counted: SNB, RBI, CBR, BCB (4 banks).",
+      "¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.",
+      "ᵖ Uses a provisional bank figure that may be revised: 2026 Q2.",
     ]);
     expect(g?.indexNotes).toEqual([
       "¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.",
       "ᵖ Uses a provisional bank figure that may be revised: 2026 Q2.",
     ]);
   });
-  test("on every committed quarter, found by label: newest first, the CSV's date and totals, R3's YoY", () => {
+  test("Total is the exact total rounded once, not the sum of the rounded cells (2026 Q1: cells 22.46, Total 22.45)", () => {
+    const text = formsQuarters();
+    const c = rowsByQuarter(tableOf(text)).get("2026Q1") as string[];
+    const hundredths = c.slice(1, 7).reduce((a, x) => a + Math.round(Number(x) * 100), 0);
+    expect(hundredths).toBe(2246);
+    expect(c[7]).toBe("22.45");
+    expect(c[7]).toBe(trillions(BigInt("22449782815379")));
+  });
+  test("on every committed quarter, found by label: each top bank's and Remaining's usd_value, the CSV total, R3's YoY", () => {
     const text = repoText();
     const g = generate(text, [...text.keys()]);
     const qs = quarters(text) ?? [];
@@ -283,17 +329,25 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
     expect(listed).toEqual([...listed].sort().reverse());
     const byId = new Map(qs.map((q) => [q.id, q]));
     expect(listed.filter((id) => byId.has(id))).toEqual(qs.map((q) => q.id).reverse());
+    const comps = usd(text);
     const none: string[] = [];
     for (const q of qs) {
       const c = rows.get(q.id) as string[];
+      const banks = comps.get(q.id) ?? new Map<string, bigint>();
+      const rest = [...banks].filter(([i]) => !top.includes(i)).reduce((a, [, v]) => a + v, 0n);
+      expect([q.id, ...c.slice(1, 8)]).toEqual([
+        q.id,
+        ...TOP_BANKS.map((b) => (banks.has(b) ? trillions(banks.get(b) as bigint) : `—${NOT_COUNTED_MARK}`)),
+        trillions(rest),
+        trillions(q.value),
+      ]);
       const prev = byId.get(shiftQuarter(q.id, -4));
       const like = prev && prev.basket === q.basket && prev.included.join() === q.included.join();
       if (!prev) none.push(quarterLabel(q.id));
-      expect([q.id, c[1], c[2], c[4]?.replaceAll(",", "")]).toEqual([q.id, q.date, usdShort(q.value), `${q.value}`]);
       const pair = like ? { cur: `${q.value}`, prev: `${prev.value}` } : null;
-      expect([q.id, yoyProblem(c[3], !!prev, pair)]).toEqual([q.id, null]);
+      expect([q.id, yoyProblem(c[8], !!prev, pair)]).toEqual([q.id, null]);
       if (coverage)
-        expect([q.id, c[5]]).toEqual([
+        expect([q.id, c[9]]).toEqual([
           q.id,
           q.excluded.length ? expect.stringMatching(new RegExp(`^${q.coverage}%; left out: `)) : "all banks",
         ]);
@@ -302,24 +356,73 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
       none.length ? [`¹ No year-ago quarter yet: ${none.reverse().join(", ")}.`] : [],
     );
   });
-  test("count dates use ASCII hyphens, never U+2011, so a copied date matches a search", () => {
+  test("cells are bare numbers; the units are stated once, right under the heading", () => {
+    const readme = repoText().get("base_money/README.md") as string;
+    expect(readme).toContain(`\n## Quarters\n\n${QUARTER_UNITS}\n\n${QUARTER_TABLE_HEADER}\n`);
+    expect(readme.split(QUARTER_UNITS_LEAD).length).toBe(2);
     const g = generate(repoText(), [...repoText().keys()]);
-    const index = g?.index ?? "";
-    expect(index).toContain("| 2026-06-30 |");
-    expect(index).not.toContain("\u2011");
-    expect(index).not.toContain("&#8209;");
+    for (const r of rowsByQuarter(g?.index.split("\n") ?? []).values())
+      for (const c of r.slice(1, 8)) expect(c).toMatch(/^(?:\d+\.\d\d|—³?)$/);
   });
-  test("the note under the table is Form's, its own paragraph", () => {
+  test("the notes under the table are their own paragraphs: rounding, Remaining, then the front page's YoY notes", () => {
     expect(repoText().get("base_money/README.md")).toContain(
-      "|\n\nTotal is rounded for easy reading; Exact total is the full figure, to the dollar.\n\n¹",
+      `|\n\n${QUARTER_ROUNDING_NOTE}\n\nRemaining is the sum of every other bank counted: SNB, RBI, CBR, BCB (4 banks).\n\n¹`,
     );
+  });
+  test("a top bank a quarter does not count is —³, named in the ³ note; Remaining's banks per quarter, from the data", () => {
+    const text = drop(drop(formsQuarters(), "2025Q2", "BOE"), "2025Q3", "SNB");
+    const g = generate(text, [...text.keys()]);
+    const rows = rowsByQuarter(g?.index.split("\n") ?? []);
+    expect(rows.get("2025Q2")?.slice(1, 8)).toEqual(["5.29", "5.75", "5.19", "4.52", "—³", "1.61", "23.42"]);
+    expect(rows.get("2025Q3")?.slice(5, 7)).toEqual(["1.03", "0.97"]); // RBI + CBR + BCB, SNB not counted
+    expect(rows.get("2026Q2")?.[5]).toBe("1.01");
+    expect(g?.listNotes).toEqual([
+      QUARTER_ROUNDING_NOTE,
+      "Remaining is the sum of every other bank counted, which differs by quarter: 2026 Q2, 2026 Q1, 2025 Q4, 2025 Q2: SNB, RBI, CBR, BCB (4 banks); 2025 Q3: RBI, CBR, BCB (3 banks).",
+      "¹ No year-ago quarter yet: 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2.",
+      // 2026 Q2's year-ago quarter no longer counts the same banks, so its YoY is —² (and no longer ᵖ).
+      "² Not like for like: a year earlier used a different basket or set of banks: 2026 Q2.",
+      "³ Not counted in that quarter: BOE in 2025 Q2.",
+    ]);
+    expect(rows.get("2026Q2")?.[8]).toBe("—²");
+    // The front page's YoY notes are unchanged (³ belongs to this table alone).
+    expect(g?.indexNotes.some((n) => n.startsWith("³"))).toBe(false);
+  });
+  test("remainingNote: one set, sets that differ by quarter (in order of their newest quarter), one bank, none", () => {
+    expect(remainingNote([])).toBeNull();
+    expect(remainingNote([{ label: "2026 Q2", banks: ["SNB"] }])).toBe(
+      "Remaining is the sum of every other bank counted: SNB (1 bank).",
+    );
+    expect(
+      remainingNote([
+        { label: "2026 Q2", banks: ["SNB", "RBI"] },
+        { label: "2026 Q1", banks: [] },
+        { label: "2025 Q4", banks: ["SNB", "RBI"] },
+      ]),
+    ).toBe(
+      "Remaining is the sum of every other bank counted, which differs by quarter: 2026 Q2, 2025 Q4: SNB, RBI (2 banks); 2026 Q1: no other banks.",
+    );
+  });
+  test("deterministic: the same inputs in any order give the same bytes, and a regenerate changes nothing", () => {
+    const text = repoText();
+    const a = generate(text, [...text.keys()]);
+    const shuffled = new Map([...text].reverse());
+    const b = generate(shuffled, [...shuffled.keys()].reverse());
+    expect(b).toEqual(a);
+    const readme = text.get("base_money/README.md") as string;
+    const once = fillIndex(readme, a?.index ?? "", a?.listNotes ?? []);
+    expect(once).toBe(readme);
+    expect(fillIndex(once as string, a?.index ?? "", a?.listNotes ?? [])).toBe(once);
+    // An older units line (same lead, other words) is replaced, never left above a second table.
+    const older = readme.replace(QUARTER_UNITS, `${QUARTER_UNITS_LEAD}.`);
+    expect(fillIndex(older, a?.index ?? "", a?.listNotes ?? [])).toBe(readme);
   });
   test("each YoY cell is the front page's, byte for byte", () => {
     const text = repoText();
     const g = generate(text, [...text.keys()]);
     const front = yoyByQuarter(g?.blocks.table.split("\n") ?? [], 2);
     expect(front.size).toBeGreaterThan(0);
-    expect(yoyByQuarter(g?.index.split("\n") ?? [], 3)).toEqual(front);
+    expect(yoyByQuarter(g?.index.split("\n") ?? [], 8)).toEqual(front);
   });
   test("a Coverage column only when a listed quarter leaves a bank out", () => {
     const text = formsQuarters();
@@ -334,11 +437,11 @@ describe("the quarter table in base_money/README.md (Form, YOY_LAYOUT.md section
     );
     const rows = tableOf(text);
     expect(rows.slice(0, 2)).toEqual([
-      "| Quarter | Count date | Total (USD) | YoY (USD) | Exact total (USD) | Coverage |",
-      "| :------ | :--------- | ----------: | --------: | ----------------: | :------- |",
+      "| Quarter | PBOC | FED | ECB | BOJ | BOE | Remaining | Total | YoY | Coverage |",
+      "| :------ | ---: | --: | --: | --: | --: | --------: | ----: | --: | :------- |",
     ]);
     const byQuarter = rowsByQuarter(rows);
-    expect(byQuarter.get("2025Q2")?.slice(-2)).toEqual(["23,418,246,247,929", "98.79%; left out: BCB"]);
+    expect(byQuarter.get("2025Q2")?.slice(-2)).toEqual(["—¹", "98.79%; left out: BCB"]);
     expect(byQuarter.size).toBe(5);
     for (const [id, c] of byQuarter) if (id !== "2025Q2") expect([id, c.at(-1)]).toEqual([id, "all banks"]);
   });
