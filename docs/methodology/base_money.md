@@ -184,6 +184,7 @@ FX is supporting data: it only translates each central bank's figure into US dol
 - **Cross-check.** TradingView's ICE close (FX_IDC), one number per row. It is not the source.
 - **Columns.** Report count date links the extract it converts and is that extract's As of. Date in report is the date as the report prints it, copied from the extract's quote.
 - **Conversion.** `fx_rate` is USD per one local unit: the rate itself for USD-per-unit pairs (EUR, GBP), or 1 / rate rounded half-to-even to 20 decimal places for units-per-USD pairs. USD is `"1"`.
+- **Links.** Each FX rate needs one live source link (its by-date URL) and one cross-check value written inline in its row. The two-live-links rule for issuer figures does not apply to FX rates (user ruling, 2026-10-28).
 - **Not archived.** FX rates are cited by provider, access site, by-date URL and date, and are not archived.
 
 **Why these sources.**
