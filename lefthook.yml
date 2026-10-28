@@ -1,0 +1,12 @@
+# Pre-commit runs the same checks as CI (.github/workflows/lint.yml), minus the calendar-only overdue gate.
+pre-commit:
+  parallel: true
+  commands:
+    test:
+      run: bun test
+    typecheck:
+      run: bun run typecheck
+    check:
+      run: bun run check
+    lint:
+      run: bun run lint
