@@ -10,6 +10,7 @@
     "link-check": "bun tools/scripts/link-check.ts",
     "update": "bun tools/scripts/update.ts",
     "backfill": "bun tools/scripts/backfill.ts",
+    "overdue": "bun tools/scripts/overdue.ts",
     "typecheck": "tsc -p tools",
     "check": "biome check --vcs-enabled=true --vcs-client-kind=git --vcs-use-ignore-file=true --indent-style=space --line-width=120 --javascript-formatter-quote-style=double --md-formatter-enabled=false .",
     "test": "bun test"
