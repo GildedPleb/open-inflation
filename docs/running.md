@@ -217,6 +217,12 @@ One request at a time per host, hosts in parallel, the `OBM_RATE_*` overrides as
 - **Wayback, 2 s apart (30 a minute).** Internet Archive staff give the replay limit (`/web/<timestamp>/`) as 600 a minute over 5 minutes, asking clients to stay at 80% (480); `/cdx/` is 60 a minute and Save Page Now 15 or fewer ([edgi-govdata-archiving/wayback#137](https://github.com/edgi-govdata-archiving/wayback/issues/137)). Since September 2026 its bot protection also sends 429s below those limits, so the check stays far under them and backs off on any 429.
 - **Ghostarchive, 5 s apart.** It publishes no limit and sits behind Cloudflare; each link costs two or three requests (the page, then its saved file, which may redirect to another storage path).
 
+## Overdue check
+
+`bun run overdue` checks that main is keeping to the [update cadence](methodology/base_money.md#update-cadence). Each quarter is due by the 15th of its run month (February for Q4, May for Q1, August for Q2, November for Q3), ten days after the run date. The check fails if the newest quarter in `base_money/base_money.csv` is older than the quarter due at the most recent passed deadline, and it lists every missing quarter after the newest row, each with its own deadline. A missed quarter keeps failing until a quarter at or after it lands. It also fails after 15 June if that year's Q1 still has no RBI component. Dates are UTC.
+
+A scheduled GitHub Actions workflow runs it once a day, so a failure reaches the repository owner through GitHub's failed-workflow email. It is not a test and not a merge gate. Run it locally with `bun run overdue`, or `bun run overdue --today YYYY-MM-DD` to check a given date; it makes no network calls and exits 0 on time, 1 overdue, 2 on bad usage. A failure line such as `2026Q3 base money overdue: deadline 2026-11-15` means that quarter's run hasn't landed on main by its deadline.
+
 ## Archive host quirks
 
 Captures are made before verify runs:
