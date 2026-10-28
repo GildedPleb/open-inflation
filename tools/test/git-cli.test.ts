@@ -52,27 +52,42 @@ const git = (dir: string, ...args: string[]) => {
   if (r.exitCode !== 0) throw new Error(dec.decode(r.stderr));
   return dec.decode(r.stdout).trim();
 };
+/** Thrown by trackedTree when `src` has unmerged paths: there is no one tracked tree to copy until they are resolved. */
+class UnresolvedConflicts extends Error {}
 /**
- * A copy of `src`'s committed tree (HEAD) as its own git checkout: a real `git clone --shared` (it borrows src's
- * objects read-only instead of re-hashing every file, the slow part of archive + add + commit), with the origin
- * remote dropped so nothing of src's branches leaks in. Tests that lint "this repository" use it, never the live
- * working tree, so uncommitted evidence cannot change their result or reach the network.
+ * A copy of `src`'s tracked tree as its own git checkout: every tracked file as it stands in the working tree
+ * (committed, staged or not), never an untracked one. `git stash create` writes that tree as a commit object without
+ * touching the working tree, the index, the stash list or a merge in progress (MERGE_HEAD); it prints nothing when
+ * the tree is clean, and then the copy is HEAD. The copy is a real `git clone --shared` (it borrows src's objects,
+ * the stash commit included, read-only instead of re-hashing every file, the slow part of archive + add + commit),
+ * with the origin remote dropped so nothing of src's branches leaks in, checked out at that commit.
+ * Tests that lint "this repository" use it, never the live working tree, so untracked evidence cannot change their
+ * result or reach the network. It is the tracked tree, not HEAD, because the lint those tests run is the working
+ * tree's code: an uncommitted change to a generator, with its outputs regenerated (or a merge resolved and
+ * regenerated, not yet committed), must be linted against those outputs, not HEAD's older ones.
  */
-const committedTree = (src: string): string => {
+const trackedTree = (src: string): string => {
+  const unmerged = git(src, "ls-files", "--unmerged");
+  if (unmerged) {
+    const paths = [...new Set(unmerged.split("\n").map((l) => l.split("\t")[1]))].join(", ");
+    throw new UnresolvedConflicts(`${src} has unresolved merge conflicts (${paths}): resolve them, then run the tests`);
+  }
+  const at = git(src, "stash", "create") || git(src, "rev-parse", "HEAD");
   const dir = mkdtempSync(join(tmpdir(), "obm-tree-"));
   dirs.push(dir);
-  const r = Bun.spawnSync(["git", "clone", "-q", "--shared", "--template=", src, dir]);
+  const r = Bun.spawnSync(["git", "clone", "-q", "--shared", "--no-checkout", "--template=", src, dir]);
   if (r.exitCode !== 0) throw new Error(dec.decode(r.stderr));
   git(dir, "remote", "remove", "origin");
+  git(dir, "checkout", "-q", "--detach", at);
   return dir;
 };
 /** One committed copy of this repository, made once and never edited: every test that only reads it shares it. */
 let shared: string | undefined;
 const sharedTree = () => {
-  shared ??= committedTree(ROOT);
+  shared ??= trackedTree(ROOT);
   return shared;
 };
-/** The shared tree linted once, with no base (its committed skeleton); two tests read the result. */
+/** The shared tree linted once, with no base (its tracked skeleton); two tests read the result. */
 let skeleton: ReturnType<typeof lint> | undefined;
 const skeletonFindings = () => {
   skeleton ??= lint(loadSnapshot(sharedTree(), null), { now: Date.now() });
@@ -155,21 +170,86 @@ describe("git snapshot loader", () => {
     const dir = repo({ "base_money/base_money.csv": "date,value,evidence_id\n" });
     expect(() => loadSnapshot(dir, null)).toThrow(NotGitCheckout);
   });
-  test("the committed tree holds only committed files (uncommitted and untracked edits stay out)", () => {
-    const dir = repo({ "a.txt": "a\n" });
+  test("the tracked tree: tracked edits (staged or not) and deletions are in, untracked files stay out", () => {
+    const dir = repo({ "a.txt": "a\n", "b.txt": "b\n", "c.txt": "c\n" });
     git(dir, "init", "-q", "--template=");
     git(dir, "add", ".");
     git(dir, "commit", "-qm", "base");
+    // Clean: the copy is HEAD itself.
+    const clean = trackedTree(dir);
+    expect(git(clean, "rev-parse", "HEAD")).toBe(git(dir, "rev-parse", "HEAD"));
     writeFileSync(join(dir, "a.txt"), "changed\n");
+    writeFileSync(join(dir, "b.txt"), "staged\n");
+    git(dir, "add", "b.txt");
+    unlinkSync(join(dir, "c.txt"));
     writeFileSync(join(dir, "new.md"), "untracked\n");
-    const t = committedTree(dir);
+    const status = git(dir, "status", "--porcelain");
+    const t = trackedTree(dir);
     expect(t).not.toBe(dir);
     const s = loadSnapshot(t, "HEAD");
-    expect([...s.files.keys()].sort()).toEqual(["a.txt"]);
-    expect(text(s.files, "a.txt")).toBe("a\n");
+    expect([...s.files.keys()].sort()).toEqual(["a.txt", "b.txt"]);
+    expect([text(s.files, "a.txt"), text(s.files, "b.txt")]).toEqual(["changed\n", "staged\n"]);
+    // Making the copy changed nothing in src: same status, nothing stashed.
+    expect(git(dir, "status", "--porcelain")).toBe(status);
+    expect(git(dir, "stash", "list")).toBe("");
   });
-  test("this repository's committed skeleton lints clean", async () => {
+  test("the tracked tree mid-merge: MERGE_HEAD is left alone; an unresolved conflict is a clear error", () => {
+    const dir = repo({ "a.txt": "a\n" });
+    git(dir, "init", "-q", "--template=", "-b", "main");
+    git(dir, "add", ".");
+    git(dir, "commit", "-qm", "base");
+    git(dir, "checkout", "-q", "-b", "side");
+    writeFileSync(join(dir, "a.txt"), "side\n");
+    git(dir, "commit", "-qam", "side");
+    git(dir, "checkout", "-q", "main");
+    writeFileSync(join(dir, "a.txt"), "main\n");
+    git(dir, "commit", "-qam", "main");
+    expect(
+      Bun.spawnSync(["git", "-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", "merge", "-q", "side"]).exitCode,
+    ).toBe(1);
+    expect(() => trackedTree(dir)).toThrow(UnresolvedConflicts);
+    expect(() => trackedTree(dir)).toThrow(/unresolved merge conflicts \(a\.txt\): resolve them/);
+    writeFileSync(join(dir, "a.txt"), "resolved\n");
+    git(dir, "add", "a.txt");
+    const mergeHead = git(dir, "rev-parse", "MERGE_HEAD");
+    expect(text(loadSnapshot(trackedTree(dir), "HEAD").files, "a.txt")).toBe("resolved\n");
+    expect(git(dir, "rev-parse", "MERGE_HEAD")).toBe(mergeHead);
+  });
+  test("this repository's tracked skeleton lints clean", async () => {
     expect(await skeletonFindings()).toEqual([]);
+  });
+  // The symptom this guards (2026-10-28): mid-merge, with the README conflict resolved and regenerated but not yet
+  // committed, this test and CLI's "lint: 0 on clean" failed L17, because they linted HEAD's README (the older
+  // generator's output) with the working tree's lint. Here HEAD holds a stale quarter table and the working tree the
+  // regenerated one; an untracked file that would fail lint must still stay out.
+  test("regenerated but uncommitted generated output: the tracked skeleton lints clean, HEAD alone would not", async () => {
+    const dir = trackedTree(sharedTree());
+    const readme = join(dir, "base_money/README.md");
+    const fresh = readFileSync(readme, "utf8");
+    const stale = fresh.replace(
+      /\n\n\| Quarter \|[^\n]*\n/,
+      "\n\n| Quarter | Count date | Total (USD) | YoY (USD) |\n",
+    );
+    expect(stale).not.toBe(fresh);
+    writeFileSync(readme, stale);
+    git(dir, "commit", "-qam", "older generator's output");
+    writeFileSync(readme, fresh);
+    const junk = "base_money/quarters/2099Q1.md";
+    writeFileSync(join(dir, junk), "not a roll-up\n");
+    const now = { now: Date.now() };
+    const found = async (dir: string) => (await lint(loadSnapshot(dir, null), now)).map((f) => [f.check, f.file]);
+    // The old copy (HEAD only, what this suite linted before) reproduces the symptom.
+    const head = mkdtempSync(join(tmpdir(), "obm-head-"));
+    dirs.push(head);
+    expect(Bun.spawnSync(["git", "clone", "-q", "--shared", "--template=", dir, head]).exitCode).toBe(0);
+    expect(await found(head)).toContainEqual(["L17", "base_money/README.md"]);
+    // The live working tree would let the untracked file in.
+    expect(loadSnapshot(dir, null).files.has(junk)).toBe(true);
+    // The tracked tree: the regenerated README, and no untracked file.
+    const t = trackedTree(dir);
+    expect(readFileSync(join(t, "base_money/README.md"), "utf8")).toBe(fresh);
+    expect(loadSnapshot(t, null).files.has(junk)).toBe(false);
+    expect(await found(t)).toEqual([]);
   });
 });
 
@@ -397,7 +477,7 @@ describe("CLI", () => {
     expect(await cli(dir, ["--base"])).toMatchObject({ code: 2 });
     // --base <ref> is accepted and ignored: lint reads no base, so even an unknown ref changes nothing.
     expect(await cli(dir, ["--base", "no-such-ref"])).toEqual(bad);
-    // The committed tree, not the live one: an uncommitted extract in the checkout cannot reach this run.
+    // The tracked tree, not the live one: an untracked extract in the checkout cannot reach this run.
     // L16's notices (grandfathered quarter-file claims, listed for rewording) print but never fail the run.
     const noNotices = (r: { code: number; stdout: string; out: string }) => {
       for (const l of r.out.split("\n"))
