@@ -92,7 +92,7 @@ Basket v1 was chosen to cover at least 80% of global base money, checked against
 ### Basket changes
 
 - **Growth cadence.** For each calendar year of backfill completed, one bank is added, the largest candidate by size, and filled in for every published quarter before backfill continues into the next year back. Before v1 the single basket is widened in place, with no `basket_version` split (user rule, 2026-10-23). BCB was the first addition; HKMA, the first candidate once 2025 was complete, is the second (2026-10-28), filled in for every published quarter, 2024Q4 to 2026Q2. The next is due once 2024 is complete.
-- **Adding an issuer.** Each added issuer is a documented basket change. Before any of its data, the issuer gets its row in [Per-issuer definitions](#per-issuer-definitions) (series, components, convention, value used, source page type) and its row in [Status and vintages](#status-and-vintages). The floor is reviewed, and `catalog.json` `baskets` gains a new entry (the next `version`, the new issuer list and its `floor_pct`) all in a commit that changes this file first.
+- **Adding an issuer.** Each added issuer is a documented basket change. Before any of its data, the issuer gets its row in [Per-issuer definitions](#per-issuer-definitions) (series, components, convention, value used, source page type) and its row in [Status and vintages](#status-and-vintages). The floor is reviewed, and `catalog.json` `baskets` is updated in a commit that changes this file first: before v1 the issuer joins the current entry's list in place (see Growth cadence); from v1 it gets a new entry (the next `version`, the new issuer list and its `floor_pct`).
 - **Backfill.** An added issuer's history is backfilled quarter by quarter, as far back as its primary sources allow. Each backfilled quarter gets the issuer's extract and an updated roll-up (see [Revisions](#revisions)). A quarter the primaries do not reach keeps its row as computed under its basket version (see [Rows across basket versions](#rows-across-basket-versions)). Nothing is estimated.
 - **Losing an issuer permanently.** If an issuer stops publishing, or collapses, that is a basket change, documented here: a new `baskets` entry without the issuer is added, and the floor is reviewed. A temporary gap for one quarter is not a basket change; it is an exclusion (see [Quarter inclusion](#quarter-inclusion)).
 
@@ -262,7 +262,7 @@ FX is supporting data: it only translates each central bank's figure into US dol
 
 **Versioning starts at the v1 release** (data back to at least 2018). Until then there is no version ceremony: no bumps, tags or release notes, and the catalog `version` stays `0.1.0`. The semver rules are written here when v1 is cut.
 
-`catalog.json` lists every basket as `baskets: [{version, issuers, floor_pct}]`; today that is `{version: 1, issuers: [PBOC, FED, ECB, BOJ, BOE, SNB, RBI, CBR, BCB], floor_pct: "94"}`. Each roll-up machine block is checked against the entry for its `basket_version` (L9). L11 checks the `baskets` schema: versions run 1..n in order, each basket's issuers are a non-empty list of unique upper-case ids, and `floor_pct` is a decimal string from "0" to "100" with at most 2 decimals. The catalog's optional `issuers` list can give an issuer `as_of_convention: "start_of_day"` (today only CBR), which requires its As of to be exactly the first day of the next quarter (L7; see [As of falls inside the quarter](#extract-template)).
+`catalog.json` lists every basket as `baskets: [{version, issuers, floor_pct}]`; today that is `{version: 1, issuers: [PBOC, FED, ECB, BOJ, BOE, SNB, RBI, CBR, BCB, HKMA], floor_pct: "94"}`. Each roll-up machine block is checked against the entry for its `basket_version` (L9). L11 checks the `baskets` schema: versions run 1..n in order, each basket's issuers are a non-empty list of unique upper-case ids, and `floor_pct` is a decimal string from "0" to "100" with at most 2 decimals. The catalog's optional `issuers` list can give an issuer `as_of_convention: "start_of_day"` (today only CBR), which requires its As of to be exactly the first day of the next quarter (L7; see [As of falls inside the quarter](#extract-template)).
 
 ## Update cadence
 
@@ -429,7 +429,7 @@ The template below shows a quarter with every basket issuer evidenced, as every 
 ````markdown
 # <YYYY>Q<n> base money
 
-On <D Month YYYY>, base money across the <nine> central banks in the basket came to **$<total_usd with thousands separators>** (about **$<T.TT> trillion**), covering <100>% of the basket by value.
+On <D Month YYYY>, base money across the <ten> central banks in the basket came to **$<total_usd with thousands separators>** (about **$<T.TT> trillion**), covering <100>% of the basket by value.
 
 | Issuer | What was measured | Local amount | FX rate (market close) | USD |
 | :----- | :---------------- | -----------: | -------------------: | --: |
