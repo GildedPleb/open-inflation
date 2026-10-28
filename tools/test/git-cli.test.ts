@@ -254,6 +254,7 @@ describe("no network in lint or CI", () => {
       "bun run typecheck",
       "bun run check",
       "bun run lint",
+      "bun run overdue", // offline: its import graph is walked below
     ]);
     expect(yml).not.toMatch(/\b(verify|audit|link-check)\b|scripts\/(verify|audit|link-check)/);
     expect(yml).not.toMatch(/OBM_NO_NETWORK|OBM_ARCHIVE_DIR|curl|wget|https?_proxy/i);
@@ -276,7 +277,7 @@ describe("no network in lint or CI", () => {
     ])
       expect(await Bun.file(join(ROOT, f)).text()).not.toContain("OBM_NO_NETWORK");
   });
-  test("lint's import graph never reaches the network code (archive.ts, verify.ts, link-check.ts) or fetch", async () => {
+  test("lint's and overdue's import graphs never reach the network code (archive.ts, verify.ts, link-check.ts) or fetch", async () => {
     const seen = new Set<string>();
     const walk = async (p: string) => {
       if (seen.has(p)) return;
@@ -290,6 +291,15 @@ describe("no network in lint or CI", () => {
     expect(names).toContain("tools/scripts/lib/checks.ts");
     for (const n of ["tools/scripts/lib/archive.ts", "tools/scripts/lib/verify.ts", "tools/scripts/lib/link-check.ts"])
       expect(names).not.toContain(n);
+    // The CI step `bun run overdue` runs this file; it must stay as offline as lint.
+    const pkg = (await Bun.file(join(ROOT, "package.json")).json()) as { scripts: Record<string, string> };
+    expect(pkg.scripts.overdue).toBe("bun tools/scripts/overdue.ts");
+    seen.clear();
+    await walk(join(ROOT, "tools", "scripts", "overdue.ts"));
+    const overdue = [...seen].map((p) => p.slice(ROOT.length + 1)).sort();
+    expect(overdue).toContain("tools/scripts/lib/overdue.ts");
+    for (const n of ["tools/scripts/lib/archive.ts", "tools/scripts/lib/verify.ts", "tools/scripts/lib/link-check.ts"])
+      expect(overdue).not.toContain(n);
   });
 });
 
