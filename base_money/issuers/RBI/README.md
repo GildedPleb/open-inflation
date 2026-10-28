@@ -20,7 +20,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2025 Q2](../../quarters/2025Q2.md) | 2025-06-27 | [49,237,050,000,000](2025.md#rbi-reserve-money-2025-06-27-wss-2025-07-04) | final | [85.431](../../FX/2025.md#fx-2025q2-inr) | $576.3B | —¹ |
 | [2025 Q1](../../quarters/2025Q1.md) | 2025-03-31 | [48,292,430,000,000](2025.md#rbi-reserve-money-2025-03-31-wss-2025-07-04) | final | [85.42](../../FX/2025.md#fx-2025q1-inr) | $565.4B | —¹ |
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12-27 | [46,628,260,000,000](2024.md#rbi-reserve-money-2024-12-27-wss-2025-01-03) | final | [85.368](../../FX/2024.md#fx-2024q4-inr) | $546.2B | —¹ |
-| [2024 Q3](../../quarters/2024Q3.md) | 2024-09-27 | [46,606,540,000,000](2024.md#rbi-reserve-money-2024-09-27-wss-2024-10-04) | final | [83.6171](../../FX/2024.md#fx-2024q3-inr) | $557.4B | —¹ |
+| [2024 Q3](../../quarters/2024Q3.md) | 2024-09-27 | [46,606,540,000,000](2024.md#rbi-reserve-money-2024-09-27-wss-2024-10-04) | final | [83.72](../../FX/2024.md#fx-2024q3-inr) | $556.7B | —¹ |
 
 ¹ No year-ago quarter yet: 2025 Q2, 2025 Q1, 2024 Q4, 2024 Q3.
 

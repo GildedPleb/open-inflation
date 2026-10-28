@@ -20,7 +20,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2025 Q2](../../quarters/2025Q2.md) | 2025-06-30 | [37,915,942,000,000](2025.md#pboc-reserve-money-2025-06-file-2026011515582620291) | as published | [7.1631](../../FX/2025.md#fx-2025q2-cny) | $5.29T | —¹ |
 | [2025 Q1](../../quarters/2025Q1.md) | 2025-03-31 | [37,681,773,000,000](2025.md#pboc-reserve-money-2025-03-file-2026011515582620291) | as published | [7.2562](../../FX/2025.md#fx-2025q1-cny) | $5.19T | —¹ |
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12-31 | [36,804,014,000,000](2024.md#pboc-reserve-money-2024-12-file-2025111416402849859) | as published | [7.2988](../../FX/2024.md#fx-2024q4-cny) | $5.04T | —¹ |
-| [2024 Q3](../../quarters/2024Q3.md) | 2024-09-30 | [37,913,007,000,000](2024.md#pboc-reserve-money-2024-09-file-2025111416402849859) | as published | [7.0103](../../FX/2024.md#fx-2024q3-cny) | $5.41T | —¹ |
+| [2024 Q3](../../quarters/2024Q3.md) | 2024-09-30 | [37,913,007,000,000](2024.md#pboc-reserve-money-2024-09-file-2025111416402849859) | as published | [7.0180](../../FX/2024.md#fx-2024q3-cny) | $5.40T | —¹ |
 
 ¹ No year-ago quarter yet: 2025 Q2, 2025 Q1, 2024 Q4, 2024 Q3.
 

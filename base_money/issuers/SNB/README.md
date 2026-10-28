@@ -20,7 +20,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2025 Q2](../../quarters/2025Q2.md) | 2025-06 | [498,169,000,000](2025.md#snb-snbmoba-n2-monetary-base-2025-06-retrieved-2026-10-26) | as published | [0.813052](../../FX/2025.md#fx-2025q2-chf) | $612.7B | —¹ |
 | [2025 Q1](../../quarters/2025Q1.md) | 2025-03 | [511,778,000,000](2025.md#snb-snbmoba-n2-monetary-base-2025-03-retrieved-2026-10-27) | as published | [0.882954](../../FX/2025.md#fx-2025q1-chf) | $579.6B | —¹ |
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12 | [516,945,000,000](2024.md#snb-snbmoba-n2-monetary-base-2024-12-retrieved-2026-10-28) | as published | [0.892177](../../FX/2024.md#fx-2024q4-chf) | $579.4B | —¹ |
-| [2024 Q3](../../quarters/2024Q3.md) | 2024-09 | [529,130,000,000](2024.md#snb-snbmoba-n2-monetary-base-2024-09-retrieved-2026-10-28) | as published | [0.847375](../../FX/2024.md#fx-2024q3-chf) | $624.4B | —¹ |
+| [2024 Q3](../../quarters/2024Q3.md) | 2024-09 | [529,130,000,000](2024.md#snb-snbmoba-n2-monetary-base-2024-09-retrieved-2026-10-28) | as published | [0.847348](../../FX/2024.md#fx-2024q3-chf) | $624.5B | —¹ |
 
 ¹ No year-ago quarter yet: 2025 Q2, 2025 Q1, 2024 Q4, 2024 Q3.
 

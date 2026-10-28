@@ -20,7 +20,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2025 Q2](../../quarters/2025Q2.md) | 2025-06-30 | [2,120,253,000,000](2025.md#hkma-total-monetary-base-before-discount-window-2025-06-30-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.8495](../../FX/2025.md#fx-2025q2-hkd) | $270.1B | —¹ |
 | [2025 Q1](../../quarters/2025Q1.md) | 2025-03-31 | [1,977,117,000,000](2025.md#hkma-total-monetary-base-before-discount-window-2025-03-31-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7797](../../FX/2025.md#fx-2025q1-hkd) | $254.1B | —¹ |
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12-31 | [1,957,503,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-12-31-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7675](../../FX/2024.md#fx-2024q4-hkd) | $252.0B | —¹ |
-| [2024 Q3](../../quarters/2024Q3.md) | 2024-09-30 | [1,941,425,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-09-30-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.77328](../../FX/2024.md#fx-2024q3-hkd) | $249.8B | —¹ |
+| [2024 Q3](../../quarters/2024Q3.md) | 2024-09-30 | [1,941,425,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-09-30-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7744](../../FX/2024.md#fx-2024q3-hkd) | $249.7B | —¹ |
 
 ¹ No year-ago quarter yet: 2025 Q2, 2025 Q1, 2024 Q4, 2024 Q3.
 

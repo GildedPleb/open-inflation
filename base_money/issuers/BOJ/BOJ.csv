@@ -1,5 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
-2024-09-30,2024Q3,BOJ,2024-09-30,end-of-month stock,as published,JPY,673453700000000,0.00700363488650609666,4716623827767,base_money/issuers/BOJ/2024.md#boj-monetary-base-end-of-period-2024-09-mblongxlsx-retrieved-2026-10-26
+2024-09-30,2024Q3,BOJ,2024-09-30,end-of-month stock,as published,JPY,673453700000000,0.00696184906711222501,4688483013088,base_money/issuers/BOJ/2024.md#boj-monetary-base-end-of-period-2024-09-mblongxlsx-retrieved-2026-10-26
 2024-12-31,2024Q4,BOJ,2024-12-31,end-of-month stock,as published,JPY,660280500000000,0.00636091851663380192,4199990458622,base_money/issuers/BOJ/2024.md#boj-monetary-base-end-of-period-2024-12-mblongxlsx-retrieved-2026-10-26
 2025-03-31,2025Q1,BOJ,2025-03-31,end-of-month stock,as published,JPY,653764200000000,0.00667026861171699384,4360782822724,base_money/issuers/BOJ/2025.md#boj-monetary-base-end-of-period-2025-03-mblongxlsx-retrieved-2026-10-26
 2025-06-30,2025Q2,BOJ,2025-06-30,end-of-month stock,as published,JPY,650973700000000,0.00694396222484549684,4520336782168,base_money/issuers/BOJ/2025.md#boj-monetary-base-end-of-period-2025-06-mblongxlsx-retrieved-2026-10-26

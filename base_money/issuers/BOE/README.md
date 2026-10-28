@@ -20,7 +20,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2025 Q2](../../quarters/2025Q2.md) | 2025-06 | [776,370,000,000](2025.md#boe-lpmavaa--lpmbl22-2025-06-retrieved-2026-10-26) | as published | [1.356310](../../FX/2025.md#fx-2025q2-gbp) | $1.05T | —¹ |
 | [2025 Q1](../../quarters/2025Q1.md) | 2025-03 | [795,345,000,000](2025.md#boe-lpmavaa--lpmbl22-2025-03-retrieved-2026-10-27) | as published | [1.291963](../../FX/2025.md#fx-2025q1-gbp) | $1.03T | —¹ |
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12 | [816,387,000,000](2024.md#boe-lpmavaa--lpmbl22-2024-12-retrieved-2026-10-28) | as published | [1.263390](../../FX/2024.md#fx-2024q4-gbp) | $1.03T | —¹ |
-| [2024 Q3](../../quarters/2024Q3.md) | 2024-09 | [838,730,000,000](2024.md#boe-lpmavaa--lpmbl22-2024-09-retrieved-2026-10-28) | as published | [1.320795](../../FX/2024.md#fx-2024q3-gbp) | $1.11T | —¹ |
+| [2024 Q3](../../quarters/2024Q3.md) | 2024-09 | [838,730,000,000](2024.md#boe-lpmavaa--lpmbl22-2024-09-retrieved-2026-10-28) | as published | [1.321990](../../FX/2024.md#fx-2024q3-gbp) | $1.11T | —¹ |
 
 ¹ No year-ago quarter yet: 2025 Q2, 2025 Q1, 2024 Q4, 2024 Q3.
 
