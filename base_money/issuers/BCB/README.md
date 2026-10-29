@@ -38,6 +38,8 @@ Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM mea
 
 SGS 1788 "BM - Base monetária restrita (saldo em final de período)", the BCB's own "base monetária": currency issued plus bank reserves, the stock at the end of the month, published in R$ thousand and used as published, not adjusted. It is the series in column B of Table 28, "Base monetária e componentes - Saldos em final de período", of the BCB's monetary and credit statistics, and the base the BCB reports in its monthly statistics text: "A base monetária totalizou R$432,6 bilhões em agosto" (August 2026; [Texto de estatísticas monetárias e de crédito, September 2026](https://www.bcb.gov.br/content/estatisticas/hist_estatisticasmonetariascredito/202609_Texto_de_estatisticas_monetarias_e_de_credito.pdf) (archived: [archive.today](https://archive.ph/vVRtp))).
 
+This restricted base leaves out some deposits banks hold at the BCB, so it is narrower than the euro-area, Swiss and Russian figures in the basket.
+
 How the BCB defines it:
 
 - "A base monetária restrita é a soma do papel-moeda emitido (PME) com as reservas bancárias. As reservas bancárias incluem os depósitos compulsórios em espécie, não remunerados, incidentes sobre os depósitos à vista, mais as reservas livres." ([Nota Técnica 48, 2018](https://www.bcb.gov.br/content/publicacoes/notastecnicas/nt%2048_dstat_dimob_novembro_2018.pdf), footnote 9 (archived: [archive.today](https://archive.ph/tiCfv), [Ghostarchive](https://ghostarchive.org/archive/HJTKQ)))
