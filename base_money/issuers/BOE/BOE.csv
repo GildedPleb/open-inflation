@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2024-03-31,2024Q1,BOE,2024-03,monthly average,as published,GBP,884835000000,1.271376,1124957982960,base_money/issuers/BOE/2024.md#boe-lpmavaa--lpmbl22-2024-03-retrieved-2026-10-29
 2024-06-30,2024Q2,BOE,2024-06,monthly average,as published,GBP,863612000000,1.271575,1098147428900,base_money/issuers/BOE/2024.md#boe-lpmavaa--lpmbl22-2024-06-retrieved-2026-10-29
 2024-09-30,2024Q3,BOE,2024-09,monthly average,as published,GBP,838730000000,1.321990,1108792672700,base_money/issuers/BOE/2024.md#boe-lpmavaa--lpmbl22-2024-09-retrieved-2026-10-28
 2024-12-31,2024Q4,BOE,2024-12,monthly average,as published,GBP,816387000000,1.263390,1031415171930,base_money/issuers/BOE/2024.md#boe-lpmavaa--lpmbl22-2024-12-retrieved-2026-10-28

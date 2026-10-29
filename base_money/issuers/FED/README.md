@@ -18,12 +18,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12 | [5,373,700,000,000](2025.md#fed-h6-monetary-base-2025-12-release-2026-01-27) | as published | -4.1% |
 | [2025 Q3](../../quarters/2025Q3.md) | 2025-09 | [5,478,000,000,000](2025.md#fed-h6-monetary-base-2025-09-release-2025-10-28) | as published | -2.0% |
 | [2025 Q2](../../quarters/2025Q2.md) | 2025-06 | [5,748,600,000,000](2025.md#fed-h6-monetary-base-2025-06-release-2025-07-22) | as published | +0.3% |
-| [2025 Q1](../../quarters/2025Q1.md) | 2025-03 | [5,775,200,000,000](2025.md#fed-h6-monetary-base-2025-03-release-2025-04-22) | as published | —¹ |
+| [2025 Q1](../../quarters/2025Q1.md) | 2025-03 | [5,775,200,000,000](2025.md#fed-h6-monetary-base-2025-03-release-2025-04-22) | as published | -1.8% |
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12 | [5,604,100,000,000](2024.md#fed-h6-monetary-base-2024-12-release-2025-01-28) | as published | —¹ |
 | [2024 Q3](../../quarters/2024Q3.md) | 2024-09 | [5,588,400,000,000](2024.md#fed-h6-monetary-base-2024-09-release-2024-10-22) | as published | —¹ |
 | [2024 Q2](../../quarters/2024Q2.md) | 2024-06 | [5,731,800,000,000](2024.md#fed-h6-monetary-base-2024-06-release-2024-07-23) | as published | —¹ |
+| [2024 Q1](../../quarters/2024Q1.md) | 2024-03 | [5,883,000,000,000](2024.md#fed-h6-monetary-base-2024-03-release-2024-04-23) | as published | —¹ |
 
-¹ No year-ago quarter yet: 2025 Q1, 2024 Q4, 2024 Q3, 2024 Q2.
+¹ No year-ago quarter yet: 2024 Q4, 2024 Q3, 2024 Q2, 2024 Q1.
 
 Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month.
 
