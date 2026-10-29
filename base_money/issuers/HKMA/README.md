@@ -31,7 +31,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ## What we measure
 
-The HKMA's own monetary base, the end-of-day stock on the quarter-end date: field `mb_bf_disc_win_total`, "Total Monetary Base before Discount Window", of the Open API's Monetary Base – Daily figures, in HK$ million, used as published, not adjusted. It is the sum of the four components the HKMA defines:
+The HKMA's own monetary base, the end-of-day stock on the quarter-end date, or the last business day before it when the quarter-end date has no figure, as in 2024Q2 (30 June 2024 was a Sunday, so 28 June is used): field `mb_bf_disc_win_total`, "Total Monetary Base before Discount Window", of the Open API's Monetary Base – Daily figures, in HK$ million, used as published, not adjusted. It is the sum of the four components the HKMA defines:
 
 - "The Monetary Base comprises the following components: Certificates of Indebtedness, which provide full backing to the banknotes issued by note-issuing banks / Government-issued notes and coins in circulation / Aggregate Balance, which is the sum of clearing account balances kept with the HKMA / Exchange Fund Bills and Notes issued by the HKMA on behalf of the Government for the account of the Exchange Fund" ([Components of the Monetary Base](https://www.hkma.gov.hk/eng/key-functions/money/linked-exchange-rate-system/components-of-the-monetary-base/), last revision date 23 November 2020 (archived: [Wayback](https://web.archive.org/web/20261028151104/https://www.hkma.gov.hk/eng/key-functions/money/linked-exchange-rate-system/components-of-the-monetary-base/)))
 
