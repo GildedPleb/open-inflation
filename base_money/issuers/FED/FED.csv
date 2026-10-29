@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2024-03-31,2024Q1,FED,2024-03,monthly average,as published,USD,5883000000000,1,5883000000000,base_money/issuers/FED/2024.md#fed-h6-monetary-base-2024-03-release-2024-04-23
 2024-06-30,2024Q2,FED,2024-06,monthly average,as published,USD,5731800000000,1,5731800000000,base_money/issuers/FED/2024.md#fed-h6-monetary-base-2024-06-release-2024-07-23
 2024-09-30,2024Q3,FED,2024-09,monthly average,as published,USD,5588400000000,1,5588400000000,base_money/issuers/FED/2024.md#fed-h6-monetary-base-2024-09-release-2024-10-22
 2024-12-31,2024Q4,FED,2024-12,monthly average,as published,USD,5604100000000,1,5604100000000,base_money/issuers/FED/2024.md#fed-h6-monetary-base-2024-12-release-2025-01-28

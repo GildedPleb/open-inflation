@@ -47,16 +47,17 @@ US dollars, trillions (T), converted at the market close on each report's count 
 | 2025 Q4 | $22.82T | +1.6% | [Sources](base_money/quarters/2025Q4.md) |
 | 2025 Q3 | $23.14T | -3.0% | [Sources](base_money/quarters/2025Q3.md) |
 | 2025 Q2 | $23.69T | +2.8% | [Sources](base_money/quarters/2025Q2.md) |
-| 2025 Q1 | $23.08T | —¹ | [Sources](base_money/quarters/2025Q1.md) |
+| 2025 Q1 | $23.08T | -2.9% | [Sources](base_money/quarters/2025Q1.md) |
 | 2024 Q4 | $22.46T | —¹ | [Sources](base_money/quarters/2024Q4.md) |
 | 2024 Q3 | $23.86T | —¹ | [Sources](base_money/quarters/2024Q3.md) |
 | 2024 Q2 | $23.05T | —¹ | [Sources](base_money/quarters/2024Q2.md) |
+| 2024 Q1 | $23.77T | —¹ | [Sources](base_money/quarters/2024Q1.md) |
 
 <!-- END GENERATED table -->
 
 <!-- BEGIN GENERATED yoy-notes -->
 
-¹ No year-ago quarter yet: 2025 Q1, 2024 Q4, 2024 Q3, 2024 Q2.
+¹ No year-ago quarter yet: 2024 Q4, 2024 Q3, 2024 Q2, 2024 Q1.
 
 ᵖ Uses a provisional bank figure that may be revised: 2026 Q2.
 
@@ -89,7 +90,7 @@ The basket is ten of the largest central banks. Together they cover most of the 
 - **[BCB](base_money/issuers/BCB/README.md)**: Banco Central do Brasil. Its figure is the BCB's own restricted monetary base, which leaves out some deposits banks hold at the BCB, so it is narrower than the euro-area, Swiss and Russian figures.
 - **[HKMA](base_money/issuers/HKMA/README.md)**: Hong Kong Monetary Authority. Its figure is the HKMA's monetary base under the Currency Board: the notes in circulation (backed by Certificates of Indebtedness and government-issued notes and coins), banks' clearing balances (the Aggregate Balance) and Exchange Fund Bills and Notes.
 
-More banks will be added over time, one for each year of history filled in. Until v1, an added bank is filled in for every published quarter, so earlier totals are revised when it joins: HKMA joined on 28 October 2026, which raised each total then published (2024 Q4 on) by about $0.26 trillion; it is counted in every quarter from 2024 Q2 on, about $0.25–0.27 trillion each.
+More banks will be added over time, one for each year of history filled in. Until v1, an added bank is filled in for every published quarter, so earlier totals are revised when it joins: HKMA joined on 28 October 2026, which raised each total then published (2024 Q4 on) by about $0.26 trillion; it is counted in every quarter from 2024 Q1 on, about $0.25–0.27 trillion each.
 
 ### Caveats
 
