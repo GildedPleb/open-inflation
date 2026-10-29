@@ -4,7 +4,7 @@
 - **Country or currency area:** United Arab Emirates
 - **Currency:** UAE dirham, AED
 - **What it is:** the UAE's central bank. It keeps the UAE dirham at a fixed exchange rate against the US dollar, so most changes in its monetary base are matched by changes in its foreign reserves.
-- **Official website:** [centralbank.ae, English](https://centralbank.ae/en/)
+- **Official website:** [centralbank.ae, English](https://centralbank.ae/en/) (archived: [Wayback](https://web.archive.org/web/20261021035300/https://centralbank.ae/en/); the live page answers automated requests with a Cloudflare challenge, HTTP 403)
 - **Data pages used here:** the "UAE Monetary Base" table of the CBUAE's monthly Statistical Bulletin, a PDF per release (Table 4 "UAE Monetary Base (Monthly)" in the February 2026 bulletin, Table 3 "UAE Monetary Base" in the June and August 2026 bulletins); each figure's exact PDF and its archived copy are in the year files ([2024](2024.md), [2025](2025.md), [2026](2026.md))
 
 ## Quarters
@@ -40,9 +40,9 @@ The CBUAE's page on the monetary system gives the legal definition:
 
 - "Monetary Base (MB) – defined in Decretal Law No. 14 of 2018 as the sum of (1) currency issued (currency in circulation outside banks and cash at bank), (2) aggregate balances of current accounts of licensed financial institutions with the CBUAE, including reserve requirements, in addition to any other funds deposited with the CBUAE for the purpose of clearing and settlement operations, and (3) the outstanding balance of securities and financial instruments issued by the CBUAE;" ([How the Monetary System Works](https://centralbank.ae/en/our-operations/monetary-policy-and-domestic-markets/how-the-monetary-system-works/) (archived: [Wayback](https://web.archive.org/web/20261029160610/https://centralbank.ae/en/our-operations/monetary-policy-and-domestic-markets/how-the-monetary-system-works/)))
 
-**Cross-check.** The CBUAE's separate "UAE Monetary Base (Monthly)" release (End of Period, Figures in Billions of UAE Dirhams) prints the same totals rounded to AED 0.1 billion, except Jun 2025 and Dec 2025 in its February 2026 issue, each AED 0.1 billion above the bulletin; the year files quote each release and record those two differences as unexplained. It is read, never summed.
+**Cross-check.** The CBUAE's separate "UAE Monetary Base (Monthly)" release (End of Period, Figures in Billions of UAE Dirhams) prints each total as the sum of its own components rounded to AED 0.1 billion. In its February 2026 issue the "Banks & OFCs Current Accounts & Overnight Deposits of Banks at CBUAE" line is AED 0.1 billion above the bulletin's figure rounded for Jun, Jul, Aug, Oct, Nov and Dec 2025, which puts the release total AED 0.1 billion above the bulletin's for Jun, Aug, Oct, Nov and Dec 2025 (for Jul 2025 the totals still agree after rounding); the CBUAE gives no reason, so these differences are recorded as unexplained. For Jan 2026 the components agree and the total differs by AED 0.1 billion from rounding alone. Of the quarter-end months used, only Jun 2025 and Dec 2025 differ; the year files quote each release. It is read, never summed.
 
-**Not used.** The CBUAE's HTML statistics pages could not be retrieved (Cloudflare challenge), so the per-release PDFs are used. The Statistical Bulletin March 2026 returned an empty file when retrieved on 2026-10-29, so 2025Q1 is read from the February 2026 bulletin.
+**Not used.** The CBUAE's HTML statistics pages could not be retrieved (Cloudflare challenge), so the per-release PDFs are used. The Statistical Bulletin March 2026 (`https://centralbank.ae/media/kvffokv3/statistical-bulletin-march-2026.pdf`) returned HTTP 404 with an empty body when retrieved on 2026-10-29, so 2025Q1 is read from the February 2026 bulletin. The How the Monetary System Works page (cited above) also answers automated requests with a Cloudflare challenge (HTTP 403); its Wayback copy is cited with it.
 
 ## Years
 
