@@ -4,9 +4,9 @@ Quarterly base money of the world's largest central banks, summed in US dollars,
 
 <!-- BEGIN GENERATED latest -->
 
-**Latest: $22.39 trillion at 30 Jun 2026 (2026 Q2).** Covers 100.00% of the basket.
+**Latest: $22.60 trillion at 30 Jun 2026 (2026 Q2).** Covers 100.00% of the basket.
 
-Updated 28 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q3
+Updated 29 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q3
 
 <!-- END GENERATED latest -->
 
@@ -42,16 +42,16 @@ US dollars, trillions (T), converted at the market close on each report's count 
 
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
-| 2026 Q2 | $22.39T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
-| 2026 Q1 | $22.71T | -1.6% | [Sources](base_money/quarters/2026Q1.md) |
-| 2025 Q4 | $22.82T | +1.6% | [Sources](base_money/quarters/2025Q4.md) |
-| 2025 Q3 | $23.14T | -3.0% | [Sources](base_money/quarters/2025Q3.md) |
-| 2025 Q2 | $23.69T | +2.8% | [Sources](base_money/quarters/2025Q2.md) |
-| 2025 Q1 | $23.08T | -2.9% | [Sources](base_money/quarters/2025Q1.md) |
-| 2024 Q4 | $22.46T | —¹ | [Sources](base_money/quarters/2024Q4.md) |
-| 2024 Q3 | $23.86T | —¹ | [Sources](base_money/quarters/2024Q3.md) |
-| 2024 Q2 | $23.05T | —¹ | [Sources](base_money/quarters/2024Q2.md) |
-| 2024 Q1 | $23.77T | —¹ | [Sources](base_money/quarters/2024Q1.md) |
+| 2026 Q2 | $22.60T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
+| 2026 Q1 | $22.95T | -1.5% | [Sources](base_money/quarters/2026Q1.md) |
+| 2025 Q4 | $23.06T | +1.7% | [Sources](base_money/quarters/2025Q4.md) |
+| 2025 Q3 | $23.37T | -2.9% | [Sources](base_money/quarters/2025Q3.md) |
+| 2025 Q2 | $23.92T | +2.9% | [Sources](base_money/quarters/2025Q2.md) |
+| 2025 Q1 | $23.30T | -2.8% | [Sources](base_money/quarters/2025Q1.md) |
+| 2024 Q4 | $22.67T | —¹ | [Sources](base_money/quarters/2024Q4.md) |
+| 2024 Q3 | $24.06T | —¹ | [Sources](base_money/quarters/2024Q3.md) |
+| 2024 Q2 | $23.25T | —¹ | [Sources](base_money/quarters/2024Q2.md) |
+| 2024 Q1 | $23.97T | —¹ | [Sources](base_money/quarters/2024Q1.md) |
 
 <!-- END GENERATED table -->
 
@@ -77,7 +77,7 @@ Base money is the money a central bank issues directly: the currency in circulat
 
 ### Which central banks
 
-The basket is ten of the largest central banks. Together they cover most of the world's base money, but this is not a global total.
+The basket is eleven of the largest central banks. Together they cover most of the world's base money, but this is not a global total.
 
 - **[PBOC](base_money/issuers/PBOC/README.md)**: People's Bank of China
 - **[FED](base_money/issuers/FED/README.md)**: Federal Reserve (United States)
@@ -89,8 +89,9 @@ The basket is ten of the largest central banks. Together they cover most of the 
 - **[CBR](base_money/issuers/CBR/README.md)**: Bank of Russia
 - **[BCB](base_money/issuers/BCB/README.md)**: Banco Central do Brasil
 - **[HKMA](base_money/issuers/HKMA/README.md)**: Hong Kong Monetary Authority
+- **[CBUAE](base_money/issuers/CBUAE/README.md)**: Central Bank of the UAE
 
-More banks will be added over time, one for each year of history filled in. Until v1, an added bank is filled in for every published quarter, so earlier totals are revised when it joins: HKMA joined on 28 October 2026, which raised each total then published (2024 Q4 on) by about $0.26 trillion; it is counted in every quarter from 2024 Q1 on, about $0.25–0.27 trillion each.
+More banks will be added over time, one for each year of history filled in. Until v1, an added bank is filled in for every published quarter, so earlier totals are revised when it joins: HKMA joined on 28 October 2026, which raised each total then published (2024 Q4 on) by about $0.26 trillion; it is counted in every quarter from 2024 Q1 on, about $0.25–0.27 trillion each. CBUAE joined on 29 October 2026, which raised each total then published (2024 Q1 on) by about $0.19–0.24 trillion.
 
 ### Caveats
 
