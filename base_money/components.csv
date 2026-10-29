@@ -1,4 +1,14 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2024-06-30,2024Q2,PBOC,2024-06-30,end-of-month stock,as published,CNY,37128563000000,0.13760268600443080649,5108989996285,base_money/issuers/PBOC/2024.md#pboc-reserve-money-2024-06-file-2025111416402849859
+2024-06-30,2024Q2,FED,2024-06,monthly average,as published,USD,5731800000000,1,5731800000000,base_money/issuers/FED/2024.md#fed-h6-monetary-base-2024-06-release-2024-07-23
+2024-06-30,2024Q2,ECB,2024-06-28,weekly stock,as published,EUR,4797400000000,1.0716,5140893840000,base_money/issuers/ECB/2024.md#ecb-liability-items-1--21--22-statement-2024-06-28-published-2024-07-03
+2024-06-30,2024Q2,BOJ,2024-06-30,end-of-month stock,as published,JPY,675385000000000,0.00621581302834410741,4198066882148,base_money/issuers/BOJ/2024.md#boj-monetary-base-end-of-period-2024-06-mblongxlsx-retrieved-2026-10-26
+2024-06-30,2024Q2,BOE,2024-06,monthly average,as published,GBP,863612000000,1.271575,1098147428900,base_money/issuers/BOE/2024.md#boe-lpmavaa--lpmbl22-2024-06-retrieved-2026-10-29
+2024-06-30,2024Q2,SNB,2024-06,monthly average,as published,CHF,518258000000,1.11961395710758930321,580248890183,base_money/issuers/SNB/2024.md#snb-snbmoba-n2-monetary-base-2024-06-retrieved-2026-10-29
+2024-06-30,2024Q2,RBI,2024-06-28,weekly stock (Friday); count date per the RBI last-Friday rule,final,INR,46949290000000,0.01199472232217824157,563143696773,base_money/issuers/RBI/2024.md#rbi-reserve-money-2024-06-28-wss-2024-07-05
+2024-06-30,2024Q2,CBR,2024-07-01,stock at the beginning of the reporting date,as published,RUB,25823100000000,0.01172633567722790119,302810338827,base_money/issuers/CBR/2024.md#cbr-monetary-base-broad-definition-jun-2024-row-of-01072024-retrieved-2026-10-26
+2024-06-30,2024Q2,BCB,2024-06,end-of-month stock,as published,BRL,436902447000,0.18528983963164379881,80953584339,base_money/issuers/BCB/2024.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2024-sgs-values-page-retrieved-2026-10-29
+2024-06-30,2024Q2,HKMA,2024-06-28,end-of-day stock,as published,HKD,1926927000000,0.12807048999769473118,246782485080,base_money/issuers/HKMA/2024.md#hkma-total-monetary-base-before-discount-window-2024-06-28-open-api-daily-figures-retrieved-2026-10-29
 2024-09-30,2024Q3,PBOC,2024-09-30,end-of-month stock,as published,CNY,37913007000000,0.14249073810202336848,5402252351097,base_money/issuers/PBOC/2024.md#pboc-reserve-money-2024-09-file-2025111416402849859
 2024-09-30,2024Q3,FED,2024-09,monthly average,as published,USD,5588400000000,1,5588400000000,base_money/issuers/FED/2024.md#fed-h6-monetary-base-2024-09-release-2024-10-22
 2024-09-30,2024Q3,ECB,2024-09-27,weekly stock,as published,EUR,4707919000000,1.1166,5256862355400,base_money/issuers/ECB/2024.md#ecb-liability-items-1--21--22-statement-2024-09-27-published-2024-10-01
