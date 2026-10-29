@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2024-09-30,2024Q3,RBI,2024-09-27,weekly stock (Friday); count date per the RBI last-Friday rule,final,INR,46606540000000,0.01194457716196846632,556695413282,base_money/issuers/RBI/2024.md#rbi-reserve-money-2024-09-27-wss-2024-10-04
 2024-12-31,2024Q4,RBI,2024-12-27,weekly stock (Friday); count date per the RBI last-Friday rule,final,INR,46628260000000,0.01171399119107862431,546203026895,base_money/issuers/RBI/2024.md#rbi-reserve-money-2024-12-27-wss-2025-01-03
 2025-03-31,2025Q1,RBI,2025-03-31,stock on 31 March (fiscal year-end; quarter-end count date per the RBI rule),final,INR,48292430000000,0.01170686022008897214,565352727698,base_money/issuers/RBI/2025.md#rbi-reserve-money-2025-03-31-wss-2025-07-04
 2025-06-30,2025Q2,RBI,2025-06-27,weekly stock (Friday); count date per the RBI last-Friday rule,final,INR,49237050000000,0.01170535285786190025,576337043930,base_money/issuers/RBI/2025.md#rbi-reserve-money-2025-06-27-wss-2025-07-04

@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2024-09-30,2024Q3,PBOC,2024-09-30,end-of-month stock,as published,CNY,37913007000000,0.14249073810202336848,5402252351097,base_money/issuers/PBOC/2024.md#pboc-reserve-money-2024-09-file-2025111416402849859
 2024-12-31,2024Q4,PBOC,2024-12-31,end-of-month stock,as published,CNY,36804014000000,0.13700882336822491368,5042474653368,base_money/issuers/PBOC/2024.md#pboc-reserve-money-2024-12-file-2025111416402849859
 2025-03-31,2025Q1,PBOC,2025-03-31,end-of-month stock,as published,CNY,37681773000000,0.13781318045257848461,5193044982222,base_money/issuers/PBOC/2025.md#pboc-reserve-money-2025-03-file-2026011515582620291
 2025-06-30,2025Q2,PBOC,2025-06-30,end-of-month stock,as published,CNY,37915942000000,0.13960436124024514526,5293230863732,base_money/issuers/PBOC/2025.md#pboc-reserve-money-2025-06-file-2026011515582620291

@@ -16,12 +16,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | [431,100,998,000](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2026-sgs-values-page-retrieved-2026-10-22) | provisional | [5.129214](../../FX/2026.md#fx-2026q2-brl) | $84.0B | -4.4%ᵖ |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | [438,897,105,000](2026.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2026-sgs-values-page-retrieved-2026-10-22) | as published | [5.230105](../../FX/2026.md#fx-2026q1-brl) | $83.9B | -1.0% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12 | [447,096,654,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-dec2025-sgs-values-page-retrieved-2026-10-23) | as published | [5.461561](../../FX/2025.md#fx-2025q4-brl) | $81.9B | -0.9% |
-| [2025 Q3](../../quarters/2025Q3.md) | 2025-09 | [429,700,158,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2025-sgs-values-page-retrieved-2026-10-26) | as published | [5.366859](../../FX/2025.md#fx-2025q3-brl) | $80.1B | —¹ |
+| [2025 Q3](../../quarters/2025Q3.md) | 2025-09 | [429,700,158,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2025-sgs-values-page-retrieved-2026-10-26) | as published | [5.366859](../../FX/2025.md#fx-2025q3-brl) | $80.1B | 0.0% |
 | [2025 Q2](../../quarters/2025Q2.md) | 2025-06 | [451,010,163,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2025-sgs-values-page-retrieved-2026-10-26) | as published | [5.538024](../../FX/2025.md#fx-2025q2-brl) | $81.4B | —¹ |
 | [2025 Q1](../../quarters/2025Q1.md) | 2025-03 | [443,277,392,000](2025.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2025-sgs-values-page-retrieved-2026-10-27) | as published | [5.756105](../../FX/2025.md#fx-2025q1-brl) | $77.0B | —¹ |
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12 | [451,213,588,000](2024.md#bcb-sgs-1788-monetary-base-end-of-period-balance-dec2024-sgs-values-page-retrieved-2026-10-28) | as published | [6.109267](../../FX/2024.md#fx-2024q4-brl) | $73.9B | —¹ |
+| [2024 Q3](../../quarters/2024Q3.md) | 2024-09 | [429,858,545,000](2024.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2024-sgs-values-page-retrieved-2026-10-28) | as published | [5.541052](../../FX/2024.md#fx-2024q3-brl) | $77.6B | —¹ |
 
-¹ No year-ago quarter yet: 2025 Q3, 2025 Q2, 2025 Q1, 2024 Q4.
+¹ No year-ago quarter yet: 2025 Q2, 2025 Q1, 2024 Q4, 2024 Q3.
 
 ᵖ This quarter's or the year-ago figure is provisional, so the bank may revise it.
 
