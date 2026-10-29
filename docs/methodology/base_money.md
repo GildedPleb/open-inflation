@@ -186,7 +186,7 @@ FX is supporting data: it only translates each central bank's figure into US dol
   - `last close before`: a count date with no trading uses the last close before it.
   - FED is already in USD and has no FX.
 - **Rate.** ICE Data Services' USD close: the last hourly close at or before 22:00 UTC, read from Yahoo Finance's hourly chart, which anyone can open by date. Cited as "ICE Data Services, via Yahoo Finance" with that by-date URL. The close is written to 7 significant digits, the precision Yahoo serves.
-- **Ruble.** USD/RUB barely trades on the Moscow Exchange; CNY/RUB is its liquid market. RUB per USD = Moscow Exchange CNY/RUB `CLOSE` (board CETS, `CNYRUB_TOM`, free by date from `iss.moex.com`) × the same day's USD/CNY rate above.
+- **Ruble.** The CNY cross is used for every quarter so the series is consistent: the Moscow Exchange stopped trading USD from 13 June 2024 ([Moscow Exchange notice of 12 June 2024](https://www.moex.com/n70157), [archived](https://web.archive.org/web/20260116192324/https://www.moex.com/n70157)), so a direct USD/RUB close exists only for earlier quarters. RUB per USD = Moscow Exchange CNY/RUB `CLOSE` (board CETS, `CNYRUB_TOM`, free by date from `iss.moex.com`) × the same day's USD/CNY rate above.
 - **Cross-check.** TradingView's ICE close (FX_IDC), one number per row. It is not the source.
 - **Columns.** Report count date links the extract it converts and is that extract's As of. Date in report is the date as the report prints it, copied from the extract's quote.
 - **Conversion.** `fx_rate` is USD per one local unit: the rate itself for USD-per-unit pairs (EUR, GBP), or 1 / rate rounded half-to-even to 20 decimal places for units-per-USD pairs. USD is `"1"`.
@@ -199,6 +199,7 @@ FX is supporting data: it only translates each central bank's figure into US dol
   - **Close time.** MarketWatch does not document it. Measured against ICE hourly closes it is about 20:00–22:00 UTC (INR about 00:00 UTC on D+1). Every value is tagged to its trading date D, never to the evening before.
   - **Measured gap.** Against our 22:00 UTC rates for 2024Q4–2026Q2: median 0.01–0.07% per pair, every published row within 0.25%, and quarter totals within 0.08%.
   - **Local-market holidays.** If the rate date is a holiday in the currency's home market, MarketWatch can print a stale or offshore value (gaps up to 1.7% were measured on such days). Use the last local business day before it and say so in the row.
+  - **Holiday label.** A dated rate moved to an earlier day for a holiday is labelled `last close before`, even when its count date would otherwise be `same day` (EUR in 2024Q1); a month average keeps `month average` and names the day that took the earlier close.
   - **Inside the window.** Rates within 730 days still use Yahoo's hourly chart at 22:00 UTC, as above.
 
 **Why these sources.**
