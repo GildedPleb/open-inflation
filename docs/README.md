@@ -14,3 +14,8 @@ How the data is built and checked. Back to the [project README](../README.md). S
 - [AGENTS.md](../AGENTS.md): start here; how to add a quarter and what done means.
 - [Running the checks](running.md): the commands you run, when, and what their output means.
 - [What the checks enforce](lint.md): the rule spec, L1–L19.
+
+## Research notes
+
+- [Research notes](research/README.md): what notes are and are not, the list of notes, and how to challenge one. Notes are never data.
+- [0001: Is there an "effective" base money?](research/0001-effective-base-money.md): base money in practice versus by name. Not adopted, open for debate.

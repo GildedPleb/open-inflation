@@ -46,6 +46,8 @@ For each issuer, base money is **that central bank's own headline monetary base,
 - **One adopted series per issuer per basket version**. Where a bank publishes more than one definition, the alternative is extracted and labelled beside the adopted one (research standard 3) but is not summed.
 - **Conventions differ across issuers** (end-of-period stock, monthly average, weekly stock). Each issuer's convention is fixed below and recorded in every extract and roll-up. Mixing conventions is the documented cost of using each bank's own headline.
 
+The line therefore follows each issuer's own definition, not an instrument test. For comparison, the IMF manual leaves out central government and nonresident holdings (MFSM 2016 ¶6.92), and repos and central-bank securities used to drain liquidity (¶6.96–6.97). [Research note 0001](../research/0001-effective-base-money.md) discusses a wider "effective" series and why it is not adopted.
+
 ## Basket
 
 Basket v1 is eleven issuers chosen 80/20: the smallest set of issuers that covers roughly 80% of global base money, extended for completeness and margin. The selection research, which ranks issuers against a reference global aggregate, is kept in box-side basket notes. It is used only to choose the basket (verification use), and none of its shares or totals is published here or anywhere in the repository. The basket's issuer ids are basket version 1 in the catalog's `baskets` (`catalog.json`, `{version: 1, issuers: [...], floor_pct: "94"}`), in this order: `PBOC`, `FED`, `ECB`, `BOJ`, `BOE`, `SNB`, `RBI`, `CBR`, `BCB`, `HKMA`, `CBUAE`.
