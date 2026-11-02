@@ -37,7 +37,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 ## What's in, what's out
 
 - In: currency issued, banks' correspondent accounts, required reserves, banks' deposits, Bank of Russia bonds (OBRs) held by banks, and the other listed bank items.
-- Out: OBRs held outside banks; foreign official deposits; precious-metal coins.
+- Out: OBRs held outside banks; foreign official deposits (inferred: not a listed component); precious-metal coins.
 - Coin: the CBR issues coin itself.
 
 See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).

@@ -37,7 +37,8 @@ Consolidated weekly financial statement of the Eurosystem, liabilities items 1 +
 ## What's in, what's out
 
 - In: banknotes in circulation (item 1), current accounts (item 2.1) and the deposit facility (item 2.2).
-- Out: coin, which the member states issue; foreign official deposits; securities.
+- Out: coin; liabilities to non-euro area residents (item 6); debt certificates issued (item 4).
+- Coin: issued by the member states, not counted.
 
 See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
 
