@@ -144,7 +144,7 @@ const line = (r: { out: string[] }, prefix: string) => r.out.find((l) => l.start
 // ---------- verdicts ----------
 
 describe("link-check: verdicts (ok, drop, repair, unknown)", () => {
-  test("every link live with the number: ok, exit 0; Wayback raw id_ form, redirects never followed", async () => {
+  test("every link live with the number: ok, exit 0; Wayback raw id_ form, redirects never followed blind", async () => {
     const r = await run(healthy());
     expect(r.code).toBe(0);
     expect(r.out.at(-1)).toBe(
@@ -175,13 +175,21 @@ describe("link-check: verdicts (ok, drop, repair, unknown)", () => {
     expect(r.out).toContain(`    dead Archive URL ${WB_B}: the figure "650684" is not in it (text)`);
     expect(r.code).toBe(1);
   });
-  test("a Wayback redirect to another capture is dead: the cited URL does not replay as is", async () => {
+  test("a Wayback redirect to another capture of the same URL is followed and judged there", async () => {
     const other = "https://web.archive.org/web/20261026183924id_/https://fed.example/h6.htm";
-    const r = await run({ ...healthy(), [raw(WB_B)]: { status: 302, headers: { location: other } } });
-    expect(r.out.find((l) => l.includes(`dead Archive URL ${WB_B}`))).toMatch(
-      /redirects \(HTTP 302\) to another capture, 20261026183924: no capture at 20261001120100/,
-    );
-    expect(r.calls.some((c) => c.url === other)).toBe(false);
+    const r = await run({
+      ...healthy(),
+      [raw(WB_B)]: { status: 302, headers: { location: other } },
+      [other]: { status: 200, body: html("105509 and 650684") },
+    });
+    expect(line(r, `ok ${FED}#fed-h6`)).toMatch(/2 live \(Original URL, Archive URL\)/);
+    expect(
+      r.out.some((l) =>
+        l.endsWith(
+          `${WB_B}: answered (no capture at 20261001120100; Wayback redirects to its capture at 20261026183924)`,
+        ),
+      ),
+    ).toBe(true);
   });
   test("original gone, one archive left: repair (re-find the original)", async () => {
     const r = await run({ ...healthy(), [O_B]: { status: 410 }, [raw(WB_B)]: { status: 404 } });
@@ -311,12 +319,12 @@ describe("link-check: --write and --quarter", () => {
     expect(t).toContain(
       `- Archive URL: ${WB_B}\n- Note 2026-10-27: Capture check not dated: source unreachable: Archive URL HTTP 404 on the id_ capture: the capture is gone.\n- Value`,
     );
-    expect(t).toContain(
-      "- Capture check: 2026-07-01\n- Note 2026-10-27: Capture check not dated: source unreachable: Original URL rate-limited: HTTP 503",
-    );
+    // A link with no verdict (the 503) is re-run, never written down.
+    expect(t).toContain("- Capture check: 2026-07-01\n- Value (published unit): 4,430.1");
+    expect(t.match(/Capture check not dated/g)?.length).toBe(1);
   });
   test("--write adds an undated figure's reason line once", async () => {
-    const net = { ...healthy(), [O_C]: { status: 503 } };
+    const net = { ...healthy(), [raw(WB_C)]: { status: 404 } };
     const opts = { argv: ["--write"], env: { OBM_RATE_MAX_TRIES: "1" } };
     const first = (await run(net, opts)).written as string;
     const again = (await run(net, { ...opts, text: first })).written;
