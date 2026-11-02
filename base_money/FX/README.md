@@ -9,3 +9,4 @@ Dates older than 730 days, where Yahoo has no hourly bars, use the MarketWatch d
 - [2026](2026.md)
 - [2025](2025.md)
 - [2024](2024.md)
+- [2023](2023.md)
