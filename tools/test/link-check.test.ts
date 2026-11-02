@@ -317,7 +317,7 @@ describe("link-check: --write and --quarter", () => {
     expect(t).toContain(`- Archive URL 3: ${GHOST}\n- Capture check: 2026-10-27`);
     // Undated adopted figures get one reason line; the repair keeps its links.
     expect(t).toContain(
-      `- Archive URL: ${WB_B}\n- Note 2026-10-27: Capture check not dated: source unreachable: Archive URL HTTP 404 on the id_ capture: the capture is gone.\n- Value`,
+      `- Archive URL: ${WB_B}\n- Note 2026-10-27: Archive URL HTTP 404 on the id_ capture: the capture is gone; Capture check not dated.\n- Value`,
     );
     // A link with no verdict (the 503) is re-run, never written down.
     expect(t).toContain("- Capture check: 2026-07-01\n- Value (published unit): 4,430.1");

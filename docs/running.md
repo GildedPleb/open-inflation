@@ -198,7 +198,7 @@ bun run link-check --write                 # also drop dead archive lines and da
 
 - `--write` never adds a link and never deletes the Original URL. Extra live links stay. `- Retrieved:` never changes.
 - When the original is gone for good, add a note to the Capture check giving the evidence that it cannot be re-found (`- Capture check: 2026-10-27; <evidence>.`). With a note, the dead original no longer counts, and two live archives are enough.
-- Output: a start line with the URL count and expected time, a progress line per URL, then one line per figure (`<verdict> <file>#<slug>: <action>; N live (<labels>)`, repairs first) with its links that are not live, and a summary: `link-check: adopted A ok, D drop, R repair, U unknown; T archive.today link(s) unchecked`.
+- Output: a start line with the URL count and expected time, a progress line per URL, then one line per figure (`<verdict> <file>#<slug>: <action>; N live (<labels>)`, repairs first) with its links that are not live, then one line per citation whose Wayback timestamp redirected to another capture (`redirected <file>#<slug> <label> <url>: cited <ts>, landed <ts>; re-cite at <ts> (<status>)`), and a summary: `link-check: adopted A ok, D drop, R repair, U unknown; T archive.today link(s) unchecked`.
 - Only adopted figures (`- Adopted: yes`) set the exit: 0 clean (a `drop` counts as clean with `--write`), 1 a drop or repair, 2 usage or error, 3 some figure unknown.
 
 ### Save order
