@@ -35,7 +35,7 @@ export function rowsByQuarter(lines: readonly string[]): Map<string, string[]> {
   return out;
 }
 
-const SIGNED = new RegExp(`^(?:[+-](?!0\\.0%)\\d+\\.\\d%|0\\.0%)${PROVISIONAL_MARK}?$`);
+const SIGNED = new RegExp(`^(?:\\+(?!0\\.0%)\\d+\\.\\d%|-\\d+\\.\\d%|0\\.0%)${PROVISIONAL_MARK}?$`);
 const cmp = (a: string, b: string): number => {
   const x = parseDecimal(a);
   const y = parseDecimal(b);
@@ -48,8 +48,8 @@ const cmp = (a: string, b: string): number => {
 /**
  * R3's YoY rules for one cell, checked from the inputs alone: `—¹` exactly when the quarter four back is not in the
  * series (¹ wins); else `—²` when the two ends are not like for like (`pair` null) or the year-ago value is zero; else a
- * signed 1-dp figure, optionally marked ᵖ, whose sign agrees with the two values (one that rounds to zero is the
- * unsigned 0.0%). Returns the problem, or null.
+ * signed 1-dp figure, optionally marked ᵖ, whose sign agrees with the two values (one that rounds to zero is
+ * 0.0%, or -0.0% when the exact change is negative). Returns the problem, or null.
  */
 export function yoyProblem(
   cell: string | undefined,
