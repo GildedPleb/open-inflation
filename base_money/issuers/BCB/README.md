@@ -55,7 +55,7 @@ How the BCB defines it:
 ## What's in, what's out
 
 - In: currency issued and bank reserves (the restricted base).
-- Out: banks' compulsory deposits on time and savings deposits, their remunerated voluntary deposits (SGS 28964) and the exigibilidades for funds not directed to rural and housing credit, which only the broad base counts; federal government securities, which the broad base adds; foreign official deposits (inferred: not a listed component).
+- Out: banks' compulsory deposits on time and savings deposits, their remunerated voluntary deposits (SGS 28964) and the exigibilidades for funds not directed to rural and housing credit, which only the broad base counts; federal government securities, which the broad base adds (inferred for the restricted base: not a listed component); foreign official deposits (inferred: not a listed component).
 - Coin: the BCB issues coin itself.
 
 See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
