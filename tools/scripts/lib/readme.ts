@@ -742,7 +742,7 @@ export const QUARTER_READER_ALIGN = "| :----- | :---------------- | -----------:
 /** The note that closes the generated scope (Form's copy); its FX link names the quarter's FX table. */
 export const ROUNDING_LEAD = "Each USD figure is the local amount × the FX rate";
 const roundingNote = (fx: string, id: string) =>
-  `${ROUNDING_LEAD}, rounded to the nearest dollar (half-to-even); the total is their sum. Click an issuer for the bank's basic facts, a USD figure for the exact quote it comes from, and a rate for the exchange-rate source (each issuer extract carries the original and archived links). FX rates are market closes on each report's count date, or the mean of that month's weekday closes for a monthly figure (BOE, SNB, BCB); see [FX](${fx}#${id.toLowerCase()}).`;
+  `${ROUNDING_LEAD}, rounded to the nearest dollar (half-to-even); the total is their sum. Click an issuer for the bank's basic facts, a USD figure for the exact quote it comes from, and a rate for the exchange-rate source (each issuer extract carries the original and archived links). FX rates are market closes on or just before each report's count date (each FX row says which), or the mean of that month's weekday closes for a monthly figure (BOE, SNB, BCB); see [FX](${fx}#${id.toLowerCase()}).`;
 const LONG_MONTHS = [
   "January",
   "February",
