@@ -223,7 +223,7 @@ FX is supporting data: it only translates each central bank's figure into US dol
 
 - **Date.** Each balance is converted at the market close on the date its report counts on (the issuer extract's `- As of:`). The FX row names its date rule:
   - `same day`: a dated count uses that day's close.
-  - `month average`: a monthly-average figure (BOE, SNB) uses the mean of that month's weekday closes, rounded half-to-even to 6 decimals. BCB's end-of-month stock, whose As of is a month (`YYYY-MM`), uses the same month average. A weekday with no close from the source is left out of the mean, never filled; the FX row's weekday-close count and the quarter file say so.
+  - `month average`: a monthly-average figure (BOE, SNB) uses the mean of that month's weekday closes, rounded half-to-even to 6 decimals. BCB's end-of-month stock, whose As of is a month (`YYYY-MM`), uses the same month average. Inside the 730-day window, a weekday with no close from the source is left out of the mean, never filled, and the FX row's weekday-close count says so; for older dates a home-market holiday takes the last local business day's close (the Local-market holidays rule in the amendment below).
   - `prior close`: a start-of-day count (CBR, 1 April or 1 July) uses the previous day's close.
   - `last close before`: a count date with no trading uses the last close before it.
   - FED is already in USD and has no FX.
