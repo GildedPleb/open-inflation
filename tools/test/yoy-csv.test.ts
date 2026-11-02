@@ -76,11 +76,11 @@ const d = (s: string) => {
 };
 
 describe("G7 YoY: the one formula", () => {
-  test("signed, exact, half-to-even to 1 dp; a result that rounds to zero is 0.0%, unsigned", () => {
+  test("signed, exact, half-to-even to 1 dp; a result that rounds to zero is 0.0%, or -0.0% when negative", () => {
     expect(yoyText(d("1100"), d("1000"))).toBe("+10.0%");
     expect(yoyText(d("900"), d("1000"))).toBe("-10.0%");
     expect(yoyText(d("1000"), d("1000"))).toBe("0.0%");
-    expect(yoyText(d("99999"), d("100000"))).toBe("0.0%"); // -0.001%: never "-0.0%"
+    expect(yoyText(d("99999"), d("100000"))).toBe("-0.0%"); // -0.001%: a decline, not "0.0%"
     expect(yoyText(d("100001"), d("100000"))).toBe("0.0%");
   });
   test("x.x5 ties go to the even tenth, both signs", () => {

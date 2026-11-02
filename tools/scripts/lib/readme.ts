@@ -91,7 +91,7 @@ export type Cause =
 
 /**
  * The one YoY formula: (cur / prev - 1) x 100, exact, half-to-even to 1 dp, signed (+3.2%, -1.4%); a result that
- * rounds to zero is 0.0%, unsigned. Null when prev is 0. Totals (whole USD) and bank local values (decimals) both
+ * rounds to zero is 0.0%, or -0.0% when the exact change is negative. Null when prev is 0. Totals (whole USD) and bank local values (decimals) both
  * come through here.
  */
 export function yoyText(cur: Decimal, prev: Decimal): string | null {
@@ -103,7 +103,8 @@ export function yoyText(cur: Decimal, prev: Decimal): string | null {
   const tenths = num < 0n ? -ratioHalfEven(-num, p) : ratioHalfEven(num, p);
   const abs = tenths < 0n ? -tenths : tenths;
   const body = `${abs / 10n}.${abs % 10n}%`;
-  return tenths === 0n ? body : `${tenths > 0n ? "+" : "-"}${body}`;
+  if (tenths === 0n) return num < 0n ? `-${body}` : body;
+  return `${tenths > 0n ? "+" : "-"}${body}`;
 }
 const whole = (v: bigint): Decimal => ({ digits: v, scale: 0 });
 
@@ -741,7 +742,7 @@ export const QUARTER_READER_ALIGN = "| :----- | :---------------- | -----------:
 /** The note that closes the generated scope (Form's copy); its FX link names the quarter's FX table. */
 export const ROUNDING_LEAD = "Each USD figure is the local amount × the FX rate";
 const roundingNote = (fx: string, id: string) =>
-  `${ROUNDING_LEAD}, rounded to the nearest dollar (half-to-even); the total is their sum. Click an issuer for the bank's basic facts, a USD figure for the exact quote it comes from, and a rate for the exchange-rate source (each issuer extract carries the original and archived links). FX rates are market closes on each report's count date; see [FX](${fx}#${id.toLowerCase()}).`;
+  `${ROUNDING_LEAD}, rounded to the nearest dollar (half-to-even); the total is their sum. Click an issuer for the bank's basic facts, a USD figure for the exact quote it comes from, and a rate for the exchange-rate source (each issuer extract carries the original and archived links). FX rates are market closes on or just before each report's count date (each FX row says which), or the mean of that month's weekday closes for a monthly figure (BOE, SNB, BCB); see [FX](${fx}#${id.toLowerCase()}).`;
 const LONG_MONTHS = [
   "January",
   "February",
