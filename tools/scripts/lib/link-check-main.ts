@@ -21,6 +21,7 @@ import {
   isoOf,
   judge,
   pdftotext,
+  viaText,
 } from "./link-check.ts";
 import { applyEdits, type Edit, type Figure, figures, isExtractFile, type LinkLine, serviceOf } from "./links.ts";
 import {
@@ -66,7 +67,15 @@ export interface FigureResult {
   readonly verdict: Verdict;
   /** For repair: what to do. For ok/drop: "" . */
   readonly action: string;
-  readonly links: readonly { readonly link: LinkLine; readonly status: LinkStatus; readonly reason: string }[];
+  readonly links: readonly {
+    readonly link: LinkLine;
+    readonly status: LinkStatus;
+    readonly reason: string;
+    /** The link's page answered (a capture or the original's 200 was read), whatever its verdict. */
+    readonly answered?: boolean;
+    /** A Wayback redirect link-check followed: the audit re-cites the link at the landed timestamp. */
+    readonly redirect?: { readonly cited: string; readonly landed: string };
+  }[];
   /** Archive URL lines --write deletes (drop). */
   readonly drop: ReadonlySet<number>;
   /** Every link but archive.today's confirmed live: --write may date the Capture check. */
@@ -127,17 +136,24 @@ export function verdictOf(
 }
 
 /**
- * The reason line --write adds to an adopted figure it could not date, e.g.
- * `- Note 2026-10-27: Capture check not dated: source unreachable: Archive URL HTTP 404 on the id_ capture: the
- * capture is gone.` (a DATED_NOTE line). Only dead links give a reason: a link with no verdict (a 5xx, a rate limit,
- * a network error) is transient, so it is re-run, never written down. Each reason is kept whole, its URLs included.
+ * The reason line --write adds to an adopted figure it could not date (a DATED_NOTE line); its first words say what
+ * happened. "source unreachable" only when no link answered, neither a capture nor the original, e.g.
+ * `- Note 2026-10-27: source unreachable: Original URL HTTP 404 on the original: the capture is gone; Archive URL ...;
+ * Capture check not dated.`. A link whose page answered without the figure is `figure not found at source: <url>`.
+ * Only dead links give a reason: a link with no verdict (a 5xx, a rate limit, a network error) is transient, so it
+ * is re-run, never written down. Each reason is kept whole, its URLs included.
  */
 export function undatedNote(today: string, links: FigureResult["links"]): string | null {
-  const why = links
-    .filter((l) => l.status === "dead")
-    .map((l) => `${l.link.label} ${l.reason.replace(/[\s.;:]+$/, "")}`);
-  if (why.length === 0) return null;
-  return `- Note ${today}: Capture check not dated: source unreachable: ${why.join("; ")}.`;
+  const dead = links.filter((l) => l.status === "dead");
+  if (dead.length === 0) return null;
+  const reason = (l: FigureResult["links"][number]) => `${l.link.label} ${l.reason.replace(/[\s.;:]+$/, "")}`;
+  if (!links.some((l) => l.answered))
+    return `- Note ${today}: source unreachable: ${dead.map(reason).join("; ")}; Capture check not dated.`;
+  const why = [
+    ...dead.filter((l) => l.answered).map((l) => `figure not found at source: ${l.link.url}`),
+    ...dead.filter((l) => !l.answered).map(reason),
+  ];
+  return `- Note ${today}: ${why.join("; ")}; Capture check not dated.`;
 }
 
 export async function linkCheckMain(io: CheckIo): Promise<number> {
@@ -195,7 +211,7 @@ export async function linkCheckMain(io: CheckIo): Promise<number> {
       s === "wayback" ? fetchWayback(u, deps) : s === "ghostarchive" ? fetchGhost(u, deps) : fetchOriginal(u, deps);
     p.then((f) =>
       io.out(
-        `  ${++done}/${urls.length} ${u}: ${f.kind === "capture" ? `answered${f.via ? ` (${f.via})` : ""}` : f.reason}`,
+        `  ${++done}/${urls.length} ${u}: ${f.kind === "capture" ? `answered${f.redirect ? ` (${viaText(f.redirect)})` : ""}` : f.reason}`,
       ),
     );
     fetched.set(u, p);
@@ -210,8 +226,10 @@ export async function linkCheckMain(io: CheckIo): Promise<number> {
         links.push({ link: l, status: "unchecked", reason: "archive.today is never fetched (CAPTCHA)" });
       else if (!p) links.push({ link: l, status: "dead", reason: "not an http(s) URL" });
       else {
-        const v = await judge(f.figures, await p, deps);
-        links.push({ link: l, status: v.status, reason: v.reason });
+        const got = await p;
+        const v = await judge(f.figures, got, deps);
+        const redirect = got.kind === "capture" && got.redirect ? { redirect: got.redirect } : {};
+        links.push({ link: l, status: v.status, reason: v.reason, answered: got.kind === "capture", ...redirect });
       }
     }
     results.push({ figure: f, links, ...verdictOf(f, links) });
@@ -229,6 +247,13 @@ export async function linkCheckMain(io: CheckIo): Promise<number> {
       for (const l of r.links)
         if (l.status !== "live") io.out(`    ${l.status} ${l.link.label} ${l.link.url}: ${l.reason}`);
     }
+  // The link audit's re-cite list: every citation whose cited Wayback timestamp redirected to another capture.
+  for (const r of results)
+    for (const l of r.links)
+      if (l.redirect)
+        io.out(
+          `redirected ${r.figure.anchor} ${l.link.label} ${l.link.url}: cited ${l.redirect.cited}, landed ${l.redirect.landed}; re-cite at ${l.redirect.landed} (${l.status})`,
+        );
 
   let wrote = 0;
   if (opt.write) {

@@ -27,8 +27,8 @@ export type Fetched =
       readonly sha256: string;
       /** The capture's payloads: the cited document first (a WARC may hold sub-resources too). */
       readonly payloads: readonly Uint8Array[];
-      /** How the cited URL reached this capture when it was not the cited one (a Wayback redirect). */
-      readonly via?: string;
+      /** A Wayback redirect from the cited timestamp to the capture it landed on (both 14-digit). */
+      readonly redirect?: { readonly cited: string; readonly landed: string };
     }
   /** dead: the link is gone (404/410, a Wayback 3xx, no capture on the page); else no verdict (limited, 5xx, network). */
   | { readonly kind: "fail"; readonly reason: string; readonly captureUtc: string; readonly dead: boolean };
@@ -151,6 +151,10 @@ export function waybackRaw(url: string): { raw: string; ts: string } | null {
   return { raw: `https://web.archive.org/web/${m[1]}id_/${m[3]}`, ts: m[1] as string };
 }
 
+/** How a redirected capture was reached, for the progress line and the live reason. */
+export const viaText = (r: { readonly cited: string; readonly landed: string }) =>
+  `no capture at ${r.cited}; Wayback redirects to its capture at ${r.landed}`;
+
 /** A captured URL as Wayback may spell it back in a Location: scheme dropped, percent-escapes decoded. */
 const sameOriginal = (a: string, b: string) => {
   const norm = (u: string) => {
@@ -208,8 +212,8 @@ export async function fetchWayback(url: string, d: CheckDeps): Promise<Fetched> 
     }
     if (g.kind !== "http" || g.status !== 200)
       return { kind: "fail", reason: httpFailure(g as never, "the id_ capture"), captureUtc, dead: gone(g) };
-    const via = ts === w.ts ? {} : { via: `no capture at ${w.ts}; Wayback redirects to its capture at ${ts}` };
-    return { kind: "capture", captureUtc, sha256: sha(g.body), payloads: [g.body], ...via };
+    const redirect = ts === w.ts ? {} : { redirect: { cited: w.ts, landed: ts } };
+    return { kind: "capture", captureUtc, sha256: sha(g.body), payloads: [g.body], ...redirect };
   }
 }
 
@@ -482,7 +486,7 @@ export async function judge(
       reason: `the figure "${fig}" is not in it (${kinds}${errors.length ? `; ${errors[0]}` : ""})`,
     };
   }
-  return { status: "live", reason: `${f.via ? `${f.via}; ` : ""}shows ${how.join(", ")}` };
+  return { status: "live", reason: `${f.redirect ? `${viaText(f.redirect)}; ` : ""}shows ${how.join(", ")}` };
 }
 
 /** pdftotext on PATH, reading the PDF from stdin; null when it is not installed or fails. */
