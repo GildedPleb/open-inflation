@@ -93,11 +93,24 @@ bun run link-check --write         # two live links per figure; drops dead archi
 - **Pacing** is per host; override with `OBM_RATE_<KEY>_MS`: `OBM_RATE_ARCHIVE_TODAY_MS`, `OBM_RATE_GHOSTARCHIVE_ORG_MS`, `OBM_RATE_WEB_ARCHIVE_ORG_MS`, `OBM_RATE_ARCHIVE_ORG_MS` and `OBM_RATE_DEFAULT_MS`. See [Tuning and limits](docs/running.md#tuning-and-limits).
 - **Exit codes.** `0` clean, `1` findings, `2` usage or error, `3` incomplete. See [Exit codes](docs/running.md#exit-codes).
 
+## Dependencies
+
+Every direct dependency, one row each; `tools/test/deps.test.ts` fails when this table and `package.json` disagree on a name, kind or pin. There are no runtime dependencies: Bun runs the scripts directly, and the four below are check-only tools.
+
+| Name | Kind | Family | Pin | Pin reason | Job |
+| --- | --- | --- | --- | --- | --- |
+| `@biomejs/biome` | dev | biome | `^2.6.2` | caret for now; should be exact, since a new release can change `bun run check` format and lint output with no code change | formats and lints the TypeScript in `bun run check` |
+| `@types/bun` | dev | bun (with `bun-version` in CI's lint.yml, now 1.4.2) | `^1.4.3` | caret for now; should be exact and move with CI's Bun, since new types can change `bun run typecheck` with no code change | types Bun's APIs (`bun:test`, `Bun.file`, `import.meta.dir`) for `tsc` |
+| `lefthook` | dev | lefthook | `2.2.2` | exact: it writes and runs the git hook, so a bump can change the hook with no code change | installs (its postinstall script) and runs the pre-commit hook in lefthook.yml |
+| `typescript` | dev | typescript | `^5` | caret for now; should be exact, since a new minor can add type errors with no code change | `tsc -p tools` in `bun run typecheck`; never imported at runtime |
+
+Tree, 2026-11-02: 28 packages in bun.lock (most are per-platform binaries; 11 install on linux-x64), node_modules 205 MB (biome 161 MB, typescript 23 MB, lefthook's binary 14 MB). Install scripts: lefthook's postinstall only (Bun trusts it by default; it installs the hook). `bun audit`: no advisories. Licenses: MIT, Apache-2.0, MIT OR Apache-2.0. No peer dependencies. Duplicate: `undici-types` 8.12.3 (via bun-types) and 8.9.0 (via `@types/node`), open.
+
 ## Beautify
 
 - gates: done — 2026-10-28 — pre-commit hook (lefthook) runs test/typecheck/check/lint; main stays unprotected until v1 (user decision); no secrets scan; budget 5 s stated, suite 1.5 s; overdue stays CI-only
 - hygiene: done — 2026-10-28 — tsconfig gains noImplicitOverride/noImplicitReturns/noFallthroughCasesInSwitch/noUnusedLocals/noUnusedParameters/isolatedModules and drops skipLibCheck (all clean; typecheck 2.1→3.0 s); next: noPropertyAccessFromIndexSignature (240 hits, 177 in checks.ts: give CSV/JSON rows named fields first), exact pins for typescript/@types/bun/@biomejs/biome, Biome→Oxfmt then Oxlint (type-aware waits for TS 7), target/lib es2025 (needs TS 7), readme.ts:256 `as unknown as` tuple
-- deps: unstarted
+- deps: in progress — 2026-11-02 — inventory and its gate added (tools/test/deps.test.ts); next, one per pass: duplicate undici-types (8.12.3 via bun-types, 8.9.0 via @types/node), exact pins for typescript/@types/bun/@biomejs/biome, @types/bun 1.4.3 vs CI Bun 1.4.2 (one family), Knip dead-code batch, earn test for lefthook (a committed hook via core.hooksPath?); ledger has no docs/failure/a11y rows yet
 - shape: unstarted
 - tests: unstarted
 - system: unstarted
