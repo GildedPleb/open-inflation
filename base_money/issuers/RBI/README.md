@@ -36,8 +36,8 @@ Weekly Statistical Supplement "Reserve Money: Components and Sources"; stock on 
 
 ## What's in, what's out
 
-- In: currency in circulation, coin included; bankers' deposits; 'Other' deposits with RBI, which include deposits of foreign central banks and multilateral institutions (₹122,065 crore at 30 June 2026; the foreign part is not published).
-- Out: securities.
+- In: currency in circulation, coin included; bankers' deposits; 'Other' deposits with RBI, which include deposits of foreign central banks, multilateral institutions, financial institutions, the DEA Fund and sundry deposits net of IMF Account No. 1 (₹122,065 crore at 30 June 2026; the foreign part is not documented).
+- Out: securities (inferred: not a listed component).
 - Coin: issued by the Government of India, counted.
 
 See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).

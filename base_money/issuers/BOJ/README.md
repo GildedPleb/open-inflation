@@ -37,7 +37,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 ## What's in, what's out
 
 - In: banknotes, coins in circulation and current account balances.
-- Out: foreign official deposits; securities.
+- Out: "Other deposits", held by foreign central banks and others; securities (inferred: not a listed component).
 - Coin: issued by the government, counted.
 
 See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).

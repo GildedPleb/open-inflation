@@ -39,7 +39,8 @@ snbmoba "Monetary base" / "Notenbankgeldmenge", item N2; monthly average (inferr
 ## What's in, what's out
 
 - In: banknotes in circulation and sight deposits of domestic banks.
-- Out: coin, which the Confederation issues; foreign and other sight deposits; SNB Bills.
+- Out: coin; foreign and other sight deposits; SNB Bills (inferred: not a listed component).
+- Coin: issued by the Confederation, not counted.
 
 See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
 

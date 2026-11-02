@@ -39,7 +39,7 @@ H.6 "Money Stock Measures", Table 1, "Monetary base", not seasonally adjusted; m
 ## What's in, what's out
 
 - In: currency in circulation, coin included, and reserve balances.
-- Out: foreign official and other deposits; the Fed issues no bills.
+- Out: foreign official and other deposits; securities (both inferred: not listed components).
 - Coin: issued by the U.S. Mint, counted inside currency.
 
 See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).

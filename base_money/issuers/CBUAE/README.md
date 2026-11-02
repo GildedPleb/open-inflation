@@ -36,7 +36,11 @@ The CBUAE's own monetary base, the end-of-month stock for the quarter-end month,
 
 - "Monetary Base, defined as the sum of Currency Issued (Currency in Circulation outside Banks and Cash at Banks),Total Banks' Reserves & Current Accounts at the Central Bank and Monetary Bills & Islamic Certificates of Deposits held by Banks" and "Data are as at the end of period unless otherwise indicated." (notes page of the [Statistical Bulletin August 2026](https://centralbank.ae/media/njajo2nc/statistical-bulletin-august-2026.pdf) (archived: [Wayback](https://web.archive.org/web/20261006075711/https://centralbank.ae/media/njajo2nc/statistical-bulletin-august-2026.pdf)))
 
-The CBUAE's page on the monetary system gives the legal definition:
+The legal definition is in Federal Decree-Law No. 6 of 2025, Art. 1, which repealed Decretal Federal Law No. 14 of 2018 (Art. 185):
+
+- "Monetary Base: Includes the following: Issued Currency. Aggregate balances of current accounts and deposits of Licensed Financial Institutions with the Central Bank, including Reserve Requirements, in addition to any other funds deposited with the Central Bank for the purpose of clearing and settlement operations. Outstanding balance of securities and financial instruments issued by the Central Bank." ([Federal Decree-Law No. 6 of 2025, Art. 1](https://rulebook.centralbank.ae/en/rulebook/federal-decree-law-no-6-2025-regarding-central-bank-regulation-financial-institutions-and) (archived: [Wayback](https://web.archive.org/web/20260320053706/https://rulebook.centralbank.ae/en/rulebook/federal-decree-law-no-6-2025-regarding-central-bank-regulation-financial-institutions-and)))
+
+Item (2) of the 2025 law counts "current accounts and deposits" of Licensed Financial Institutions, where the 2018 law counted current accounts only. The series uses the bulletin's figure, not the legal definition. The CBUAE's page on the monetary system still gives the definition in the words of the repealed 2018 law:
 
 - "Monetary Base (MB) – defined in Decretal Law No. 14 of 2018 as the sum of (1) currency issued (currency in circulation outside banks and cash at bank), (2) aggregate balances of current accounts of licensed financial institutions with the CBUAE, including reserve requirements, in addition to any other funds deposited with the CBUAE for the purpose of clearing and settlement operations, and (3) the outstanding balance of securities and financial instruments issued by the CBUAE;" ([How the Monetary System Works](https://centralbank.ae/en/our-operations/monetary-policy-and-domestic-markets/how-the-monetary-system-works/) (archived: [Wayback](https://web.archive.org/web/20261029160610/https://centralbank.ae/en/our-operations/monetary-policy-and-domestic-markets/how-the-monetary-system-works/)))
 
@@ -47,7 +51,7 @@ The CBUAE's page on the monetary system gives the legal definition:
 ## What's in, what's out
 
 - In: currency issued, banks' reserve balances, banks' and OFCs' current accounts and overnight deposits, and Monetary Bills and Islamic CDs held by banks.
-- Out: Monetary Bills and Islamic CDs held outside banks (the total outstanding is not published); foreign official deposits.
+- Out: Monetary Bills and Islamic CDs held outside banks (the total outstanding is not documented); foreign official deposits (inferred: not a listed component).
 - Coin: the CBUAE issues coin itself.
 
 See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
