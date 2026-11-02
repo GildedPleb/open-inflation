@@ -34,6 +34,14 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 "Monetary Base (Broad Definition)" / "Денежная база в широком определении"; stock at the beginning of the reporting date. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
+## What's in, what's out
+
+- In: currency issued, banks' correspondent accounts, required reserves, banks' deposits, Bank of Russia bonds (OBRs) held by banks, and the other listed bank items.
+- Out: OBRs held outside banks; foreign official deposits; precious-metal coins.
+- Coin: the CBR issues coin itself.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)

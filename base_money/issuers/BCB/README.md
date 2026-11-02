@@ -52,6 +52,14 @@ How the BCB defines it:
 
 **Current vintage.** Read on 26 October 2026, the SGS pages for September 2025 to June 2026 print the same four quarter-end figures as the year files: SGS 1788 ([values page](https://www3.bcb.gov.br/sgspub/consultarvalores/consultarValoresSeries.do?method=consultarValores&optSelecionaSerie=1788&dataInicio=01/09/2025&dataFim=30/06/2026&selTipoArqDownload=1&hdOidSeriesSelecionadas=1788&hdPaginar=false&bilServico=%5BSGSFW2301%5D) (archived: [archive.today](https://archive.ph/re3Hd)), [JSON API](https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json&dataInicial=01/09/2025&dataFinal=30/06/2026) (archived: [Wayback](<https://web.archive.org/web/20261026171201/https://api.bcb.gov.br/dados/serie/bcdata.sgs.1788/dados?formato=json&dataInicial=01%2F09%2F2025&dataFinal=30%2F06%2F2026>), [archive.today](https://archive.ph/BYoSv), [Ghostarchive](https://ghostarchive.org/archive/ctIfz))) and SGS 20306 ([values page](https://www3.bcb.gov.br/sgspub/consultarvalores/consultarValoresSeries.do?method=consultarValores&optSelecionaSerie=20306&dataInicio=01/09/2025&dataFim=30/06/2026&selTipoArqDownload=1&hdOidSeriesSelecionadas=20306&hdPaginar=false&bilServico=%5BSGSFW2301%5D) (archived: [Wayback](<https://web.archive.org/web/20261026171209/https://www3.bcb.gov.br/sgspub/consultarvalores/consultarValoresSeries.do?method=consultarValores&optSelecionaSerie=20306&dataInicio=01%2F09%2F2025&dataFim=30%2F06%2F2026&selTipoArqDownload=1&hdOidSeriesSelecionadas=20306&hdPaginar=false&bilServico=%5BSGSFW2301%5D>), [archive.today](https://archive.ph/1BJhR), [Ghostarchive](https://ghostarchive.org/archive/Lqlw7)), [JSON API](https://api.bcb.gov.br/dados/serie/bcdata.sgs.20306/dados?formato=json&dataInicial=01/09/2025&dataFinal=30/06/2026) (archived: [Wayback](<https://web.archive.org/web/20261026171153/https://api.bcb.gov.br/dados/serie/bcdata.sgs.20306/dados?formato=json&dataInicial=01%2F09%2F2025&dataFinal=30%2F06%2F2026>), [archive.today](https://archive.ph/O5M9x), [Ghostarchive](https://ghostarchive.org/archive/NTa1f))).
 
+## What's in, what's out
+
+- In: currency issued and bank reserves (the restricted base).
+- Out: federal government securities, which the broad base adds; foreign official deposits.
+- Coin: the BCB issues coin itself.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)

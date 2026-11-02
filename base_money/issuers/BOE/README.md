@@ -36,6 +36,14 @@ Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM mea
 
 No official monetary base is published; we construct it from Bank of England Database series LPMAVAA + LPMBL22; monthly average. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
+## What's in, what's out
+
+- In: notes and coin in circulation (LPMAVAA) and reserve balances (LPMBL22). This sum is our construction; the Bank publishes no base.
+- Out: foreign official deposits; securities.
+- Coin: issued by the Royal Mint, counted.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)

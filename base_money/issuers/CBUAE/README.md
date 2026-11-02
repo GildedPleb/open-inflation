@@ -44,6 +44,14 @@ The CBUAE's page on the monetary system gives the legal definition:
 
 **Not used.** The CBUAE's HTML statistics pages could not be retrieved (Cloudflare challenge), so the per-release PDFs are used. The Statistical Bulletin March 2026 (`https://centralbank.ae/media/kvffokv3/statistical-bulletin-march-2026.pdf`) returned HTTP 404 with an empty body when retrieved on 2026-10-29, so 2025Q1 is read from the February 2026 bulletin. The How the Monetary System Works page (cited above) also answers automated requests with a Cloudflare challenge (HTTP 403); its Wayback copy is cited with it.
 
+## What's in, what's out
+
+- In: currency issued, banks' reserve balances, banks' and OFCs' current accounts and overnight deposits, and Monetary Bills and Islamic CDs held by banks.
+- Out: Monetary Bills and Islamic CDs held outside banks (the total outstanding is not published); foreign official deposits.
+- Coin: the CBUAE issues coin itself.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)

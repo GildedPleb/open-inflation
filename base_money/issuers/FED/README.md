@@ -36,6 +36,14 @@ Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM mea
 
 H.6 "Money Stock Measures", Table 1, "Monetary base", not seasonally adjusted; monthly average. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
+## What's in, what's out
+
+- In: currency in circulation, coin included, and reserve balances.
+- Out: foreign official and other deposits; the Fed issues no bills.
+- Coin: issued by the U.S. Mint, counted inside currency.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)
