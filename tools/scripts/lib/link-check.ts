@@ -1,6 +1,7 @@
 // The live link check (bun run link-check): does each link of a figure (its Original URL and every Archive URL)
-// answer, and show the figure? A Wayback link is fetched in its raw id_ form with redirects NOT followed (a 3xx to
-// another timestamp is dead, never "close enough"), must answer 200 and hold every figure of its extract. A
+// answer, and show the figure? A Wayback link is fetched in its raw id_ form; a redirect is followed only to another
+// capture of the same URL (Wayback sends a reader there too), up to MAX_HOPS, and the capture it lands on must answer
+// 200 and hold every figure of its extract. A
 // Ghostarchive link's page must answer 200 with its capture wrapper, and its saved WARC must hold the figures. An
 // Original URL is fetched live, following up to MAX_HOPS redirects. archive.today is never fetched (CAPTCHA): its
 // links stay unchecked. Local only: archives rate-limit, so this never runs in CI (docs/running.md#link-check).
@@ -26,6 +27,8 @@ export type Fetched =
       readonly sha256: string;
       /** The capture's payloads: the cited document first (a WARC may hold sub-resources too). */
       readonly payloads: readonly Uint8Array[];
+      /** How the cited URL reached this capture when it was not the cited one (a Wayback redirect). */
+      readonly via?: string;
     }
   /** dead: the link is gone (404/410, a Wayback 3xx, no capture on the page); else no verdict (limited, 5xx, network). */
   | { readonly kind: "fail"; readonly reason: string; readonly captureUtc: string; readonly dead: boolean };
@@ -148,6 +151,25 @@ export function waybackRaw(url: string): { raw: string; ts: string } | null {
   return { raw: `https://web.archive.org/web/${m[1]}id_/${m[3]}`, ts: m[1] as string };
 }
 
+/** A captured URL as Wayback may spell it back in a Location: scheme dropped, percent-escapes decoded. */
+const sameOriginal = (a: string, b: string) => {
+  const norm = (u: string) => {
+    let s = u.replace(/^https?:\/\//, "");
+    try {
+      s = decodeURIComponent(s);
+    } catch {
+      // Not valid percent-encoding: compare as written.
+    }
+    return s;
+  };
+  return norm(a) === norm(b);
+};
+
+/**
+ * A Wayback snapshot, in its raw id_ form. Wayback answers a timestamp it holds no capture at with a 3xx to the
+ * nearest capture of the same URL ("found capture at <ts>"), which is what a reader of the link gets: that redirect is
+ * followed (up to MAX_HOPS, each paced), and the capture it lands on is judged. A redirect anywhere else is dead.
+ */
 export async function fetchWayback(url: string, d: CheckDeps): Promise<Fetched> {
   const w = waybackRaw(url);
   if (!w)
@@ -157,20 +179,38 @@ export async function fetchWayback(url: string, d: CheckDeps): Promise<Fetched> 
       captureUtc: "",
       dead: true,
     };
-  const captureUtc = tsIso(w.ts);
-  const g = await pacedGet(w.raw, d);
-  if (g.kind === "http" && g.status >= 300 && g.status < 400) {
-    const loc = g.location ?? "(no Location)";
-    const other = /\/web\/(\d{14})/.exec(loc)?.[1];
-    const reason =
-      other && other !== w.ts
-        ? `redirects (HTTP ${g.status}) to another capture, ${other}: no capture at ${w.ts} replays (${loc})`
-        : `redirects (HTTP ${g.status}) to ${loc}: redirects are not followed, so the cited URL does not replay as is`;
-    return { kind: "fail", reason, captureUtc, dead: true };
+  const original = (WAYBACK_URL.exec(url) as RegExpExecArray)[3] as string;
+  let at = w.raw;
+  let ts = w.ts;
+  for (let hop = 0; ; hop++) {
+    const captureUtc = tsIso(ts);
+    const g = await pacedGet(at, d);
+    if (g.kind === "http" && g.status >= 300 && g.status < 400) {
+      const loc = g.location ? new URL(g.location, at).toString() : null;
+      const m = loc ? WAYBACK_URL.exec(loc) : null;
+      if (!loc || !m || !sameOriginal(m[3] as string, original))
+        return {
+          kind: "fail",
+          reason: `redirects (HTTP ${g.status}) to ${loc ?? "no Location"}, not to a capture of the cited URL`,
+          captureUtc,
+          dead: true,
+        };
+      if (hop >= MAX_HOPS)
+        return {
+          kind: "fail",
+          reason: `redirected more than ${MAX_HOPS} times (last to ${loc})`,
+          captureUtc,
+          dead: false,
+        };
+      ts = m[1] as string;
+      at = `https://web.archive.org/web/${ts}id_/${m[3]}`;
+      continue;
+    }
+    if (g.kind !== "http" || g.status !== 200)
+      return { kind: "fail", reason: httpFailure(g as never, "the id_ capture"), captureUtc, dead: gone(g) };
+    const via = ts === w.ts ? {} : { via: `no capture at ${w.ts}; Wayback redirects to its capture at ${ts}` };
+    return { kind: "capture", captureUtc, sha256: sha(g.body), payloads: [g.body], ...via };
   }
-  if (g.kind !== "http" || g.status !== 200)
-    return { kind: "fail", reason: httpFailure(g as never, "the id_ capture"), captureUtc, dead: gone(g) };
-  return { kind: "capture", captureUtc, sha256: sha(g.body), payloads: [g.body] };
 }
 
 const GHOST_URL = /^https:\/\/ghostarchive\.org\/archive\/([A-Za-z0-9]+)$/;
@@ -442,7 +482,7 @@ export async function judge(
       reason: `the figure "${fig}" is not in it (${kinds}${errors.length ? `; ${errors[0]}` : ""})`,
     };
   }
-  return { status: "live", reason: `shows ${how.join(", ")}` };
+  return { status: "live", reason: `${f.via ? `${f.via}; ` : ""}shows ${how.join(", ")}` };
 }
 
 /** pdftotext on PATH, reading the PDF from stdin; null when it is not installed or fails. */

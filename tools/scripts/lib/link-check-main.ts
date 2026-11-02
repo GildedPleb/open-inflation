@@ -128,18 +128,14 @@ export function verdictOf(
 
 /**
  * The reason line --write adds to an adopted figure it could not date, e.g.
- * `- Note 2026-10-27: Capture check not dated: source unreachable: Original URL HTTP 502.` (a DATED_NOTE line).
+ * `- Note 2026-10-27: Capture check not dated: source unreachable: Archive URL HTTP 404 on the id_ capture: the
+ * capture is gone.` (a DATED_NOTE line). Only dead links give a reason: a link with no verdict (a 5xx, a rate limit,
+ * a network error) is transient, so it is re-run, never written down. Each reason is kept whole, its URLs included.
  */
 export function undatedNote(today: string, links: FigureResult["links"]): string | null {
   const why = links
-    .filter((l) => l.status === "dead" || l.status === "unknown")
-    .map(
-      (l) =>
-        `${l.link.label} ${l.reason
-          .replace(/https?:\/\/\S+/g, "")
-          .replace(/[\s.;:]+$/, "")
-          .trim()}`,
-    );
+    .filter((l) => l.status === "dead")
+    .map((l) => `${l.link.label} ${l.reason.replace(/[\s.;:]+$/, "")}`);
   if (why.length === 0) return null;
   return `- Note ${today}: Capture check not dated: source unreachable: ${why.join("; ")}.`;
 }
@@ -197,7 +193,11 @@ export async function linkCheckMain(io: CheckIo): Promise<number> {
     const s = serviceOf(u);
     const p =
       s === "wayback" ? fetchWayback(u, deps) : s === "ghostarchive" ? fetchGhost(u, deps) : fetchOriginal(u, deps);
-    p.then((f) => io.out(`  ${++done}/${urls.length} ${u}: ${f.kind === "capture" ? "answered" : f.reason}`));
+    p.then((f) =>
+      io.out(
+        `  ${++done}/${urls.length} ${u}: ${f.kind === "capture" ? `answered${f.via ? ` (${f.via})` : ""}` : f.reason}`,
+      ),
+    );
     fetched.set(u, p);
   }
 
