@@ -34,6 +34,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 Consolidated weekly financial statement of the Eurosystem, liabilities items 1 + 2.1 + 2.2; weekly stock at the Friday close. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
+## What's in, what's out
+
+- In: banknotes in circulation (item 1), current accounts (item 2.1) and the deposit facility (item 2.2).
+- Out: coin, which the member states issue; foreign official deposits; securities.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)

@@ -42,6 +42,14 @@ The API documentation names the fields, each in HK$ million: `cert_of_indebt` "C
 
 **Not used.** The Currency Board Account (`currency-board-account`) also prints a monetary base, in a different accounting presentation whose total differs slightly from the bulletin's; it is not used.
 
+## What's in, what's out
+
+- In: Certificates of Indebtedness, government-issued notes and coins, the Aggregate Balance, and all Exchange Fund Bills and Notes, whoever holds them (HK$165,178 million outside licensed banks at 30 June 2026).
+- Out: Discount Window balances. Foreign official holders have no deposit line of their own, but any Exchange Fund paper they hold is in.
+- Coin: issued by the government, counted.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)

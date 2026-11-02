@@ -34,6 +34,14 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 Weekly Statistical Supplement "Reserve Money: Components and Sources"; stock on the last day of the month; final figures only. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
+## What's in, what's out
+
+- In: currency in circulation, coin included; bankers' deposits; 'Other' deposits with RBI, which include deposits of foreign central banks and multilateral institutions (₹122,065 crore at 30 June 2026; the foreign part is not published).
+- Out: securities.
+- Coin: issued by the Government of India, counted.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)

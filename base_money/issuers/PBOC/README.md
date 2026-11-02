@@ -34,6 +34,14 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 货币当局资产负债表 "Balance Sheet of Monetary Authority", line 储备货币 "Reserve Money"; end-of-month stock. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
+## What's in, what's out
+
+- In: currency issued, deposits of financial corporations and deposits of non-financial institutions.
+- Out: deposits of government, foreign liabilities, bonds issued, and deposits of financial corporations the PBOC excludes from reserve money.
+- Coin: the PBOC issues coin itself.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)

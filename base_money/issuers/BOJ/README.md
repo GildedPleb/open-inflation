@@ -34,6 +34,14 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 マネタリーベース "Monetary Base", amounts outstanding at end of period; end-of-month stock. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
+## What's in, what's out
+
+- In: banknotes, coins in circulation and current account balances.
+- Out: foreign official deposits; securities.
+- Coin: issued by the government, counted.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)

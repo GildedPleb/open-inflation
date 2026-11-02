@@ -36,6 +36,13 @@ Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM mea
 
 snbmoba "Monetary base" / "Notenbankgeldmenge", item N2; monthly average (inferred). See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
+## What's in, what's out
+
+- In: banknotes in circulation and sight deposits of domestic banks.
+- Out: coin, which the Confederation issues; foreign and other sight deposits; SNB Bills.
+
+See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
+
 ## Years
 
 - [2026](2026.md)
