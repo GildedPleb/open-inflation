@@ -5,7 +5,7 @@
 - **Currency:** Hong Kong dollar, HKD
 - **What it is:** Hong Kong's monetary authority. It runs the Linked Exchange Rate System, a Currency Board, under which the monetary base is backed by US dollar assets of the Exchange Fund; banknotes are issued by note-issuing banks against Certificates of Indebtedness.
 - **Official website:** [hkma.gov.hk, English](https://www.hkma.gov.hk/eng/)
-- **Data pages used here:** the HKMA Open API for Monthly Statistical Bulletin Table 7.2.2, [Monetary Base – Daily figures](https://apidocs.hkma.gov.hk/documentation/market-data-and-statistics/monthly-statistical-bulletin/monetary-operation/monetary-base-daily/); each figure's exact query and its archived copy are in the year files ([2024](2024.md), [2025](2025.md), [2026](2026.md))
+- **Data pages used here:** the HKMA Open API for Monthly Statistical Bulletin Table 7.2.2, [Monetary Base – Daily figures](https://apidocs.hkma.gov.hk/documentation/market-data-and-statistics/monthly-statistical-bulletin/monetary-operation/monetary-base-daily/); each figure's exact query and its archived copy are in the year files ([2023](2023.md), [2024](2024.md), [2025](2025.md), [2026](2026.md))
 
 ## Quarters
 
@@ -19,12 +19,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2025 Q3](../../quarters/2025Q3.md) | 2025-09-30 | [2,020,238,000,000](2025.md#hkma-total-monetary-base-before-discount-window-2025-09-30-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.782](../../FX/2025.md#fx-2025q3-hkd) | $259.6B | +4.1% |
 | [2025 Q2](../../quarters/2025Q2.md) | 2025-06-30 | [2,120,253,000,000](2025.md#hkma-total-monetary-base-before-discount-window-2025-06-30-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.8495](../../FX/2025.md#fx-2025q2-hkd) | $270.1B | +10.0% |
 | [2025 Q1](../../quarters/2025Q1.md) | 2025-03-31 | [1,977,117,000,000](2025.md#hkma-total-monetary-base-before-discount-window-2025-03-31-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7797](../../FX/2025.md#fx-2025q1-hkd) | $254.1B | +3.1% |
-| [2024 Q4](../../quarters/2024Q4.md) | 2024-12-31 | [1,957,503,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-12-31-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7675](../../FX/2024.md#fx-2024q4-hkd) | $252.0B | —¹ |
+| [2024 Q4](../../quarters/2024Q4.md) | 2024-12-31 | [1,957,503,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-12-31-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7675](../../FX/2024.md#fx-2024q4-hkd) | $252.0B | +3.3% |
 | [2024 Q3](../../quarters/2024Q3.md) | 2024-09-30 | [1,941,425,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-09-30-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7744](../../FX/2024.md#fx-2024q3-hkd) | $249.7B | —¹ |
 | [2024 Q2](../../quarters/2024Q2.md) | 2024-06-28 | [1,926,927,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-06-28-open-api-daily-figures-retrieved-2026-10-29) | as published | [7.8082](../../FX/2024.md#fx-2024q2-hkd) | $246.8B | —¹ |
 | [2024 Q1](../../quarters/2024Q1.md) | 2024-03-28 | [1,917,534,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-03-28-open-api-daily-figures-retrieved-2026-10-29) | as published | [7.8265](../../FX/2024.md#fx-2024q1-hkd) | $245.0B | —¹ |
+| [2023 Q4](../../quarters/2023Q4.md) | 2023-12-29 | [1,895,862,000,000](2023.md#hkma-total-monetary-base-before-discount-window-2023-12-29-open-api-daily-figures-retrieved-2026-11-02) | as published | [7.8099](../../FX/2023.md#fx-2023q4-hkd) | $242.8B | —¹ |
 
-¹ No year-ago quarter yet: 2024 Q4, 2024 Q3, 2024 Q2, 2024 Q1.
+¹ No year-ago quarter yet: 2024 Q3, 2024 Q2, 2024 Q1, 2023 Q4.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
@@ -32,7 +33,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ## What we measure
 
-The HKMA's own monetary base, the end-of-day stock on the quarter-end date, or the last business day before it when the quarter-end date has no figure, as in 2024Q1 (31 March 2024 was a Sunday and 29 and 30 March Hong Kong general holidays, so 28 March is used) and 2024Q2 (30 June 2024 was a Sunday, so 28 June is used): field `mb_bf_disc_win_total`, "Total Monetary Base before Discount Window", of the Open API's Monetary Base – Daily figures, in HK$ million, used as published, not adjusted. It is the sum of the four components the HKMA defines:
+The HKMA's own monetary base, the end-of-day stock on the quarter-end date, or the last business day before it when the quarter-end date has no figure, as in 2023Q4 (31 December 2023 was a Sunday, so 29 December is used), 2024Q1 (31 March 2024 was a Sunday and 29 and 30 March Hong Kong general holidays, so 28 March is used) and 2024Q2 (30 June 2024 was a Sunday, so 28 June is used): field `mb_bf_disc_win_total`, "Total Monetary Base before Discount Window", of the Open API's Monetary Base – Daily figures, in HK$ million, used as published, not adjusted. It is the sum of the four components the HKMA defines:
 
 - "The Monetary Base comprises the following components: Certificates of Indebtedness, which provide full backing to the banknotes issued by note-issuing banks / Government-issued notes and coins in circulation / Aggregate Balance, which is the sum of clearing account balances kept with the HKMA / Exchange Fund Bills and Notes issued by the HKMA on behalf of the Government for the account of the Exchange Fund" ([Components of the Monetary Base](https://www.hkma.gov.hk/eng/key-functions/money/linked-exchange-rate-system/components-of-the-monetary-base/), last revision date 23 November 2020 (archived: [Wayback](https://web.archive.org/web/20261028151104/https://www.hkma.gov.hk/eng/key-functions/money/linked-exchange-rate-system/components-of-the-monetary-base/)))
 
@@ -55,3 +56,4 @@ See [Where the banks' definitions differ](../../../docs/methodology/base_money.m
 - [2026](2026.md)
 - [2025](2025.md)
 - [2024](2024.md)
+- [2023](2023.md)
