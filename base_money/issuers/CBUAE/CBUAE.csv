@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2023-09-30,2023Q3,CBUAE,2023-09-30,end-of-period stock,as published,AED,597311000000,0.27225701061802341410,162622107269,base_money/issuers/CBUAE/2023.md#cbuae-monetary-base-sep-2023-statistical-bulletin-october-2025-table-4-retrieved-2026-11-03
 2023-12-31,2023Q4,CBUAE,2023-12-31,end-of-period stock,as published,AED,658748000000,0.27227183620126334132,179358527554,base_money/issuers/CBUAE/2023.md#cbuae-monetary-base-dec-2023-statistical-bulletin-february-2026-table-4-retrieved-2026-10-29
 2024-03-31,2024Q1,CBUAE,2024-03-31,end-of-period stock,as published,AED,703660000000,0.27228666339922670588,191597233567,base_money/issuers/CBUAE/2024.md#cbuae-monetary-base-mar-2024-statistical-bulletin-february-2026-table-4-retrieved-2026-10-29
 2024-06-30,2024Q2,CBUAE,2024-06-30,end-of-period stock,as published,AED,724982000000,0.27224218664924316672,197370684961,base_money/issuers/CBUAE/2024.md#cbuae-monetary-base-jun-2024-statistical-bulletin-february-2026-table-4-retrieved-2026-10-29
