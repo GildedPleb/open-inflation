@@ -21,12 +21,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2025 Q1](../../quarters/2025Q1.md) | 2025-03-31 | [1,977,117,000,000](2025.md#hkma-total-monetary-base-before-discount-window-2025-03-31-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7797](../../FX/2025.md#fx-2025q1-hkd) | $254.1B | +3.1% |
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12-31 | [1,957,503,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-12-31-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7675](../../FX/2024.md#fx-2024q4-hkd) | $252.0B | +3.3% |
 | [2024 Q3](../../quarters/2024Q3.md) | 2024-09-30 | [1,941,425,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-09-30-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.7744](../../FX/2024.md#fx-2024q3-hkd) | $249.7B | +3.2% |
-| [2024 Q2](../../quarters/2024Q2.md) | 2024-06-28 | [1,926,927,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-06-28-open-api-daily-figures-retrieved-2026-10-29) | as published | [7.8082](../../FX/2024.md#fx-2024q2-hkd) | $246.8B | —¹ |
+| [2024 Q2](../../quarters/2024Q2.md) | 2024-06-28 | [1,926,927,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-06-28-open-api-daily-figures-retrieved-2026-10-29) | as published | [7.8082](../../FX/2024.md#fx-2024q2-hkd) | $246.8B | +3.0% |
 | [2024 Q1](../../quarters/2024Q1.md) | 2024-03-28 | [1,917,534,000,000](2024.md#hkma-total-monetary-base-before-discount-window-2024-03-28-open-api-daily-figures-retrieved-2026-10-29) | as published | [7.8265](../../FX/2024.md#fx-2024q1-hkd) | $245.0B | —¹ |
 | [2023 Q4](../../quarters/2023Q4.md) | 2023-12-29 | [1,895,862,000,000](2023.md#hkma-total-monetary-base-before-discount-window-2023-12-29-open-api-daily-figures-retrieved-2026-11-02) | as published | [7.8099](../../FX/2023.md#fx-2023q4-hkd) | $242.8B | —¹ |
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-09-29 | [1,880,617,000,000](2023.md#hkma-total-monetary-base-before-discount-window-2023-09-29-open-api-daily-figures-retrieved-2026-11-03) | as published | [7.8313](../../FX/2023.md#fx-2023q3-hkd) | $240.1B | —¹ |
+| [2023 Q2](../../quarters/2023Q2.md) | 2023-06-30 | [1,871,052,000,000](2023.md#hkma-total-monetary-base-before-discount-window-2023-06-30-open-api-daily-figures-retrieved-2026-11-03) | as published | [7.8367](../../FX/2023.md#fx-2023q2-hkd) | $238.8B | —¹ |
 
-¹ No year-ago quarter yet: 2024 Q2, 2024 Q1, 2023 Q4, 2023 Q3.
+¹ No year-ago quarter yet: 2024 Q1, 2023 Q4, 2023 Q3, 2023 Q2.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
