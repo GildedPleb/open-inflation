@@ -13,6 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (HKD) | Status | HKD per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q3](../../quarters/2026Q3.md) | 2026-09-30 | [2,090,204,000,000](2026.md#hkma-total-monetary-base-before-discount-window-2026-09-30-open-api-daily-figures-retrieved-2026-11-05) | as published | [7.8453](../../FX/2026.md#fx-2026q3-hkd) | $266.4B | +3.5% |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [2,075,020,000,000](2026.md#hkma-total-monetary-base-before-discount-window-2026-06-30-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.8415](../../FX/2026.md#fx-2026q2-hkd) | $264.6B | -2.1% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [2,065,066,000,000](2026.md#hkma-total-monetary-base-before-discount-window-2026-03-31-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.8383](../../FX/2026.md#fx-2026q1-hkd) | $263.5B | +4.4% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12-31 | [2,040,126,000,000](2025.md#hkma-total-monetary-base-before-discount-window-2025-12-31-open-api-daily-figures-retrieved-2026-10-28) | as published | [7.782](../../FX/2025.md#fx-2025q4-hkd) | $262.2B | +4.2% |

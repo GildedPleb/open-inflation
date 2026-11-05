@@ -13,3 +13,4 @@ date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,u
 2025-12-31,2025Q4,RBI,2025-12-31,end-of-month stock,final,INR,47991350000000,0.01113189064030634963,534234459881,base_money/issuers/RBI/2025.md#rbi-reserve-money-2025-12-31-wss-2026-01-09
 2026-03-31,2026Q1,RBI,2026-03-31,end-of-month stock,final,INR,51078310000000,0.01070239840748311697,546660423601,base_money/issuers/RBI/2026.md#rbi-reserve-money-2026-03-31-wss-2026-06-26
 2026-06-30,2026Q2,RBI,2026-06-30,end-of-month stock,final,INR,52563650000000,0.01056524035921817221,555347596408,base_money/issuers/RBI/2026.md#rbi-reserve-money-2026-06-30-wss-2026-07-10
+2026-09-30,2026Q3,RBI,2026-09-30,end-of-month stock,final,INR,52781420000000,0.01043623460655395533,550839281987,base_money/issuers/RBI/2026.md#rbi-reserve-money-2026-09-30-wss-2026-10-09

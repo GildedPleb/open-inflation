@@ -13,6 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (GBP) | Status | USD per GBP | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q3](../../quarters/2026Q3.md) | 2026-09 | [748,669,000,000](2026.md#boe-lpmavaa--lpmbl22-2026-09-retrieved-2026-11-05) | as published | [1.340840](../../FX/2026.md#fx-2026q3-gbp) | $1.00T | -1.6% |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | [756,193,000,000](2026.md#boe-lpmavaa--lpmbl22-2026-06-retrieved-2026-10-26) | as published | [1.332387](../../FX/2026.md#fx-2026q2-gbp) | $1.01T | -2.6% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | [747,579,000,000](2026.md#boe-lpmavaa--lpmbl22-2026-03-retrieved-2026-10-26) | as published | [1.334998](../../FX/2026.md#fx-2026q1-gbp) | $998.0B | -6.0% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12 | [761,900,000,000](2025.md#boe-lpmavaa--lpmbl22-2025-12-retrieved-2026-10-26) | as published | [1.339579](../../FX/2025.md#fx-2025q4-gbp) | $1.02T | -6.7% |

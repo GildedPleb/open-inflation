@@ -4,9 +4,9 @@ Quarterly base money of the world's largest central banks, summed in US dollars,
 
 <!-- BEGIN GENERATED latest -->
 
-**Latest: $22.60 trillion at 30 Jun 2026 (2026 Q2).** Covers 100.00% of the basket.
+**Latest: $22.40 trillion at 30 Sep 2026 (2026 Q3).** Covers 99.01% of the basket; left out: CBUAE.
 
-Updated 29 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q3
+Updated 29 Oct 2026 · dataset version 0.1.0 · next quarter: 2026 Q4
 
 <!-- END GENERATED latest -->
 
@@ -42,6 +42,7 @@ US dollars, trillions (T), converted at the market close on each report's count 
 
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
+| 2026 Q3 | $22.40T | —² | [Sources](base_money/quarters/2026Q3.md) |
 | 2026 Q2 | $22.60T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
 | 2026 Q1 | $22.95T | -1.5% | [Sources](base_money/quarters/2026Q1.md) |
 | 2025 Q4 | $23.06T | +1.7% | [Sources](base_money/quarters/2025Q4.md) |
@@ -62,6 +63,8 @@ US dollars, trillions (T), converted at the market close on each report's count 
 <!-- BEGIN GENERATED yoy-notes -->
 
 ¹ No year-ago quarter yet: 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1.
+
+² Not like for like: a year earlier used a different basket or set of banks: 2026 Q3.
 
 ᵖ Uses a provisional bank figure that may be revised: 2026 Q2.
 

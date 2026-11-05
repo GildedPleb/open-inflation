@@ -13,6 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (USD) | Status | YoY (local) |
 | :------ | :--------- | -----------: | :----- | --: |
+| [2026 Q3](../../quarters/2026Q3.md) | 2026-09 | [5,449,800,000,000](2026.md#fed-h6-monetary-base-2026-09-release-2026-10-27) | as published | -0.5% |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06 | [5,488,400,000,000](2026.md#fed-h6-monetary-base-2026-06-release-2026-07-28) | as published | -4.5% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03 | [5,458,600,000,000](2026.md#fed-h6-monetary-base-2026-03-release-2026-04-28) | as published | -5.5% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12 | [5,373,700,000,000](2025.md#fed-h6-monetary-base-2025-12-release-2026-01-27) | as published | -4.1% |

@@ -13,6 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (EUR) | Status | USD per EUR | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q3](../../quarters/2026Q3.md) | 2026-09-25 | [3,925,631,000,000](2026.md#ecb-liability-items-1--21--22-statement-2026-09-25-published-2026-09-29) | as published | [1.139212](../../FX/2026.md#fx-2026q3-eur) | $4.47T | -10.3% |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-26 | [3,980,253,000,000](2026.md#ecb-liability-items-1--21--22-statement-2026-06-26-published-2026-06-30) | as published | [1.138952](../../FX/2026.md#fx-2026q2-eur) | $4.53T | -10.2% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-27 | [4,148,672,000,000](2026.md#ecb-liability-items-1--21--22-statement-2026-03-27-published-2026-03-31) | as published | [1.151013](../../FX/2026.md#fx-2026q1-eur) | $4.78T | -8.8% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12-26 | [4,243,284,000,000](2025.md#ecb-liability-items-1--21--22-statement-2025-12-26-published-2025-12-30) | as published | [1.17744](../../FX/2025.md#fx-2025q4-eur) | $5.00T | -8.7% |
