@@ -25,7 +25,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2024 Q2](../../quarters/2024Q2.md) | 2024-06-30 | [6,335,242,000,000](2024.md#cbc-reserve-money-2024-06-30-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [32.5193](../../FX/2024.md#fx-2024q2-twd) | $194.8B | +5.5% |
 | [2024 Q1](../../quarters/2024Q1.md) | 2024-03-31 | [6,338,846,000,000](2024.md#cbc-reserve-money-2024-03-31-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [31.9565](../../FX/2024.md#fx-2024q1-twd) | $198.4B | +4.8% |
 | [2023 Q4](../../quarters/2023Q4.md) | 2023-12-31 | [6,202,611,000,000](2023.md#cbc-reserve-money-2023-12-31-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [30.6971](../../FX/2023.md#fx-2023q4-twd) | $202.1B | —¹ |
-| [2023 Q3](../../quarters/2023Q3.md) | 2023-09-30 | [6,104,216,000,000](2023.md#cbc-reserve-money-2023-09-30-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [32.2463](../../FX/2023.md#fx-2023q3-twd) | $189.3B | —¹ |
+| [2023 Q3](../../quarters/2023Q3.md) | 2023-09-30 | [6,104,216,000,000](2023.md#cbc-reserve-money-2023-09-30-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [32.1315](../../FX/2023.md#fx-2023q3-twd) | $190.0B | —¹ |
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-06-30 | [6,004,337,000,000](2023.md#cbc-reserve-money-2023-06-30-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [31.1613](../../FX/2023.md#fx-2023q2-twd) | $192.7B | —¹ |
 | [2023 Q1](../../quarters/2023Q1.md) | 2023-03-31 | [6,049,287,000,000](2023.md#cbc-reserve-money-2023-03-31-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [30.5408](../../FX/2023.md#fx-2023q1-twd) | $198.1B | —¹ |
 
@@ -45,7 +45,7 @@ The CBC's explanatory notes define reserve money as:
 
 - "The reserve money comprises all reserves held by deposit money banks & Taiwan Post Co. and currency held by the public, both of which are the monetary liability of the Central Bank. It is also referred to as “high-powered money” or “base money”…" (CBC explanatory notes on monetary statistics, live original [expl.pdf](https://www.cbc.gov.tw/public/data/831410401671.pdf); no archived copy available at retrieval; the series title above is archived with the data API)
 
-The IMF-style note in the CBC's Notes.pdf uses the same scope in shorter words ("Monetary Base comprises reserves with the Central Bank held by other depository corporations and currency held by the public"; live original [Notes.pdf](https://www.cbc.gov.tw/public/data/EBOOKXLS/Notes.pdf); no archived copy available at retrieval).
+The IMF-style note in the CBC's Notes.pdf uses the same scope in shorter words ("Monetary Base comprises reserves with the Central Bank held by other depository corporations and currency held by the public"; live original [Notes.pdf](https://www.cbc.gov.tw/public/data/EBOOKXLS/Notes.pdf); archived: [Wayback](https://web.archive.org/web/20261105222614/https://www.cbc.gov.tw/public/data/EBOOKXLS/Notes.pdf)).
 
 **Cross-check.** The CBC's English Excel table ERM-H (End of Period Amount, NT$ hundred millions; live original [ERM-H.xls](https://www.cbc.gov.tw/public/data/Ebanking/ERM-H.xls); no archived copy available at retrieval) rounds each adopted millions figure correctly. It is read, never summed, and is not used as an extract URL.
 
@@ -54,7 +54,7 @@ The IMF-style note in the CBC's Notes.pdf uses the same scope in shorter words (
 ## What's in, what's out
 
 - In: reserves held by other monetary financial institutions (cash in vaults and deposits with the CBC), and currency held by the public.
-- Out: CBC negotiable certificates of deposit issued to drain liquidity (issuing them reduces reserve money); foreign official deposits (inferred: not a listed component).
+- Out: CBC negotiable certificates of deposit issued to drain liquidity (inferred, not stated by the CBC: issuing them reduces reserve money); foreign official deposits (inferred: not a listed component).
 - Coin: the CBC issues coin itself.
 
 See [Where the banks' definitions differ](../../../docs/methodology/base_money.md#where-the-banks-definitions-differ).
