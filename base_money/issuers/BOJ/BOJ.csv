@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2023-03-31,2023Q1,BOJ,2023-03-31,end-of-month stock,as published,JPY,675840100000000,0.00753238927387767400,5090690720096,base_money/issuers/BOJ/2023.md#boj-monetary-base-end-of-period-2023-03-mblongxlsx-retrieved-2026-10-26
 2023-06-30,2023Q2,BOJ,2023-06-30,end-of-month stock,as published,JPY,670604500000000,0.00692904656319290466,4646649805987,base_money/issuers/BOJ/2023.md#boj-monetary-base-end-of-period-2023-06-mblongxlsx-retrieved-2026-10-26
 2023-09-30,2023Q3,BOJ,2023-09-30,end-of-month stock,as published,JPY,672605600000000,0.00669478476266988016,4502949722166,base_money/issuers/BOJ/2023.md#boj-monetary-base-end-of-period-2023-09-mblongxlsx-retrieved-2026-10-26
 2023-12-31,2023Q4,BOJ,2023-12-31,end-of-month stock,as published,JPY,673047000000000,0.00709068992412961781,4772367581366,base_money/issuers/BOJ/2023.md#boj-monetary-base-end-of-period-2023-12-mblongxlsx-retrieved-2026-10-26

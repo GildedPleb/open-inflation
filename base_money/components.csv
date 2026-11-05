@@ -1,4 +1,15 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2023-03-31,2023Q1,PBOC,2023-03-31,end-of-month stock,as published,CNY,36407150000000,0.14558583740973678081,5300365420452,base_money/issuers/PBOC/2023.md#pboc-reserve-money-2023-03-file-2025110416352731983
+2023-03-31,2023Q1,FED,2023-03,monthly average,as published,USD,5571000000000,1,5571000000000,base_money/issuers/FED/2023.md#fed-h6-monetary-base-2023-03-release-2023-04-25
+2023-03-31,2023Q1,ECB,2023-03-31,weekly stock,as published,EUR,5590515000000,1.0843,6061795414500,base_money/issuers/ECB/2023.md#ecb-liability-items-1--21--22-statement-2023-03-31-published-2023-04-05
+2023-03-31,2023Q1,BOJ,2023-03-31,end-of-month stock,as published,JPY,675840100000000,0.00753238927387767400,5090690720096,base_money/issuers/BOJ/2023.md#boj-monetary-base-end-of-period-2023-03-mblongxlsx-retrieved-2026-10-26
+2023-03-31,2023Q1,BOE,2023-03,monthly average,as published,GBP,1000916000000,1.214378,1215490370248,base_money/issuers/BOE/2023.md#boe-lpmavaa--lpmbl22-2023-03-retrieved-2026-11-05
+2023-03-31,2023Q1,SNB,2023-03,monthly average,as published,CHF,592946000000,1.08030442978831434698,640562190425,base_money/issuers/SNB/2023.md#snb-snbmoba-n2-monetary-base-2023-03-retrieved-2026-11-05
+2023-03-31,2023Q1,RBI,2023-03-31,stock on 31 March (fiscal year-end; quarter-end count date per the RBI rule),final,INR,43867590000000,0.01216841080554879533,533798856169,base_money/issuers/RBI/2023.md#rbi-reserve-money-2023-03-31-wss-2023-07-07
+2023-03-31,2023Q1,CBR,2023-04-01,stock at the beginning of the reporting date,as published,RUB,23788700000000,0.01290540177375558734,307002731175,base_money/issuers/CBR/2023.md#cbr-monetary-base-broad-definition-mar-2023-row-of-01042023-retrieved-2026-10-26
+2023-03-31,2023Q1,BCB,2023-03,end-of-month stock,as published,BRL,413314387000,0.19219599686489889914,79437370628,base_money/issuers/BCB/2023.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2023-sgs-values-page-retrieved-2026-11-05
+2023-03-31,2023Q1,HKMA,2023-03-31,end-of-day stock,as published,HKD,1903563000000,0.12740314176147583799,242519906741,base_money/issuers/HKMA/2023.md#hkma-total-monetary-base-before-discount-window-2023-03-31-open-api-daily-figures-retrieved-2026-11-05
+2023-03-31,2023Q1,CBUAE,2023-03-31,end-of-period stock,as published,AED,555755000000,0.27227924959838810684,151320554361,base_money/issuers/CBUAE/2023.md#cbuae-monetary-base-mar-2023-statistical-bulletin-may-2025-table-4-retrieved-2026-11-05
 2023-06-30,2023Q2,PBOC,2023-06-30,end-of-month stock,as published,CNY,36523534000000,0.13786447921692975805,5035297994072,base_money/issuers/PBOC/2023.md#pboc-reserve-money-2023-06-file-2025110416352731983
 2023-06-30,2023Q2,FED,2023-06,monthly average,as published,USD,5608200000000,1,5608200000000,base_money/issuers/FED/2023.md#fed-h6-monetary-base-2023-06-release-2023-07-25
 2023-06-30,2023Q2,ECB,2023-06-30,weekly stock,as published,EUR,5317391000000,1.0914,5803400537400,base_money/issuers/ECB/2023.md#ecb-liability-items-1--21--22-statement-2023-06-30-published-2023-07-05

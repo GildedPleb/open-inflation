@@ -51,16 +51,17 @@ US dollars, trillions (T), converted at the market close on each report's count 
 | 2024 Q4 | $22.67T | -8.5% | [Sources](base_money/quarters/2024Q4.md) |
 | 2024 Q3 | $24.06T | +2.2% | [Sources](base_money/quarters/2024Q3.md) |
 | 2024 Q2 | $23.25T | -4.1% | [Sources](base_money/quarters/2024Q2.md) |
-| 2024 Q1 | $23.97T | —¹ | [Sources](base_money/quarters/2024Q1.md) |
+| 2024 Q1 | $23.97T | -4.9% | [Sources](base_money/quarters/2024Q1.md) |
 | 2023 Q4 | $24.76T | —¹ | [Sources](base_money/quarters/2023Q4.md) |
 | 2023 Q3 | $23.55T | —¹ | [Sources](base_money/quarters/2023Q3.md) |
 | 2023 Q2 | $24.25T | —¹ | [Sources](base_money/quarters/2023Q2.md) |
+| 2023 Q1 | $25.19T | —¹ | [Sources](base_money/quarters/2023Q1.md) |
 
 <!-- END GENERATED table -->
 
 <!-- BEGIN GENERATED yoy-notes -->
 
-¹ No year-ago quarter yet: 2024 Q1, 2023 Q4, 2023 Q3, 2023 Q2.
+¹ No year-ago quarter yet: 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1.
 
 ᵖ Uses a provisional bank figure that may be revised: 2026 Q2.
 

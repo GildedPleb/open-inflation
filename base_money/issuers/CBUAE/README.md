@@ -22,12 +22,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12-31 | [780,615,000,000](2024.md#cbuae-monetary-base-dec-2024-statistical-bulletin-february-2026-table-4-retrieved-2026-10-29) | as published | [3.6726](../../FX/2024.md#fx-2024q4-aed) | $212.6B | +18.5% |
 | [2024 Q3](../../quarters/2024Q3.md) | 2024-09-30 | [743,456,000,000](2024.md#cbuae-monetary-base-sep-2024-statistical-bulletin-february-2026-table-4-retrieved-2026-10-29) | as published | [3.6730](../../FX/2024.md#fx-2024q3-aed) | $202.4B | +24.5% |
 | [2024 Q2](../../quarters/2024Q2.md) | 2024-06-30 | [724,982,000,000](2024.md#cbuae-monetary-base-jun-2024-statistical-bulletin-february-2026-table-4-retrieved-2026-10-29) | as published | [3.6732](../../FX/2024.md#fx-2024q2-aed) | $197.4B | +18.6% |
-| [2024 Q1](../../quarters/2024Q1.md) | 2024-03-31 | [703,660,000,000](2024.md#cbuae-monetary-base-mar-2024-statistical-bulletin-february-2026-table-4-retrieved-2026-10-29) | as published | [3.6726](../../FX/2024.md#fx-2024q1-aed) | $191.6B | —¹ |
+| [2024 Q1](../../quarters/2024Q1.md) | 2024-03-31 | [703,660,000,000](2024.md#cbuae-monetary-base-mar-2024-statistical-bulletin-february-2026-table-4-retrieved-2026-10-29) | as published | [3.6726](../../FX/2024.md#fx-2024q1-aed) | $191.6B | +26.6% |
 | [2023 Q4](../../quarters/2023Q4.md) | 2023-12-31 | [658,748,000,000](2023.md#cbuae-monetary-base-dec-2023-statistical-bulletin-february-2026-table-4-retrieved-2026-10-29) | as published | [3.6728](../../FX/2023.md#fx-2023q4-aed) | $179.4B | —¹ |
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-09-30 | [597,311,000,000](2023.md#cbuae-monetary-base-sep-2023-statistical-bulletin-october-2025-table-4-retrieved-2026-11-03) | as published | [3.6730](../../FX/2023.md#fx-2023q3-aed) | $162.6B | —¹ |
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-06-30 | [611,344,000,000](2023.md#cbuae-monetary-base-jun-2023-statistical-bulletin-august-2025-table-4-retrieved-2026-11-03) | as published | [3.6731](../../FX/2023.md#fx-2023q2-aed) | $166.4B | —¹ |
+| [2023 Q1](../../quarters/2023Q1.md) | 2023-03-31 | [555,755,000,000](2023.md#cbuae-monetary-base-mar-2023-statistical-bulletin-may-2025-table-4-retrieved-2026-11-05) | as published | [3.6727](../../FX/2023.md#fx-2023q1-aed) | $151.3B | —¹ |
 
-¹ No year-ago quarter yet: 2024 Q1, 2023 Q4, 2023 Q3, 2023 Q2.
+¹ No year-ago quarter yet: 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
