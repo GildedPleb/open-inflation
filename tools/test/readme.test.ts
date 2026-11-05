@@ -392,7 +392,9 @@ describe("the quarter table in base_money/README.md (top five banks, Remaining, 
   });
   test("cells are bare numbers; the units are stated once, right under the heading", () => {
     const readme = repoText().get("base_money/README.md") as string;
-    expect(readme).toContain(`\n## Quarters\n\n${QUARTER_UNITS}\n\n${QUARTER_TABLE_HEADER}\n`);
+    const qs = quarters(repoText()) ?? [];
+    const header = qs.some((q) => q.excluded.length > 0) ? `${QUARTER_TABLE_HEADER} Coverage |` : QUARTER_TABLE_HEADER;
+    expect(readme).toContain(`\n## Quarters\n\n${QUARTER_UNITS}\n\n${header}\n`);
     expect(readme.split(QUARTER_UNITS_LEAD).length).toBe(2);
     const g = generate(repoText(), [...repoText().keys()]);
     for (const r of rowsByQuarter(g?.index.split("\n") ?? []).values())

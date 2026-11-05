@@ -13,6 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (CNY) | Status | CNY per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q3](../../quarters/2026Q3.md) | 2026-09-30 | [41,299,819,000,000](2026.md#pboc-reserve-money-2026-09-file-2026101417430649497) | as published | [6.6987](../../FX/2026.md#fx-2026q3-cny) | $6.17T | +6.9% |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [40,594,501,000,000](2026.md#pboc-reserve-money-2026-06-file-2026101417430649497) | as published | [6.7783](../../FX/2026.md#fx-2026q2-cny) | $5.99T | +7.1% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [40,874,566,000,000](2026.md#pboc-reserve-money-2026-03-file-2026101417430649497) | as published | [6.8975](../../FX/2026.md#fx-2026q1-cny) | $5.93T | +8.5% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12-31 | [39,920,483,000,000](2025.md#pboc-reserve-money-2025-12-file-2026011515582620291) | as published | [6.9926](../../FX/2025.md#fx-2025q4-cny) | $5.71T | +8.5% |

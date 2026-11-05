@@ -141,7 +141,7 @@ describe("overdueMain on this checkout's CSVs", () => {
     const r = run(["--today", "2030-02-16"]);
     expect(r.code).toBe(EXIT.findings);
     expect(r.out).toEqual([]);
-    expect(r.err[0]).toBe("2026Q3 base money overdue: deadline 2026-11-15");
+    expect(r.err[0]).toBe("2026Q4 base money overdue: deadline 2027-02-15");
     expect(r.err.at(-1)).toBe("2029Q4 base money overdue: deadline 2030-02-15");
   });
   test("bad usage exits 2", () => {

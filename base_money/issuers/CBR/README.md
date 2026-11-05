@@ -13,6 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (RUB) | Status | RUB per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q3](../../quarters/2026Q3.md) | 2026-10-01 | [32,977,700,000,000](2026.md#cbr-monetary-base-broad-definition-sep-2026-row-of-01102026-retrieved-2026-10-26) | as published | [82.8763164](../../FX/2026.md#fx-2026q3-rub) | $397.9B | +18.5% |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-07-01 | [30,586,100,000,000](2026.md#cbr-monetary-base-broad-definition-jun-2026-row-of-01072026-retrieved-2026-10-26) | as published | [78.7570677](../../FX/2026.md#fx-2026q2-rub) | $388.4B | +14.7% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-04-01 | [29,412,900,000,000](2026.md#cbr-monetary-base-broad-definition-mar-2026-row-of-01042026-retrieved-2026-10-26) | as published | [80.9973425](../../FX/2026.md#fx-2026q1-rub) | $363.1B | +9.2% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2026-01-01 | [30,664,100,000,000](2025.md#cbr-monetary-base-broad-definition-dec-2025-row-of-01012026-retrieved-2026-10-26) | as published | [78.55009460](../../FX/2025.md#fx-2025q4-rub) | $390.4B | +9.7% |

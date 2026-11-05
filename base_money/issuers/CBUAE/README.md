@@ -13,6 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (AED) | Status | AED per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q3](../../quarters/2026Q3.md) | — | left out: not yet published; the Statistical Bulletin September 2026 is not out as of 2026-11-05 (latest is August 2026, dated 2026-10-06) | — | — | — | —² |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [783,545,000,000](2026.md#cbuae-monetary-base-jun-2026-statistical-bulletin-august-2026-table-3-retrieved-2026-10-29) | as published | [3.6727](../../FX/2026.md#fx-2026q2-aed) | $213.3B | -8.9% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [880,192,000,000](2026.md#cbuae-monetary-base-mar-2026-statistical-bulletin-august-2026-table-3-retrieved-2026-10-29) | as published | [3.6731](../../FX/2026.md#fx-2026q1-aed) | $239.6B | +5.7% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12-31 | [895,617,000,000](2025.md#cbuae-monetary-base-dec-2025-statistical-bulletin-august-2026-table-3-retrieved-2026-10-29) | as published | [3.6723](../../FX/2025.md#fx-2025q4-aed) | $243.9B | +14.7% |
@@ -29,6 +30,8 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2023 Q1](../../quarters/2023Q1.md) | 2023-03-31 | [555,755,000,000](2023.md#cbuae-monetary-base-mar-2023-statistical-bulletin-may-2025-table-4-retrieved-2026-11-05) | as published | [3.6727](../../FX/2023.md#fx-2023q1-aed) | $151.3B | —¹ |
 
 ¹ No year-ago quarter yet: 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1.
+
+² Not like for like with a year earlier: 2026 Q3 (left out this quarter).
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 

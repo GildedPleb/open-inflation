@@ -2,7 +2,7 @@
 
 Series `base_money` in `catalog.json`. This file defines the issuer basket, the definition of base money used for each issuer, the FX conversion rule, rounding, the rule that decides when a quarter enters the CSV, revisions, versioning, the update cadence and the gaps policy. It also fixes the exact extract and roll-up templates that `tools/scripts/lint.ts` parses. This is research standard 7. No data that depends on these choices may be committed until they are written here, and any change to them is written here before it affects a new extract.
 
-This file contains no observations. Template figures are placeholders. The shares in [Basket](#basket) are computed from the 2026Q2 quarter file and are not series values. The [Extract example](#extract-example) quotes a real release for illustration. None of this is evidence.
+This file contains no observations. Template figures are placeholders. The shares in [Basket](#basket) are computed from the 2026Q3 quarter file and are not series values. The [Extract example](#extract-example) quotes a real release for illustration. None of this is evidence.
 
 **Beta: nothing is locked** until the v1 release (data back to at least 2018); wrong text or numbers are edited in place. See [Revisions](#revisions).
 
@@ -55,21 +55,21 @@ Basket v1 is eleven issuers chosen 80/20: the smallest set of issuers that cover
 
 **The basket is a floor, not a ceiling.** We are actively adding issuers, so the basket grows over time (see [Basket changes](#basket-changes)).
 
-| Selection rank | Id     | Issuer                             | Share of the basket, 2026Q2 (our primary figures; display, rounded) |
+| Selection rank | Id     | Issuer                             | Share of the basket, 2026Q3 (our primary figures; display, rounded) |
 | -------------- | ------ | ---------------------------------- | ------------------------------------------------------------------- |
-| 1              | `PBOC` | People's Bank of China             | 26.50%                                                               |
-| 2              | `FED`  | Federal Reserve                    | 24.28%                                                               |
-| 3              | `ECB`  | Eurosystem (European Central Bank) | 20.06%                                                               |
-| 4              | `BOJ`  | Bank of Japan                      | 15.24%                                                               |
-| 5              | `BOE`  | Bank of England                    | 4.46%                                                                |
-| 6              | `SNB`  | Swiss National Bank                | 2.81%                                                                |
-| 7              | `RBI`  | Reserve Bank of India              | 2.46%                                                                |
-| 8              | `CBR`  | Bank of Russia                     | 1.72%                                                                |
+| 1              | `PBOC` | People's Bank of China             | 27.25%                                                               |
+| 2              | `FED`  | Federal Reserve                    | 24.08%                                                               |
+| 3              | `ECB`  | Eurosystem (European Central Bank) | 19.76%                                                               |
+| 4              | `BOJ`  | Bank of Japan                      | 15.04%                                                               |
+| 5              | `BOE`  | Bank of England                    | 4.44%                                                                |
+| 6              | `SNB`  | Swiss National Bank                | 2.69%                                                                |
+| 7              | `RBI`  | Reserve Bank of India              | 2.43%                                                                |
+| 8              | `CBR`  | Bank of Russia                     | 1.76%                                                                |
 | 9              | `BCB`  | Banco Central do Brasil            | 0.37%                                                                |
-| 10             | `HKMA` | Hong Kong Monetary Authority       | 1.17%                                                                |
-| 11             | `CBUAE` | Central Bank of the UAE           | 0.94%                                                                |
+| 10             | `HKMA` | Hong Kong Monetary Authority       | 1.18%                                                                |
+| 11             | `CBUAE` | Central Bank of the UAE           | 0.99%                                                                |
 
-**Shares of the basket.** Each share is the issuer's USD value divided by the sum of the eleven USD values, taken from the machine block of [2026Q2](../../base_money/quarters/2026Q2.md), whose eleven components are converted under the [FX rule](#fx-rule). The shares are rounded to two decimals for display only, so the eleven shown need not sum to exactly 100 (on 2026Q2 they sum to 100.01). Coverage is never computed from these rounded shares (see [Coverage](#coverage)).
+**Shares of the basket.** Each share is the issuer's USD value divided by the sum of the eleven USD values, taken from the machine block of [2026Q3](../../base_money/quarters/2026Q3.md), whose eleven components (ten evidenced plus the CBUAE reference value) are converted under the [FX rule](#fx-rule). The shares are rounded to two decimals for display only, so the eleven shown need not sum to exactly 100 (on 2026Q3 they sum to 99.99). Coverage is never computed from these rounded shares (see [Coverage](#coverage)).
 
 **Rank 9.** BCB stays in basket v1 by decision. On its adopted figure, the BCB's restricted monetary base (see the [BCB note](#per-issuer-definitions)), it is the smallest issuer in the basket.
 

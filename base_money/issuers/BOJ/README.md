@@ -13,6 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (JPY) | Status | JPY per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
+| [2026 Q3](../../quarters/2026Q3.md) | 2026-09-30 | [535,421,400,000,000](2026.md#boj-monetary-base-end-of-period-2026-09-release-2026-10-02) | as published | [157.327](../../FX/2026.md#fx-2026q3-jpy) | $3.40T | -14.1% |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [559,984,900,000,000](2026.md#boj-monetary-base-end-of-period-2026-06-release-2026-07-02) | as published | [162.544](../../FX/2026.md#fx-2026q2-jpy) | $3.45T | -14.0% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [580,666,600,000,000](2026.md#boj-monetary-base-end-of-period-2026-03-release-2026-04-02) | as published | [158.686](../../FX/2026.md#fx-2026q1-jpy) | $3.66T | -11.2% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12-31 | [596,184,900,000,000](2025.md#boj-monetary-base-end-of-period-2025-12-release-2026-01-06) | as published | [156.657](../../FX/2025.md#fx-2025q4-jpy) | $3.81T | -9.7% |
