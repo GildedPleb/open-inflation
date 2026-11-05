@@ -22,12 +22,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12-31 | [660,280,500,000,000](2024.md#boj-monetary-base-end-of-period-2024-12-mblongxlsx-retrieved-2026-10-26) | as published | [157.21](../../FX/2024.md#fx-2024q4-jpy) | $4.20T | -1.9% |
 | [2024 Q3](../../quarters/2024Q3.md) | 2024-09-30 | [673,453,700,000,000](2024.md#boj-monetary-base-end-of-period-2024-09-mblongxlsx-retrieved-2026-10-26) | as published | [143.64](../../FX/2024.md#fx-2024q3-jpy) | $4.69T | +0.1% |
 | [2024 Q2](../../quarters/2024Q2.md) | 2024-06-30 | [675,385,000,000,000](2024.md#boj-monetary-base-end-of-period-2024-06-mblongxlsx-retrieved-2026-10-26) | as published | [160.88](../../FX/2024.md#fx-2024q2-jpy) | $4.20T | +0.7% |
-| [2024 Q1](../../quarters/2024Q1.md) | 2024-03-31 | [686,787,100,000,000](2024.md#boj-monetary-base-end-of-period-2024-03-mblongxlsx-retrieved-2026-10-26) | as published | [151.33](../../FX/2024.md#fx-2024q1-jpy) | $4.54T | —¹ |
+| [2024 Q1](../../quarters/2024Q1.md) | 2024-03-31 | [686,787,100,000,000](2024.md#boj-monetary-base-end-of-period-2024-03-mblongxlsx-retrieved-2026-10-26) | as published | [151.33](../../FX/2024.md#fx-2024q1-jpy) | $4.54T | +1.6% |
 | [2023 Q4](../../quarters/2023Q4.md) | 2023-12-31 | [673,047,000,000,000](2023.md#boj-monetary-base-end-of-period-2023-12-mblongxlsx-retrieved-2026-10-26) | as published | [141.03](../../FX/2023.md#fx-2023q4-jpy) | $4.77T | —¹ |
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-09-30 | [672,605,600,000,000](2023.md#boj-monetary-base-end-of-period-2023-09-mblongxlsx-retrieved-2026-10-26) | as published | [149.37](../../FX/2023.md#fx-2023q3-jpy) | $4.50T | —¹ |
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-06-30 | [670,604,500,000,000](2023.md#boj-monetary-base-end-of-period-2023-06-mblongxlsx-retrieved-2026-10-26) | as published | [144.32](../../FX/2023.md#fx-2023q2-jpy) | $4.65T | —¹ |
+| [2023 Q1](../../quarters/2023Q1.md) | 2023-03-31 | [675,840,100,000,000](2023.md#boj-monetary-base-end-of-period-2023-03-mblongxlsx-retrieved-2026-10-26) | as published | [132.76](../../FX/2023.md#fx-2023q1-jpy) | $5.09T | —¹ |
 
-¹ No year-ago quarter yet: 2024 Q1, 2023 Q4, 2023 Q3, 2023 Q2.
+¹ No year-ago quarter yet: 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 

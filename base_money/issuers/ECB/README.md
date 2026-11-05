@@ -22,12 +22,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2024 Q4](../../quarters/2024Q4.md) | 2024-12-27 | [4,648,092,000,000](2024.md#ecb-liability-items-1--21--22-statement-2024-12-27-published-2024-12-31) | as published | [1.042862](../../FX/2024.md#fx-2024q4-eur) | $4.85T | -8.4% |
 | [2024 Q3](../../quarters/2024Q3.md) | 2024-09-27 | [4,707,919,000,000](2024.md#ecb-liability-items-1--21--22-statement-2024-09-27-published-2024-10-01) | as published | [1.1166](../../FX/2024.md#fx-2024q3-eur) | $5.26T | -9.4% |
 | [2024 Q2](../../quarters/2024Q2.md) | 2024-06-28 | [4,797,400,000,000](2024.md#ecb-liability-items-1--21--22-statement-2024-06-28-published-2024-07-03) | as published | [1.0716](../../FX/2024.md#fx-2024q2-eur) | $5.14T | -9.8% |
-| [2024 Q1](../../quarters/2024Q1.md) | 2024-03-29 | [4,929,783,000,000](2024.md#ecb-liability-items-1--21--22-statement-2024-03-29-published-2024-04-04) | as published | [1.0788](../../FX/2024.md#fx-2024q1-eur) | $5.32T | —¹ |
+| [2024 Q1](../../quarters/2024Q1.md) | 2024-03-29 | [4,929,783,000,000](2024.md#ecb-liability-items-1--21--22-statement-2024-03-29-published-2024-04-04) | as published | [1.0788](../../FX/2024.md#fx-2024q1-eur) | $5.32T | -11.8% |
 | [2023 Q4](../../quarters/2023Q4.md) | 2023-12-29 | [5,076,552,000,000](2023.md#ecb-liability-items-1--21--22-statement-2023-12-29-published-2024-01-04) | as published | [1.1038](../../FX/2023.md#fx-2023q4-eur) | $5.60T | —¹ |
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-09-29 | [5,198,340,000,000](2023.md#ecb-liability-items-1--21--22-statement-2023-09-29-published-2023-10-04) | as published | [1.0573](../../FX/2023.md#fx-2023q3-eur) | $5.50T | —¹ |
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-06-30 | [5,317,391,000,000](2023.md#ecb-liability-items-1--21--22-statement-2023-06-30-published-2023-07-05) | as published | [1.0914](../../FX/2023.md#fx-2023q2-eur) | $5.80T | —¹ |
+| [2023 Q1](../../quarters/2023Q1.md) | 2023-03-31 | [5,590,515,000,000](2023.md#ecb-liability-items-1--21--22-statement-2023-03-31-published-2023-04-05) | as published | [1.0843](../../FX/2023.md#fx-2023q1-eur) | $6.06T | —¹ |
 
-¹ No year-ago quarter yet: 2024 Q1, 2023 Q4, 2023 Q3, 2023 Q2.
+¹ No year-ago quarter yet: 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
