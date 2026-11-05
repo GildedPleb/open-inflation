@@ -2,7 +2,7 @@
 
 Series `base_money` in `catalog.json`. This file defines the issuer basket, the definition of base money used for each issuer, the FX conversion rule, rounding, the rule that decides when a quarter enters the CSV, revisions, versioning, the update cadence and the gaps policy. It also fixes the exact extract and roll-up templates that `tools/scripts/lint.ts` parses. This is research standard 7. No data that depends on these choices may be committed until they are written here, and any change to them is written here before it affects a new extract.
 
-This file contains no observations. Template figures are placeholders. The shares in [Basket](#basket) are computed from the 2026Q2 quarter file and are not series values. The [Extract example](#extract-example) quotes a real release for illustration. None of this is evidence.
+This file contains no observations. Template figures are placeholders. The shares in [Basket](#basket) are computed from the 2026Q3 quarter file and are not series values. The [Extract example](#extract-example) quotes a real release for illustration. None of this is evidence.
 
 **Beta: nothing is locked** until the v1 release (data back to at least 2018); wrong text or numbers are edited in place. See [Revisions](#revisions).
 
