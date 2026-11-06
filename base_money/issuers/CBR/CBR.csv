@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2022-12-31,2022Q4,CBR,2023-01-01,beginning-of-reporting-date stock (= end of prior month),as published,RUB,24428600000000,0.01462502540513163125,357268895612,base_money/issuers/CBR/2022.md#cbr-monetary-base-broad-definition-dec-2022-row-of-01012023-retrieved-2026-11-06
 2023-03-31,2023Q1,CBR,2023-04-01,stock at the beginning of the reporting date,as published,RUB,23788700000000,0.01290540177375558734,307002731175,base_money/issuers/CBR/2023.md#cbr-monetary-base-broad-definition-mar-2023-row-of-01042023-retrieved-2026-10-26
 2023-06-30,2023Q2,CBR,2023-07-01,stock at the beginning of the reporting date,as published,RUB,24929200000000,0.01117940960241078155,278693737860,base_money/issuers/CBR/2023.md#cbr-monetary-base-broad-definition-jun-2023-row-of-01072023-retrieved-2026-10-26
 2023-09-30,2023Q3,CBR,2023-10-01,stock at the beginning of the reporting date,as published,RUB,24782900000000,0.01015184137570802343,251592069630,base_money/issuers/CBR/2023.md#cbr-monetary-base-broad-definition-sep-2023-row-of-01102023-retrieved-2026-10-26
