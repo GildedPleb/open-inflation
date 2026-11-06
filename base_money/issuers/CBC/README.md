@@ -24,12 +24,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2024 Q3](../../quarters/2024Q3.md) | 2024-09-30 | [6,670,395,000,000](2024.md#cbc-reserve-money-2024-09-30-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [31.7713](../../FX/2024.md#fx-2024q3-twd) | $210.0B | +9.3% |
 | [2024 Q2](../../quarters/2024Q2.md) | 2024-06-30 | [6,335,242,000,000](2024.md#cbc-reserve-money-2024-06-30-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [32.5193](../../FX/2024.md#fx-2024q2-twd) | $194.8B | +5.5% |
 | [2024 Q1](../../quarters/2024Q1.md) | 2024-03-31 | [6,338,846,000,000](2024.md#cbc-reserve-money-2024-03-31-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [31.9565](../../FX/2024.md#fx-2024q1-twd) | $198.4B | +4.8% |
-| [2023 Q4](../../quarters/2023Q4.md) | 2023-12-31 | [6,202,611,000,000](2023.md#cbc-reserve-money-2023-12-31-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [30.6971](../../FX/2023.md#fx-2023q4-twd) | $202.1B | —¹ |
+| [2023 Q4](../../quarters/2023Q4.md) | 2023-12-31 | [6,202,611,000,000](2023.md#cbc-reserve-money-2023-12-31-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [30.6971](../../FX/2023.md#fx-2023q4-twd) | $202.1B | +4.6% |
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-09-30 | [6,104,216,000,000](2023.md#cbc-reserve-money-2023-09-30-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [32.1315](../../FX/2023.md#fx-2023q3-twd) | $190.0B | —¹ |
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-06-30 | [6,004,337,000,000](2023.md#cbc-reserve-money-2023-06-30-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [31.1613](../../FX/2023.md#fx-2023q2-twd) | $192.7B | —¹ |
 | [2023 Q1](../../quarters/2023Q1.md) | 2023-03-31 | [6,049,287,000,000](2023.md#cbc-reserve-money-2023-03-31-ef12m01en-end-of-month-retrieved-2026-11-05) | as published | [30.5408](../../FX/2023.md#fx-2023q1-twd) | $198.1B | —¹ |
+| [2022 Q4](../../quarters/2022Q4.md) | 2022-12-31 | [5,927,795,000,000](2022.md#cbc-reserve-money-2022-12-31-ef12m01en-end-of-month-retrieved-2026-11-06) | as published | [30.6413](../../FX/2022.md#fx-2022q4-twd) | $193.5B | —¹ |
 
-¹ No year-ago quarter yet: 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1.
+¹ No year-ago quarter yet: 2023 Q3, 2023 Q2, 2023 Q1, 2022 Q4.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
@@ -65,3 +66,4 @@ See [Where the banks' definitions differ](../../../docs/methodology/base_money.m
 - [2025](2025.md)
 - [2024](2024.md)
 - [2023](2023.md)
+- [2022](2022.md)
