@@ -24,12 +24,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2024 Q3](../../quarters/2024Q3.md) | 2024-09-27 | [46,606,540,000,000](2024.md#rbi-reserve-money-2024-09-27-wss-2024-10-04) | final | [83.72](../../FX/2024.md#fx-2024q3-inr) | $556.7B | +6.0% |
 | [2024 Q2](../../quarters/2024Q2.md) | 2024-06-28 | [46,949,290,000,000](2024.md#rbi-reserve-money-2024-06-28-wss-2024-07-05) | final | [83.37](../../FX/2024.md#fx-2024q2-inr) | $563.1B | +7.4% |
 | [2024 Q1](../../quarters/2024Q1.md) | 2024-03-31 | [46,314,460,000,000](2024.md#rbi-reserve-money-2024-03-31-wss-2024-07-05) | final | [83.36](../../FX/2024.md#fx-2024q1-inr) | $555.6B | +5.6% |
-| [2023 Q4](../../quarters/2023Q4.md) | 2023-12-29 | [44,449,950,000,000](2023.md#rbi-reserve-money-2023-12-29-wss-2024-01-05) | final | [83.19](../../FX/2023.md#fx-2023q4-inr) | $534.3B | —¹ |
+| [2023 Q4](../../quarters/2023Q4.md) | 2023-12-29 | [44,449,950,000,000](2023.md#rbi-reserve-money-2023-12-29-wss-2024-01-05) | final | [83.19](../../FX/2023.md#fx-2023q4-inr) | $534.3B | +6.0% |
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-09-29 | [43,950,580,000,000](2023.md#rbi-reserve-money-2023-09-29-wss-2023-10-06) | final | [83.18](../../FX/2023.md#fx-2023q3-inr) | $528.4B | —¹ |
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-06-30 | [43,700,910,000,000](2023.md#rbi-reserve-money-2023-06-30-wss-2023-07-07) | final | [82.10](../../FX/2023.md#fx-2023q2-inr) | $532.3B | —¹ |
 | [2023 Q1](../../quarters/2023Q1.md) | 2023-03-31 | [43,867,590,000,000](2023.md#rbi-reserve-money-2023-03-31-wss-2023-07-07) | final | [82.18](../../FX/2023.md#fx-2023q1-inr) | $533.8B | —¹ |
+| [2022 Q4](../../quarters/2022Q4.md) | 2022-12-30 | [41,951,450,000,000](2022.md#rbi-reserve-money-2022-12-30-wss-2023-01-06) | final | [82.75](../../FX/2022.md#fx-2022q4-inr) | $507.0B | —¹ |
 
-¹ No year-ago quarter yet: 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1.
+¹ No year-ago quarter yet: 2023 Q3, 2023 Q2, 2023 Q1, 2022 Q4.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `final`: the bank marks it final. Later changes are added as revisions, never overwritten.
 
@@ -53,3 +54,4 @@ See [Where the banks' definitions differ](../../../docs/methodology/base_money.m
 - [2025](2025.md)
 - [2024](2024.md)
 - [2023](2023.md)
+- [2022](2022.md)
