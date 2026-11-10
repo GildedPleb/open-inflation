@@ -27,12 +27,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2023 Q4](../../quarters/2023Q4.md) | 2023-12 | [899,766,000,000](2023.md#boe-lpmavaa--lpmbl22-2023-12-retrieved-2026-11-02) | as published | [1.266190](../../FX/2023.md#fx-2023q4-gbp) | $1.14T | -12.7% |
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-09 | [914,259,000,000](2023.md#boe-lpmavaa--lpmbl22-2023-09-retrieved-2026-11-03) | as published | [1.238467](../../FX/2023.md#fx-2023q3-gbp) | $1.13T | -11.9% |
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-06 | [970,242,000,000](2023.md#boe-lpmavaa--lpmbl22-2023-06-retrieved-2026-11-03) | as published | [1.263682](../../FX/2023.md#fx-2023q2-gbp) | $1.23T | -7.3% |
-| [2023 Q1](../../quarters/2023Q1.md) | 2023-03 | [1,000,916,000,000](2023.md#boe-lpmavaa--lpmbl22-2023-03-retrieved-2026-11-05) | as published | [1.214378](../../FX/2023.md#fx-2023q1-gbp) | $1.22T | —¹ |
+| [2023 Q1](../../quarters/2023Q1.md) | 2023-03 | [1,000,916,000,000](2023.md#boe-lpmavaa--lpmbl22-2023-03-retrieved-2026-11-05) | as published | [1.214378](../../FX/2023.md#fx-2023q1-gbp) | $1.22T | -4.3% |
 | [2022 Q4](../../quarters/2022Q4.md) | 2022-12 | [1,030,667,000,000](2022.md#boe-lpmavaa--lpmbl22-2022-12-retrieved-2026-11-06) | as published | [1.217027](../../FX/2022.md#fx-2022q4-gbp) | $1.25T | —¹ |
 | [2022 Q3](../../quarters/2022Q3.md) | 2022-09 | [1,037,669,000,000](2022.md#boe-lpmavaa--lpmbl22-2022-09-retrieved-2026-11-09) | as published | [1.132336](../../FX/2022.md#fx-2022q3-gbp) | $1.17T | —¹ |
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06 | [1,046,724,000,000](2022.md#boe-lpmavaa--lpmbl22-2022-06-retrieved-2026-11-10) | as published | [1.231323](../../FX/2022.md#fx-2022q2-gbp) | $1.29T | —¹ |
+| [2022 Q1](../../quarters/2022Q1.md) | 2022-03 | [1,046,184,000,000](2022.md#boe-lpmavaa--lpmbl22-2022-03-retrieved-2026-11-10) | as published | [1.316600](../../FX/2022.md#fx-2022q1-gbp) | $1.38T | —¹ |
 
-¹ No year-ago quarter yet: 2023 Q1, 2022 Q4, 2022 Q3, 2022 Q2.
+¹ No year-ago quarter yet: 2022 Q4, 2022 Q3, 2022 Q2, 2022 Q1.
 
 Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month.
 

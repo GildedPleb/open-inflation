@@ -27,12 +27,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2023 Q4](../../quarters/2023Q4.md) | 2024-01-01 | [26,506,800,000,000](2023.md#cbr-monetary-base-broad-definition-dec-2023-row-of-01012024-retrieved-2026-10-26) | as published | [89.7081218](../../FX/2023.md#fx-2023q4-rub) | $295.5B | +8.5% |
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-10-01 | [24,782,900,000,000](2023.md#cbr-monetary-base-broad-definition-sep-2023-row-of-01102023-retrieved-2026-10-26) | as published | [98.5042972](../../FX/2023.md#fx-2023q3-rub) | $251.6B | +17.5% |
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-07-01 | [24,929,200,000,000](2023.md#cbr-monetary-base-broad-definition-jun-2023-row-of-01072023-retrieved-2026-10-26) | as published | [89.450162](../../FX/2023.md#fx-2023q2-rub) | $278.7B | +30.1% |
-| [2023 Q1](../../quarters/2023Q1.md) | 2023-04-01 | [23,788,700,000,000](2023.md#cbr-monetary-base-broad-definition-mar-2023-row-of-01042023-retrieved-2026-10-26) | as published | [77.4869328](../../FX/2023.md#fx-2023q1-rub) | $307.0B | —¹ |
+| [2023 Q1](../../quarters/2023Q1.md) | 2023-04-01 | [23,788,700,000,000](2023.md#cbr-monetary-base-broad-definition-mar-2023-row-of-01042023-retrieved-2026-10-26) | as published | [77.4869328](../../FX/2023.md#fx-2023q1-rub) | $307.0B | +24.0% |
 | [2022 Q4](../../quarters/2022Q4.md) | 2023-01-01 | [24,428,600,000,000](2022.md#cbr-monetary-base-broad-definition-dec-2022-row-of-01012023-retrieved-2026-11-06) | as published | [68.3759496](../../FX/2022.md#fx-2022q4-rub) | $357.3B | —¹ |
 | [2022 Q3](../../quarters/2022Q3.md) | 2022-10-01 | [21,095,500,000,000](2022.md#cbr-monetary-base-broad-definition-sep-2022-row-of-01102022-retrieved-2026-11-09) | as published | [59.354556](../../FX/2022.md#fx-2022q3-rub) | $355.4B | —¹ |
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-07-01 | [19,167,700,000,000](2022.md#cbr-monetary-base-broad-definition-jun-2022-row-of-01072022-retrieved-2026-11-10) | as published | [53.52967495](../../FX/2022.md#fx-2022q2-rub) | $358.1B | —¹ |
+| [2022 Q1](../../quarters/2022Q1.md) | 2022-04-01 | [19,186,600,000,000](2022.md#cbr-monetary-base-broad-definition-mar-2022-row-of-01042022-retrieved-2026-11-10) | as published | [85.016864](../../FX/2022.md#fx-2022q1-rub) | $225.7B | —¹ |
 
-¹ No year-ago quarter yet: 2023 Q1, 2022 Q4, 2022 Q3, 2022 Q2.
+¹ No year-ago quarter yet: 2022 Q4, 2022 Q3, 2022 Q2, 2022 Q1.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 

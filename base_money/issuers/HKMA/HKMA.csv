@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2022-03-31,2022Q1,HKMA,2022-03-31,end-of-day stock,as published,HKD,2147536000000,0.12766989671505355752,274175699312,base_money/issuers/HKMA/2022.md#hkma-total-monetary-base-before-discount-window-2022-03-31-open-api-daily-figures-retrieved-2026-11-10
 2022-06-30,2022Q2,HKMA,2022-06-30,end-of-day stock,as published,HKD,2048462000000,0.12744048529336799715,261056991385,base_money/issuers/HKMA/2022.md#hkma-total-monetary-base-before-discount-window-2022-06-30-open-api-daily-figures-retrieved-2026-11-10
 2022-09-30,2022Q3,HKMA,2022-09-30,end-of-day stock,as published,HKD,1931566000000,0.12739015783640555931,246062497611,base_money/issuers/HKMA/2022.md#hkma-total-monetary-base-before-discount-window-2022-09-30-open-api-daily-figures-retrieved-2026-11-09
 2022-12-31,2022Q4,HKMA,2022-12-30,end-of-day stock,as published,HKD,1916172000000,0.12810166147854937679,245464816879,base_money/issuers/HKMA/2022.md#hkma-total-monetary-base-before-discount-window-2022-12-30-open-api-daily-figures-retrieved-2026-11-06
