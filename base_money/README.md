@@ -24,16 +24,17 @@ Figures are USD trillions; YoY is the percent change in Total from a year earlie
 | [2023&nbsp;Q4](quarters/2023Q4.md) | 5.47 | 5.83 | 5.60 | 4.77 | 1.14 | 2.15 | 24.97 | +0.6% | all banks |
 | [2023&nbsp;Q3](quarters/2023Q3.md) | 4.98 | 5.57 | 5.50 | 4.50 | 1.13 | 2.05 | 23.74 | -1.1% | all banks |
 | [2023&nbsp;Q2](quarters/2023Q2.md) | 5.04 | 5.61 | 5.80 | 4.65 | 1.23 | 2.12 | 24.44 | -4.8% | all banks |
-| [2023&nbsp;Q1](quarters/2023Q1.md) | 5.30 | 5.57 | 6.06 | 5.09 | 1.22 | 2.15 | 25.39 | —¹ | all banks |
+| [2023&nbsp;Q1](quarters/2023Q1.md) | 5.30 | 5.57 | 6.06 | 5.09 | 1.22 | 2.15 | 25.39 | -7.6% | all banks |
 | [2022&nbsp;Q4](quarters/2022Q4.md) | 5.23 | 5.41 | 5.96 | 4.82 | 1.25 | 2.15 | 24.83 | —¹ | all banks |
 | [2022&nbsp;Q3](quarters/2022Q3.md) | 4.80 | 5.41 | 6.14 | 4.27 | 1.17 | 2.21 | 24.01 | —¹ | all banks |
 | [2022&nbsp;Q2](quarters/2022Q2.md) | 4.99 | 5.51 | 6.59 | 4.99 | 1.29 | 2.30 | 25.67 | —¹ | all banks |
+| [2022&nbsp;Q1](quarters/2022Q1.md) | 5.29 | 6.13 | 6.78 | 5.65 | 1.38 | 2.24 | 27.48 | —¹ | all banks |
 
 Each figure is rounded to 2 decimals on its own, so the columns may not add up exactly to Total, which is the exact quarter total, rounded.
 
-Remaining is the sum of every other bank counted, which differs by quarter: 2026 Q3: SNB, RBI, CBR, BCB, HKMA, CBC (6 banks); 2026 Q2, 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2, 2025 Q1, 2024 Q4, 2024 Q3, 2024 Q2, 2024 Q1, 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1, 2022 Q4, 2022 Q3, 2022 Q2: SNB, RBI, CBR, BCB, HKMA, CBUAE, CBC (7 banks).
+Remaining is the sum of every other bank counted, which differs by quarter: 2026 Q3: SNB, RBI, CBR, BCB, HKMA, CBC (6 banks); 2026 Q2, 2026 Q1, 2025 Q4, 2025 Q3, 2025 Q2, 2025 Q1, 2024 Q4, 2024 Q3, 2024 Q2, 2024 Q1, 2023 Q4, 2023 Q3, 2023 Q2, 2023 Q1, 2022 Q4, 2022 Q3, 2022 Q2, 2022 Q1: SNB, RBI, CBR, BCB, HKMA, CBUAE, CBC (7 banks).
 
-¹ No year-ago quarter yet: 2023 Q1, 2022 Q4, 2022 Q3, 2022 Q2.
+¹ No year-ago quarter yet: 2022 Q4, 2022 Q3, 2022 Q2, 2022 Q1.
 
 ² Not like for like: a year earlier used a different basket or set of banks: 2026 Q3.
 

@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2022-03-31,2022Q1,FED,2022-03,monthly average,as published,USD,6134500000000,1,6134500000000,base_money/issuers/FED/2022.md#fed-h6-monetary-base-2022-03-release-2022-04-26
 2022-06-30,2022Q2,FED,2022-06,monthly average,as published,USD,5506500000000,1,5506500000000,base_money/issuers/FED/2022.md#fed-h6-monetary-base-2022-06-release-2022-07-26
 2022-09-30,2022Q3,FED,2022-09,monthly average,as published,USD,5410900000000,1,5410900000000,base_money/issuers/FED/2022.md#fed-h6-monetary-base-2022-09-release-2022-10-25
 2022-12-31,2022Q4,FED,2022-12,monthly average,as published,USD,5405400000000,1,5405400000000,base_money/issuers/FED/2022.md#fed-h6-monetary-base-2022-12-release-2023-01-24

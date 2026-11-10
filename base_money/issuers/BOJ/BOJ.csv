@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2022-03-31,2022Q1,BOJ,2022-03-31,end-of-period stock,as published,JPY,688032700000000,0.00821692686935086278,5653514379622,base_money/issuers/BOJ/2022.md#boj-monetary-base-end-of-period-2022-03-mblongxlsx-retrieved-2026-11-10
 2022-06-30,2022Q2,BOJ,2022-06-30,end-of-period stock,as published,JPY,677415200000000,0.00736973984818335913,4992373793205,base_money/issuers/BOJ/2022.md#boj-monetary-base-end-of-period-2022-06-mblongxlsx-retrieved-2026-11-10
 2022-09-30,2022Q3,BOJ,2022-09-30,end-of-period stock,as published,JPY,618053500000000,0.00690989496959646213,4270684770591,base_money/issuers/BOJ/2022.md#boj-monetary-base-end-of-period-2022-09-mblongxlsx-retrieved-2026-11-09
 2022-12-31,2022Q4,BOJ,2022-12-31,end-of-period stock,as published,JPY,632407100000000,0.00762660158633312996,4823116992068,base_money/issuers/BOJ/2022.md#boj-monetary-base-end-of-period-2022-12-mblongxlsx-retrieved-2026-11-06
