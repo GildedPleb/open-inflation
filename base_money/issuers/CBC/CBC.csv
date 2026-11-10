@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2022-06-30,2022Q2,CBC,2022-06-30,end-of-period stock,as published,TWD,5403691000000,0.03364137620141764759,181787601807,base_money/issuers/CBC/2022.md#cbc-reserve-money-2022-06-30-ef12m01en-end-of-month-retrieved-2026-11-10
 2022-09-30,2022Q3,CBC,2022-09-30,end-of-period stock,as published,TWD,5669275000000,0.03142924491239097981,178181032451,base_money/issuers/CBC/2022.md#cbc-reserve-money-2022-09-30-ef12m01en-end-of-month-retrieved-2026-11-09
 2022-12-31,2022Q4,CBC,2022-12-31,end-of-period stock,as published,TWD,5927795000000,0.03263569104444002050,193457686195,base_money/issuers/CBC/2022.md#cbc-reserve-money-2022-12-31-ef12m01en-end-of-month-retrieved-2026-11-06
 2023-03-31,2023Q1,CBC,2023-03-31,end-of-period stock,as published,TWD,6049287000000,0.03274308466051969824,198072316377,base_money/issuers/CBC/2023.md#cbc-reserve-money-2023-03-31-ef12m01en-end-of-month-retrieved-2026-11-05

@@ -26,12 +26,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2024 Q1](../../quarters/2024Q1.md) | 2024-03 | [5,883,000,000,000](2024.md#fed-h6-monetary-base-2024-03-release-2024-04-23) | as published | +5.6% |
 | [2023 Q4](../../quarters/2023Q4.md) | 2023-12 | [5,827,200,000,000](2023.md#fed-h6-monetary-base-2023-12-release-2024-01-23) | as published | +7.8% |
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-09 | [5,567,100,000,000](2023.md#fed-h6-monetary-base-2023-09-release-2023-10-24) | as published | +2.9% |
-| [2023 Q2](../../quarters/2023Q2.md) | 2023-06 | [5,608,200,000,000](2023.md#fed-h6-monetary-base-2023-06-release-2023-07-25) | as published | —¹ |
+| [2023 Q2](../../quarters/2023Q2.md) | 2023-06 | [5,608,200,000,000](2023.md#fed-h6-monetary-base-2023-06-release-2023-07-25) | as published | +1.8% |
 | [2023 Q1](../../quarters/2023Q1.md) | 2023-03 | [5,571,000,000,000](2023.md#fed-h6-monetary-base-2023-03-release-2023-04-25) | as published | —¹ |
 | [2022 Q4](../../quarters/2022Q4.md) | 2022-12 | [5,405,400,000,000](2022.md#fed-h6-monetary-base-2022-12-release-2023-01-24) | as published | —¹ |
 | [2022 Q3](../../quarters/2022Q3.md) | 2022-09 | [5,410,900,000,000](2022.md#fed-h6-monetary-base-2022-09-release-2022-10-25) | as published | —¹ |
+| [2022 Q2](../../quarters/2022Q2.md) | 2022-06 | [5,506,500,000,000](2022.md#fed-h6-monetary-base-2022-06-release-2022-07-26) | as published | —¹ |
 
-¹ No year-ago quarter yet: 2023 Q2, 2023 Q1, 2022 Q4, 2022 Q3.
+¹ No year-ago quarter yet: 2023 Q1, 2022 Q4, 2022 Q3, 2022 Q2.
 
 Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month.
 
