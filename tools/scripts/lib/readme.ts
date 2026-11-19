@@ -1006,11 +1006,15 @@ export const STATUS_NOTE_END = "Later changes are added as revisions, never over
 /**
  * Per-issuer status meanings when the default "the bank marks it..." wording does not fit.
  * BOK: ECOS carries no status or revision mark (methodology, Bank of Korea row).
+ * FED: H.6 carries no revision mark; a later vintage supersedes the first print (methodology, Federal Reserve row).
  */
 export const STATUS_TERMS_OVERRIDE: Readonly<Record<string, Readonly<Partial<Record<Status, string>>>>> = {
   BOK: {
     provisional: "a first print has only the total; ECOS carries no status label, and the figure may be revised.",
     revised: "a later vintage supersedes an earlier extract; ECOS carries no revision mark.",
+  },
+  FED: {
+    revised: "a later vintage supersedes an earlier extract; H.6 carries no revision mark.",
   },
 };
 /** The status meanings used for one bank: the defaults, with any issuer override applied. */

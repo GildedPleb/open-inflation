@@ -32,13 +32,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2022 Q3](../../quarters/2022Q3.md) | 2022-09 | [5,410,900,000,000](2022.md#fed-h6-monetary-base-2022-09-release-2022-10-25) | as published | —¹ |
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06 | [5,506,500,000,000](2022.md#fed-h6-monetary-base-2022-06-release-2022-07-26) | as published | —¹ |
 | [2022 Q1](../../quarters/2022Q1.md) | 2022-03 | [6,134,500,000,000](2022.md#fed-h6-monetary-base-2022-03-release-2022-04-26) | as published | —¹ |
-| [2021 Q4](../../quarters/2021Q4.md) | 2021-12 | [6,413,100,000,000](2021.md#fed-h6-monetary-base-2021-12-release-2023-05-23) | as published | —¹ |
+| [2021 Q4](../../quarters/2021Q4.md) | 2021-12 | [6,413,100,000,000](2021.md#fed-h6-monetary-base-2021-12-release-2023-05-23) | revised | —¹ |
 
 ¹ No year-ago quarter yet: 2022 Q3, 2022 Q2, 2022 Q1, 2021 Q4.
 
 Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month.
 
-[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `revised`: a later vintage supersedes an earlier extract; H.6 carries no revision mark. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
 **Download:** [FED.csv](FED.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](../../../docs/methodology/base_money.md#components-csv).
 
