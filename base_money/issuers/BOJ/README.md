@@ -28,12 +28,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2023 Q3](../../quarters/2023Q3.md) | 2023-09-30 | [672,605,600,000,000](2023.md#boj-monetary-base-end-of-period-2023-09-mblongxlsx-retrieved-2026-10-26) | as published | [149.37](../../FX/2023.md#fx-2023q3-jpy) | $4.50T | +8.8% |
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-06-30 | [670,604,500,000,000](2023.md#boj-monetary-base-end-of-period-2023-06-mblongxlsx-retrieved-2026-10-26) | as published | [144.32](../../FX/2023.md#fx-2023q2-jpy) | $4.65T | -1.0% |
 | [2023 Q1](../../quarters/2023Q1.md) | 2023-03-31 | [675,840,100,000,000](2023.md#boj-monetary-base-end-of-period-2023-03-mblongxlsx-retrieved-2026-10-26) | as published | [132.76](../../FX/2023.md#fx-2023q1-jpy) | $5.09T | -1.8% |
-| [2022 Q4](../../quarters/2022Q4.md) | 2022-12-31 | [632,407,100,000,000](2022.md#boj-monetary-base-end-of-period-2022-12-mblongxlsx-retrieved-2026-11-06) | as published | [131.12](../../FX/2022.md#fx-2022q4-jpy) | $4.82T | —¹ |
+| [2022 Q4](../../quarters/2022Q4.md) | 2022-12-31 | [632,407,100,000,000](2022.md#boj-monetary-base-end-of-period-2022-12-mblongxlsx-retrieved-2026-11-06) | as published | [131.12](../../FX/2022.md#fx-2022q4-jpy) | $4.82T | -5.6% |
 | [2022 Q3](../../quarters/2022Q3.md) | 2022-09-30 | [618,053,500,000,000](2022.md#boj-monetary-base-end-of-period-2022-09-mblongxlsx-retrieved-2026-11-09) | as published | [144.72](../../FX/2022.md#fx-2022q3-jpy) | $4.27T | —¹ |
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06-30 | [677,415,200,000,000](2022.md#boj-monetary-base-end-of-period-2022-06-mblongxlsx-retrieved-2026-11-10) | as published | [135.69](../../FX/2022.md#fx-2022q2-jpy) | $4.99T | —¹ |
 | [2022 Q1](../../quarters/2022Q1.md) | 2022-03-31 | [688,032,700,000,000](2022.md#boj-monetary-base-end-of-period-2022-03-mblongxlsx-retrieved-2026-11-10) | as published | [121.70](../../FX/2022.md#fx-2022q1-jpy) | $5.65T | —¹ |
+| [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [670,067,400,000,000](2021.md#boj-monetary-base-end-of-period-2021-12-mblongxlsx-retrieved-2026-11-19) | as published | [115.06](../../FX/2021.md#fx-2021q4-jpy) | $5.82T | —¹ |
 
-¹ No year-ago quarter yet: 2022 Q4, 2022 Q3, 2022 Q2, 2022 Q1.
+¹ No year-ago quarter yet: 2022 Q3, 2022 Q2, 2022 Q1, 2021 Q4.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
@@ -58,3 +59,4 @@ See [Where the banks' definitions differ](../../../docs/methodology/base_money.m
 - [2024](2024.md)
 - [2023](2023.md)
 - [2022](2022.md)
+- [2021](2021.md)

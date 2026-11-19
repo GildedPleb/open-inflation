@@ -25,15 +25,16 @@ Figures are USD trillions; YoY is the percent change in Total from a year earlie
 | [2023&nbsp;Q3](quarters/2023Q3.md) | 4.98 | 5.57 | 5.50 | 4.50 | 1.13 | 2.25 | 23.93 | -1.1% |
 | [2023&nbsp;Q2](quarters/2023Q2.md) | 5.04 | 5.61 | 5.80 | 4.65 | 1.23 | 2.33 | 24.65 | -4.8% |
 | [2023&nbsp;Q1](quarters/2023Q1.md) | 5.30 | 5.57 | 6.06 | 5.09 | 1.22 | 2.36 | 25.60 | -7.6% |
-| [2022&nbsp;Q4](quarters/2022Q4.md) | 5.23 | 5.41 | 5.96 | 4.82 | 1.25 | 2.37 | 25.05 | —¹ |
+| [2022&nbsp;Q4](quarters/2022Q4.md) | 5.23 | 5.41 | 5.96 | 4.82 | 1.25 | 2.37 | 25.05 | -10.4% |
 | [2022&nbsp;Q3](quarters/2022Q3.md) | 4.80 | 5.41 | 6.14 | 4.27 | 1.17 | 2.40 | 24.20 | —¹ |
 | [2022&nbsp;Q2](quarters/2022Q2.md) | 4.99 | 5.51 | 6.59 | 4.99 | 1.29 | 2.52 | 25.89 | —¹ |
 | [2022&nbsp;Q1](quarters/2022Q1.md) | 5.29 | 6.13 | 6.78 | 5.65 | 1.38 | 2.46 | 27.70 | —¹ |
+| [2021&nbsp;Q4](quarters/2021Q4.md) | 5.18 | 6.41 | 6.64 | 5.82 | 1.42 | 2.46 | 27.94 | —¹ |
 
 Each figure is rounded to 2 decimals on its own, so the columns may not add up exactly to Total, which is the exact quarter total, rounded.
 
 Remaining is the sum of every other bank counted: SNB, RBI, CBR, BCB, HKMA, CBUAE, CBC, BOK (8 banks).
 
-¹ No year-ago quarter yet: 2022 Q4, 2022 Q3, 2022 Q2, 2022 Q1.
+¹ No year-ago quarter yet: 2022 Q3, 2022 Q2, 2022 Q1, 2021 Q4.
 
 ᵖ Uses a provisional bank figure that may be revised: 2026 Q3, 2026 Q2.
