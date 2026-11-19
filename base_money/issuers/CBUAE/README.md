@@ -5,7 +5,7 @@
 - **Currency:** UAE dirham, AED
 - **What it is:** the UAE's central bank. It keeps the UAE dirham at a fixed exchange rate against the US dollar, so most changes in its monetary base are matched by changes in its foreign reserves.
 - **Official website:** [centralbank.ae, English](https://centralbank.ae/en/) (archived: [Wayback](https://web.archive.org/web/20261021035300/https://centralbank.ae/en/); the live page answers automated requests with a Cloudflare challenge, HTTP 403)
-- **Data pages used here:** the "UAE Monetary Base" table of the CBUAE's monthly Statistical Bulletin, a PDF per release (Table 4 "UAE Monetary Base (Monthly)" in the February 2026 bulletin, Table 3 "UAE Monetary Base" in the June and August 2026 bulletins); each figure's exact PDF and its archived copy are in the year files ([2023](2023.md), [2024](2024.md), [2025](2025.md), [2026](2026.md))
+- **Data pages used here:** the "UAE Monetary Base" table of the CBUAE's monthly Statistical Bulletin, a PDF per release (Table 4 "UAE Monetary Base (Monthly)" in the February 2026 bulletin, Table 3 "UAE Monetary Base" in the June, August and September 2026 bulletins); each figure's exact PDF and its archived copy are in the year files ([2023](2023.md), [2024](2024.md), [2025](2025.md), [2026](2026.md))
 
 ## Quarters
 
@@ -13,7 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (AED) | Status | AED per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
-| [2026 Q3](../../quarters/2026Q3.md) | — | left out: not yet published; the Statistical Bulletin September 2026 is not out as of 2026-11-05 (latest is August 2026, dated 2026-10-06) | — | — | — | —² |
+| [2026 Q3](../../quarters/2026Q3.md) | 2026-09-30 | [801,894,000,000](2026.md#cbuae-monetary-base-sep-2026-statistical-bulletin-september-2026-table-3-retrieved-2026-11-19) | provisional | [3.6728](../../FX/2026.md#fx-2026q3-aed) | $218.3B | -3.7%ᵖ |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [783,545,000,000](2026.md#cbuae-monetary-base-jun-2026-statistical-bulletin-august-2026-table-3-retrieved-2026-10-29) | as published | [3.6727](../../FX/2026.md#fx-2026q2-aed) | $213.3B | -8.9% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [880,192,000,000](2026.md#cbuae-monetary-base-mar-2026-statistical-bulletin-august-2026-table-3-retrieved-2026-10-29) | as published | [3.6731](../../FX/2026.md#fx-2026q1-aed) | $239.6B | +5.7% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12-31 | [895,617,000,000](2025.md#cbuae-monetary-base-dec-2025-statistical-bulletin-august-2026-table-3-retrieved-2026-10-29) | as published | [3.6723](../../FX/2025.md#fx-2025q4-aed) | $243.9B | +14.7% |
@@ -35,9 +35,9 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ¹ No year-ago quarter yet: 2022 Q4, 2022 Q3, 2022 Q2, 2022 Q1.
 
-² Not like for like with a year earlier: 2026 Q3 (left out this quarter).
+ᵖ This quarter's or the year-ago figure is provisional, so the bank may revise it.
 
-[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `provisional`: the bank marks it provisional or preliminary and may revise it. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
 **Download:** [CBUAE.csv](CBUAE.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](../../../docs/methodology/base_money.md#components-csv).
 

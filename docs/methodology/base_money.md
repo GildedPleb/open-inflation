@@ -58,7 +58,7 @@ Basket v1 is thirteen issuers chosen 80/20: the smallest set of issuers that cov
 | Selection rank | Id     | Issuer                             | Share of the basket, 2026Q3 (our primary figures; display, rounded) |
 | -------------- | ------ | ---------------------------------- | ------------------------------------------------------------------- |
 | 1              | `PBOC` | People's Bank of China             | 26.70%                                                               |
-| 2              | `FED`  | Federal Reserve                    | 23.60%                                                               |
+| 2              | `FED`  | Federal Reserve                    | 23.61%                                                               |
 | 3              | `ECB`  | Eurosystem (European Central Bank) | 19.37%                                                               |
 | 4              | `BOJ`  | Bank of Japan                      | 14.74%                                                               |
 | 5              | `BOE`  | Bank of England                    | 4.35%                                                                |
@@ -67,11 +67,11 @@ Basket v1 is thirteen issuers chosen 80/20: the smallest set of issuers that cov
 | 8              | `CBR`  | Bank of Russia                     | 1.72%                                                                |
 | 9              | `BCB`  | Banco Central do Brasil            | 0.37%                                                                |
 | 10             | `HKMA` | Hong Kong Monetary Authority       | 1.15%                                                                |
-| 11             | `CBUAE` | Central Bank of the UAE           | 0.97%                                                                |
+| 11             | `CBUAE` | Central Bank of the UAE           | 0.95%                                                                |
 | 12             | `CBC` | Central Bank of the Republic of China (Taiwan) | 1.02%                                                       |
 | 13             | `BOK` | Bank of Korea                      | 0.99%                                                          |
 
-**Shares of the basket.** Each share is the issuer's USD value divided by the sum of the thirteen USD values, taken from the machine block of [2026Q3](../../base_money/quarters/2026Q3.md), whose thirteen components (twelve evidenced plus the CBUAE reference value) are converted under the [FX rule](#fx-rule). The shares are rounded to two decimals for display only, so the thirteen shown need not sum to exactly 100 (on 2026Q3 they sum to 100.01). Coverage is never computed from these rounded shares (see [Coverage](#coverage)).
+**Shares of the basket.** Each share is the issuer's USD value divided by the sum of the thirteen USD values, taken from the machine block of [2026Q3](../../base_money/quarters/2026Q3.md), whose thirteen components are converted under the [FX rule](#fx-rule). The shares are rounded to two decimals for display only, so the thirteen shown need not sum to exactly 100 (on 2026Q3 they sum to 100.00). Coverage is never computed from these rounded shares (see [Coverage](#coverage)).
 
 **Rank 9.** BCB stays in basket v1 by decision. On its adopted figure, the BCB's restricted monetary base (see the [BCB note](#per-issuer-definitions)), it is the smallest issuer in the basket.
 
