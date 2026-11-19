@@ -1,6 +1,6 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
 2021-12-31,2021Q4,PBOC,2021-12-31,end-of-month stock (implied by the table being a balance sheet; the table does not label its convention),as published,CNY,32948734000000,0.15733413049292783083,5183960414733,base_money/issuers/PBOC/2021.md#pboc-reserve-money-2021-12-file-2025110510260596858
-2021-12-31,2021Q4,FED,2021-12,monthly average,as published,USD,6413100000000,1,6413100000000,base_money/issuers/FED/2021.md#fed-h6-monetary-base-2021-12-release-2023-05-23
+2021-12-31,2021Q4,FED,2021-12,monthly average,revised,USD,6413100000000,1,6413100000000,base_money/issuers/FED/2021.md#fed-h6-monetary-base-2021-12-release-2023-05-23
 2021-12-31,2021Q4,ECB,2021-12-31,weekly stock (statement date),as published,EUR,5836135000000,1.1373,6637436335500,base_money/issuers/ECB/2021.md#ecb-liability-items-1--21--22-statement-2021-12-31-published-2022-01-05
 2021-12-31,2021Q4,BOJ,2021-12-31,end-of-period stock,as published,JPY,670067400000000,0.00869111767773335651,5823634625413,base_money/issuers/BOJ/2021.md#boj-monetary-base-end-of-period-2021-12-mblongxlsx-retrieved-2026-11-19
 2021-12-31,2021Q4,BOE,2021-12,monthly average,as published,GBP,1066714000000,1.331343,1420162216902,base_money/issuers/BOE/2021.md#boe-lpmavaa--lpmbl22-2021-12-retrieved-2026-11-19
