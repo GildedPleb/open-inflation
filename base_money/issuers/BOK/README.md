@@ -35,7 +35,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ¹ No year-ago quarter yet: 2022 Q4, 2022 Q3, 2022 Q2, 2022 Q1.
 
-[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `revised`: the bank marks it as revised. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `revised`: a later vintage supersedes an earlier extract; ECOS carries no revision mark. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
 **Download:** [BOK.csv](BOK.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](../../../docs/methodology/base_money.md#components-csv).
 

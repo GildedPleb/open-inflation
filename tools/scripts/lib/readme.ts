@@ -1003,15 +1003,33 @@ export const STATUS_TERMS: Readonly<Record<Status, string>> = {
     "the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none.",
 };
 export const STATUS_NOTE_END = "Later changes are added as revisions, never overwritten.";
+/**
+ * Per-issuer status meanings when the default "the bank marks it..." wording does not fit.
+ * BOK: ECOS carries no status or revision mark (methodology, Bank of Korea row).
+ */
+export const STATUS_TERMS_OVERRIDE: Readonly<Record<string, Readonly<Partial<Record<Status, string>>>>> = {
+  BOK: {
+    provisional: "a first print has only the total; ECOS carries no status label, and the figure may be revised.",
+    revised: "a later vintage supersedes an earlier extract; ECOS carries no revision mark.",
+  },
+};
+/** The status meanings used for one bank: the defaults, with any issuer override applied. */
+export const termsFor = (issuer?: string): Readonly<Record<Status, string>> =>
+  issuer !== undefined && STATUS_TERMS_OVERRIDE[issuer] !== undefined
+    ? { ...STATUS_TERMS, ...STATUS_TERMS_OVERRIDE[issuer] }
+    : STATUS_TERMS;
 /** One status term as the note shows it: `` `final`: the bank marks it final. `` */
-export const statusTerm = (t: Status): string => `\`${t}\`: ${STATUS_TERMS[t]}`;
+export const statusTerm = (t: Status, terms: Readonly<Record<Status, string>> = STATUS_TERMS): string =>
+  `\`${t}\`: ${terms[t]}`;
 /** The Status definition under a bank table: one paragraph, linking the methodology's Status and vintages. */
-export const statusNote = (link: string, shown: ReadonlySet<Status>): string =>
-  [
+export const statusNote = (link: string, shown: ReadonlySet<Status>, issuer?: string): string => {
+  const terms = termsFor(issuer);
+  return [
     `[Status](${link}): the bank's own label.`,
-    ...(Object.keys(STATUS_TERMS) as Status[]).filter((t) => shown.has(t)).map(statusTerm),
+    ...(Object.keys(STATUS_TERMS) as Status[]).filter((s) => shown.has(s)).map((s) => statusTerm(s, terms)),
     STATUS_NOTE_END,
   ].join(" ");
+};
 
 /** The line above an issuer's quarter table (Form's copy). */
 export const ISSUER_INTRO =
@@ -1103,7 +1121,10 @@ function issuerSection(m: Model, issuer: string, readme: string): string | { pro
     docLink,
   );
   if (countDate !== null && typeof countDate !== "string") return countDate;
-  const defs = [...(countDate ? [countDate] : []), ...(statuses.size ? [statusNote(statusLink, statuses)] : [])];
+  const defs = [
+    ...(countDate ? [countDate] : []),
+    ...(statuses.size ? [statusNote(statusLink, statuses, issuer)] : []),
+  ];
   return [
     ISSUER_INTRO,
     table,

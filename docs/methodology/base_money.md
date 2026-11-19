@@ -4,7 +4,7 @@ Series `base_money` in `catalog.json`. This file defines the issuer basket, the 
 
 This file contains no observations. Template figures are placeholders. The shares in [Basket](#basket) are computed from the 2026Q3 quarter file and are not series values. The [Extract example](#extract-example) quotes a real release for illustration. None of this is evidence.
 
-**Beta: nothing is locked** until the v1 release (data back to at least 2018); wrong text or numbers are edited in place. See [Revisions](#revisions).
+**Beta: nothing is locked** until the v1 release (data back to at least 2018); wrong text or numbers are edited in place. The exception is a source overwrite of a figure already extracted: a new extract is appended and the earlier one is kept (see [Revisions](#revisions)).
 
 ## Contents
 
@@ -264,7 +264,7 @@ FX is supporting data: it only translates each central bank's figure into US dol
   - **Cross-check.** The TradingView ICE close (FX_IDC) for the same date, written inline as for every other row.
   - **Close time.** MarketWatch does not document it. Measured against ICE hourly closes it is about 20:00–22:00 UTC (INR about 00:00 UTC on D+1). Every value is tagged to its trading date D, never to the evening before.
   - **Measured gap.** Against our 22:00 UTC rates for 2024Q4–2026Q2: median 0.01–0.07% per pair, every published row within 0.25%, and quarter totals within 0.08%.
-  - **Local-market holidays or market closures.** If the rate date is a local-market holiday or market closure in the currency's home market, MarketWatch can print a stale or offshore value (gaps up to 1.7% were measured on such days). Use the last local business day's close and say so in the row.
+  - **Local-market holidays or market closures.** If the rate date is a local-market holiday or market closure in the currency's home market, MarketWatch can print a stale or offshore value (gaps up to 1.7% were measured on such days). Use the last local business day's close before it and say so in the row.
   - **Holiday label.** A dated rate moved to an earlier day for a holiday is labelled `last close before`, even when its count date would otherwise be `same day` (EUR in 2024Q1); a month average keeps `month average` and names the day that took the earlier close.
   - **Inside the window.** Rates within 730 days still use Yahoo's hourly chart at 22:00 UTC, as above. A home-market holiday inside the window is not substituted for a Yahoo rate: the rate is that day's Yahoo close (the last bar at or before 22:00 UTC) with its `same day` label, and the quarter page says the day was a holiday (for example 31 March 2025, Eid al-Fitr in the UAE: the AED rate is that day's Yahoo close, which matches TradingView).
 
@@ -320,7 +320,7 @@ FX is supporting data: it only translates each central bank's figure into US dol
 
 ## Revisions
 
-**Beta: nothing is locked.** Until the v1 release, which comes only once the series reaches back to at least 2018, every file, numbers included, is edited in place when it is wrong: extracts, machine blocks, CSV values and the catalog. Git history keeps the earlier text. Append-only evidence, `## Revision` blocks and version tags start at the v1 release.
+**Beta: nothing is locked.** Until the v1 release, which comes only once the series reaches back to at least 2018, every file, numbers included, is edited in place when it is wrong: extracts, machine blocks, CSV values and the catalog. Git history keeps the earlier text. The exception is a source overwrite of a figure already extracted: a new `###` extract is appended under the same quarter heading, its `- Status:` names the extract it supersedes, and the original stays; the machine block and CSV value are still edited in place to the new total. Append-only evidence, `## Revision` blocks and version tags start at the v1 release.
 
 **From the v1 release**, revisions are kept as vintages, ALFRED-style, so every value ever published stays readable in the repository:
 - **Issuer extract.** A revised figure gets a new `###` extract under the same `## YYYYQn` heading. Its title carries the new vintage, its `- Status:` names the extract it supersedes, and its quote shows the revised figure and any revision marker. The original extract stays.
