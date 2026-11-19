@@ -13,7 +13,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 | Quarter | Count date | Amount (KRW) | Status | KRW per USD | USD | YoY (local) |
 | :------ | :--------- | -----------: | :----- | ----------: | ----: | --: |
-| [2026 Q3](../../quarters/2026Q3.md) | 2026-09-30 | [310,470,000,000,000](2026.md#bok-monetary-base-2026-09-30-ecos-102y001-end-of-month-retrieved-2026-11-11) | as published | [1356.54](../../FX/2026.md#fx-2026q3-krw) | $228.9B | +3.5% |
+| [2026 Q3](../../quarters/2026Q3.md) | 2026-09-30 | [311,379,900,000,000](2026.md#bok-monetary-base-2026-09-30-ecos-102y001-end-of-month-retrieved-2026-11-19) | revised | [1356.54](../../FX/2026.md#fx-2026q3-krw) | $229.5B | +3.8% |
 | [2026 Q2](../../quarters/2026Q2.md) | 2026-06-30 | [315,191,800,000,000](2026.md#bok-monetary-base-2026-06-30-ecos-102y001-end-of-month-retrieved-2026-11-11) | as published | [1546.56](../../FX/2026.md#fx-2026q2-krw) | $203.8B | +4.1% |
 | [2026 Q1](../../quarters/2026Q1.md) | 2026-03-31 | [313,741,000,000,000](2026.md#bok-monetary-base-2026-03-31-ecos-102y001-end-of-month-retrieved-2026-11-11) | as published | [1504.88](../../FX/2026.md#fx-2026q1-krw) | $208.5B | +8.3% |
 | [2025 Q4](../../quarters/2025Q4.md) | 2025-12-31 | [309,376,700,000,000](2025.md#bok-monetary-base-2025-12-31-ecos-102y001-end-of-month-retrieved-2026-11-11) | as published | [1440.49](../../FX/2025.md#fx-2025q4-krw) | $214.8B | +9.1% |
@@ -35,7 +35,7 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 
 ¹ No year-ago quarter yet: 2022 Q4, 2022 Q3, 2022 Q2, 2022 Q1.
 
-[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `revised`: the bank marks it as revised. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
 **Download:** [BOK.csv](BOK.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](../../../docs/methodology/base_money.md#components-csv).
 
