@@ -33,11 +33,11 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06-24 | [41,038,670,000,000](2022.md#rbi-reserve-money-2022-06-24-wss-2022-07-01) | final | [78.25](../../FX/2022.md#fx-2022q2-inr) | $524.5B | —¹ |
 | [2022 Q1](../../quarters/2022Q1.md) | 2022-03-31 | [40,688,870,000,000](2022.md#rbi-reserve-money-2022-03-31-wss-2022-07-01) | final | [75.92](../../FX/2022.md#fx-2022q1-inr) | $535.9B | —¹ |
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [38,026,500,000,000](2021.md#rbi-reserve-money-2021-12-31-wss-2022-01-07) | final | [74.51](../../FX/2021.md#fx-2021q4-inr) | $510.4B | —¹ |
-| [2021 Q3](../../quarters/2021Q3.md) | 2021-09-24 | [36,592,990,000,000](2021.md#rbi-reserve-money-2021-09-24-wss-2021-10-01) | as published | [74.05](../../FX/2021.md#fx-2021q3-inr) | $494.2B | —¹ |
+| [2021 Q3](../../quarters/2021Q3.md) | 2021-09-24 | [36,592,990,000,000](2021.md#rbi-reserve-money-2021-09-24-wss-2021-10-01) | final | [74.05](../../FX/2021.md#fx-2021q3-inr) | $494.2B | —¹ |
 
 ¹ No year-ago quarter yet: 2022 Q2, 2022 Q1, 2021 Q4, 2021 Q3.
 
-[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `final`: the bank marks it final. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
+[Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `final`: the bank marks it final. Later changes are added as revisions, never overwritten.
 
 **Download:** [RBI.csv](RBI.csv), this bank's rows as data. What each column means, with units: [CSV columns and units](../../../docs/methodology/base_money.md#components-csv).
 
