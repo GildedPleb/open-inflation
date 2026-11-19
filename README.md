@@ -4,9 +4,9 @@ Quarterly base money of the world's largest central banks, summed in US dollars,
 
 <!-- BEGIN GENERATED latest -->
 
-**Latest: $22.64 trillion at 30 Sep 2026 (2026 Q3).** Covers 99.02% of the basket; left out: CBUAE.
+**Latest: $22.87 trillion at 30 Sep 2026 (2026 Q3).** Covers 99.03% of the basket; left out: CBUAE.
 
-Updated 5 Nov 2026 · dataset version 0.1.0 · next quarter: 2026 Q4
+Updated 11 Nov 2026 · dataset version 0.1.0 · next quarter: 2026 Q4
 
 <!-- END GENERATED latest -->
 
@@ -42,25 +42,25 @@ US dollars, trillions (T), converted at the market close on each report's count 
 
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
-| 2026 Q3 | $22.64T | —² | [Sources](base_money/quarters/2026Q3.md) |
-| 2026 Q2 | $22.83T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
-| 2026 Q1 | $23.19T | -1.4% | [Sources](base_money/quarters/2026Q1.md) |
-| 2025 Q4 | $23.29T | +1.8% | [Sources](base_money/quarters/2025Q4.md) |
-| 2025 Q3 | $23.61T | -2.7% | [Sources](base_money/quarters/2025Q3.md) |
-| 2025 Q2 | $24.17T | +3.1% | [Sources](base_money/quarters/2025Q2.md) |
-| 2025 Q1 | $23.52T | -2.7% | [Sources](base_money/quarters/2025Q1.md) |
-| 2024 Q4 | $22.88T | -8.4% | [Sources](base_money/quarters/2024Q4.md) |
-| 2024 Q3 | $24.27T | +2.3% | [Sources](base_money/quarters/2024Q3.md) |
-| 2024 Q2 | $23.44T | -4.1% | [Sources](base_money/quarters/2024Q2.md) |
-| 2024 Q1 | $24.16T | -4.8% | [Sources](base_money/quarters/2024Q1.md) |
-| 2023 Q4 | $24.97T | +0.6% | [Sources](base_money/quarters/2023Q4.md) |
-| 2023 Q3 | $23.74T | -1.1% | [Sources](base_money/quarters/2023Q3.md) |
-| 2023 Q2 | $24.44T | -4.8% | [Sources](base_money/quarters/2023Q2.md) |
-| 2023 Q1 | $25.39T | -7.6% | [Sources](base_money/quarters/2023Q1.md) |
-| 2022 Q4 | $24.83T | —¹ | [Sources](base_money/quarters/2022Q4.md) |
-| 2022 Q3 | $24.01T | —¹ | [Sources](base_money/quarters/2022Q3.md) |
-| 2022 Q2 | $25.67T | —¹ | [Sources](base_money/quarters/2022Q2.md) |
-| 2022 Q1 | $27.48T | —¹ | [Sources](base_money/quarters/2022Q1.md) |
+| 2026 Q3 | $22.87T | —² | [Sources](base_money/quarters/2026Q3.md) |
+| 2026 Q2 | $23.04T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
+| 2026 Q1 | $23.40T | -1.3% | [Sources](base_money/quarters/2026Q1.md) |
+| 2025 Q4 | $23.51T | +1.9% | [Sources](base_money/quarters/2025Q4.md) |
+| 2025 Q3 | $23.82T | -2.7% | [Sources](base_money/quarters/2025Q3.md) |
+| 2025 Q2 | $24.39T | +3.1% | [Sources](base_money/quarters/2025Q2.md) |
+| 2025 Q1 | $23.71T | -2.7% | [Sources](base_money/quarters/2025Q1.md) |
+| 2024 Q4 | $23.07T | -8.4% | [Sources](base_money/quarters/2024Q4.md) |
+| 2024 Q3 | $24.49T | +2.3% | [Sources](base_money/quarters/2024Q3.md) |
+| 2024 Q2 | $23.65T | -4.0% | [Sources](base_money/quarters/2024Q2.md) |
+| 2024 Q1 | $24.37T | -4.8% | [Sources](base_money/quarters/2024Q1.md) |
+| 2023 Q4 | $25.18T | +0.5% | [Sources](base_money/quarters/2023Q4.md) |
+| 2023 Q3 | $23.93T | -1.1% | [Sources](base_money/quarters/2023Q3.md) |
+| 2023 Q2 | $24.65T | -4.8% | [Sources](base_money/quarters/2023Q2.md) |
+| 2023 Q1 | $25.60T | -7.6% | [Sources](base_money/quarters/2023Q1.md) |
+| 2022 Q4 | $25.05T | —¹ | [Sources](base_money/quarters/2022Q4.md) |
+| 2022 Q3 | $24.20T | —¹ | [Sources](base_money/quarters/2022Q3.md) |
+| 2022 Q2 | $25.89T | —¹ | [Sources](base_money/quarters/2022Q2.md) |
+| 2022 Q1 | $27.70T | —¹ | [Sources](base_money/quarters/2022Q1.md) |
 
 <!-- END GENERATED table -->
 
@@ -88,7 +88,7 @@ Base money is the money a central bank issues directly: the currency in circulat
 
 ### Which central banks
 
-The basket is twelve of the largest central banks. Together they cover most of the world's base money, but this is not a global total.
+The basket is thirteen of the largest central banks. Together they cover most of the world's base money, but this is not a global total.
 
 - **[PBOC](base_money/issuers/PBOC/README.md)**: People's Bank of China
 - **[FED](base_money/issuers/FED/README.md)**: Federal Reserve (United States)
