@@ -6,7 +6,7 @@ Quarterly base money of the world's largest central banks, summed in US dollars,
 
 **Latest: $23.09 trillion at 30 Sep 2026 (2026 Q3).** Covers 100.00% of the basket.
 
-Updated 11 Nov 2026 · dataset version 0.1.0 · next quarter: 2026 Q4
+Updated 19 Nov 2026 · dataset version 0.1.0 · next quarter: 2026 Q4
 
 <!-- END GENERATED latest -->
 

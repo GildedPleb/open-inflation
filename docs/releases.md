@@ -24,7 +24,7 @@ Each quarter is released as one or more previews and then one official release (
 - Tags start from 2026Q3 forward only. Earlier quarters on `main` are not retro-tagged.
 - The CSV on `main` always holds the latest vintage of every row, whether preview or official. The tag tells you which kind a row is. A row that is still a preview also shows its exclusion warning in the quarter file.
 
-Example: 2026Q3 landed on 2026-11-05 with CBUAE excluded (September bulletin not yet out), so it is `2026Q3-rc1` in name. It becomes `2026Q3` once CBUAE's September figure is added. The tag itself is not cut until the hold above lifts.
+Example: 2026Q3 landed on 2026-11-05 with CBUAE excluded (September bulletin not yet out), so it was `2026Q3-rc1` in name. It became `2026Q3` when CBUAE's September figure was added on 19 November 2026. The tag itself is not cut until the hold above lifts.
 
 ## Baskets
 
