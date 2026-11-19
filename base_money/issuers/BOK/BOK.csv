@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2021-06-30,2021Q2,BOK,2021-06-30,end-of-month stock,as published,KRW,242801100000000,0.00088447046753108914,214750402434,base_money/issuers/BOK/2021.md#bok-monetary-base-2021-06-30-ecos-102y001-end-of-month-retrieved-2026-11-19
 2021-09-30,2021Q3,BOK,2021-09-30,end-of-month stock,as published,KRW,251060100000000,0.00084403855568122352,211904404193,base_money/issuers/BOK/2021.md#bok-monetary-base-2021-09-30-ecos-102y001-end-of-month-retrieved-2026-11-19
 2021-12-31,2021Q4,BOK,2021-12-31,end-of-month stock,as published,KRW,248785600000000,0.00084036438199603348,209070556994,base_money/issuers/BOK/2021.md#bok-monetary-base-2021-12-31-ecos-102y001-end-of-month-retrieved-2026-11-19
 2022-03-31,2022Q1,BOK,2022-03-31,end-of-month stock,as published,KRW,265200800000000,0.00082308591370767281,218283042784,base_money/issuers/BOK/2022.md#bok-monetary-base-2022-03-31-ecos-102y001-end-of-month-retrieved-2026-11-11
