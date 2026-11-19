@@ -29,12 +29,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2023 Q2](../../quarters/2023Q2.md) | 2023-06 | [569,283,000,000](2023.md#snb-snbmoba-n2-monetary-base-2023-06-retrieved-2026-11-03) | as published | [0.900509](../../FX/2023.md#fx-2023q2-chf) | $632.2B | -23.9% |
 | [2023 Q1](../../quarters/2023Q1.md) | 2023-03 | [592,946,000,000](2023.md#snb-snbmoba-n2-monetary-base-2023-03-retrieved-2026-11-05) | as published | [0.925665](../../FX/2023.md#fx-2023q1-chf) | $640.6B | -20.9% |
 | [2022 Q4](../../quarters/2022Q4.md) | 2022-12 | [585,605,000,000](2022.md#snb-snbmoba-n2-monetary-base-2022-12-retrieved-2026-11-06) | as published | [0.932218](../../FX/2022.md#fx-2022q4-chf) | $628.2B | -20.5% |
-| [2022 Q3](../../quarters/2022Q3.md) | 2022-09 | [700,385,000,000](2022.md#snb-snbmoba-n2-monetary-base-2022-09-retrieved-2026-11-09) | as published | [0.973427](../../FX/2022.md#fx-2022q3-chf) | $719.5B | —¹ |
+| [2022 Q3](../../quarters/2022Q3.md) | 2022-09 | [700,385,000,000](2022.md#snb-snbmoba-n2-monetary-base-2022-09-retrieved-2026-11-09) | as published | [0.973427](../../FX/2022.md#fx-2022q3-chf) | $719.5B | -3.2% |
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06 | [747,697,000,000](2022.md#snb-snbmoba-n2-monetary-base-2022-06-retrieved-2026-11-10) | as published | [0.969636](../../FX/2022.md#fx-2022q2-chf) | $771.1B | —¹ |
 | [2022 Q1](../../quarters/2022Q1.md) | 2022-03 | [749,981,000,000](2022.md#snb-snbmoba-n2-monetary-base-2022-03-retrieved-2026-11-10) | as published | [0.929452](../../FX/2022.md#fx-2022q1-chf) | $806.9B | —¹ |
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12 | [736,944,000,000](2021.md#snb-snbmoba-n2-monetary-base-2021-12-retrieved-2026-11-19) | as published | [0.920326](../../FX/2021.md#fx-2021q4-chf) | $800.7B | —¹ |
+| [2021 Q3](../../quarters/2021Q3.md) | 2021-09 | [723,908,000,000](2021.md#snb-snbmoba-n2-monetary-base-2021-09-retrieved-2026-11-19) | as published | [0.922936](../../FX/2021.md#fx-2021q3-chf) | $784.4B | —¹ |
 
-¹ No year-ago quarter yet: 2022 Q3, 2022 Q2, 2022 Q1, 2021 Q4.
+¹ No year-ago quarter yet: 2022 Q2, 2022 Q1, 2021 Q4, 2021 Q3.
 
 Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month (inferred; see [the SNB note in the methodology](../../../docs/methodology/base_money.md#per-issuer-definitions)).
 
