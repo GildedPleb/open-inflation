@@ -31,12 +31,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2022 Q4](../../quarters/2022Q4.md) | 2022-12-31 | [275,963,500,000,000](2022.md#bok-monetary-base-2022-12-31-ecos-102y001-end-of-month-retrieved-2026-11-11) | as published | [1261.24](../../FX/2022.md#fx-2022q4-krw) | $218.8B | +10.9% |
 | [2022 Q3](../../quarters/2022Q3.md) | 2022-09-30 | [279,655,400,000,000](2022.md#bok-monetary-base-2022-09-30-ecos-102y001-end-of-month-retrieved-2026-11-11) | as published | [1440.23](../../FX/2022.md#fx-2022q3-krw) | $194.2B | +11.4% |
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06-30 | [283,469,800,000,000](2022.md#bok-monetary-base-2022-06-30-ecos-102y001-end-of-month-retrieved-2026-11-11) | as published | [1288.03](../../FX/2022.md#fx-2022q2-krw) | $220.1B | +16.7% |
-| [2022 Q1](../../quarters/2022Q1.md) | 2022-03-31 | [265,200,800,000,000](2022.md#bok-monetary-base-2022-03-31-ecos-102y001-end-of-month-retrieved-2026-11-11) | as published | [1214.94](../../FX/2022.md#fx-2022q1-krw) | $218.3B | —¹ |
+| [2022 Q1](../../quarters/2022Q1.md) | 2022-03-31 | [265,200,800,000,000](2022.md#bok-monetary-base-2022-03-31-ecos-102y001-end-of-month-retrieved-2026-11-11) | as published | [1214.94](../../FX/2022.md#fx-2022q1-krw) | $218.3B | +13.0% |
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [248,785,600,000,000](2021.md#bok-monetary-base-2021-12-31-ecos-102y001-end-of-month-retrieved-2026-11-19) | as published | [1189.96](../../FX/2021.md#fx-2021q4-krw) | $209.1B | —¹ |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09-30 | [251,060,100,000,000](2021.md#bok-monetary-base-2021-09-30-ecos-102y001-end-of-month-retrieved-2026-11-19) | as published | [1184.78](../../FX/2021.md#fx-2021q3-krw) | $211.9B | —¹ |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06-30 | [242,801,100,000,000](2021.md#bok-monetary-base-2021-06-30-ecos-102y001-end-of-month-retrieved-2026-11-19) | as published | [1130.62](../../FX/2021.md#fx-2021q2-krw) | $214.8B | —¹ |
+| [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [234,792,400,000,000](2021.md#bok-monetary-base-2021-03-31-ecos-102y001-end-of-month-retrieved-2026-11-19) | as published | [1127.97](../../FX/2021.md#fx-2021q1-krw) | $208.2B | —¹ |
 
-¹ No year-ago quarter yet: 2022 Q1, 2021 Q4, 2021 Q3, 2021 Q2.
+¹ No year-ago quarter yet: 2021 Q4, 2021 Q3, 2021 Q2, 2021 Q1.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `revised`: a later vintage supersedes an earlier extract; ECOS carries no revision mark. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
