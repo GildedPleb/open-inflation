@@ -33,12 +33,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06 | [5,506,500,000,000](2022.md#fed-h6-monetary-base-2022-06-release-2022-07-26) | as published | -8.6% |
 | [2022 Q1](../../quarters/2022Q1.md) | 2022-03 | [6,134,500,000,000](2022.md#fed-h6-monetary-base-2022-03-release-2022-04-26) | as published | +5.1% |
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12 | [6,413,100,000,000](2021.md#fed-h6-monetary-base-2021-12-release-2023-05-23) | revised | +23.2% |
-| [2021 Q3](../../quarters/2021Q3.md) | 2021-09 | [6,388,800,000,000](2021.md#fed-h6-monetary-base-2021-09-release-2023-02-28) | revised | —¹ |
+| [2021 Q3](../../quarters/2021Q3.md) | 2021-09 | [6,388,800,000,000](2021.md#fed-h6-monetary-base-2021-09-release-2023-02-28) | revised | +30.9% |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06 | [6,027,000,000,000](2021.md#fed-h6-monetary-base-2021-06-release-2022-11-22) | revised | —¹ |
 | [2021 Q1](../../quarters/2021Q1.md) | 2021-03 | [5,839,000,000,000](2021.md#fed-h6-monetary-base-2021-03-release-2022-08-23) | revised | —¹ |
 | [2020 Q4](../../quarters/2020Q4.md) | 2020-12 | [5,206,500,000,000](2020.md#fed-h6-monetary-base-2020-12-release-2022-05-24) | revised | —¹ |
+| [2020 Q3](../../quarters/2020Q3.md) | 2020-09 | [4,880,300,000,000](2020.md#fed-h6-monetary-base-2020-09-release-2022-02-22) | revised | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q3, 2021 Q2, 2021 Q1, 2020 Q4.
+¹ No year-ago quarter yet: 2021 Q2, 2021 Q1, 2020 Q4, 2020 Q3.
 
 Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month.
 

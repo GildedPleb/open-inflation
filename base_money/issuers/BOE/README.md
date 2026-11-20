@@ -33,12 +33,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06 | [1,046,724,000,000](2022.md#boe-lpmavaa--lpmbl22-2022-06-retrieved-2026-11-10) | as published | [1.231323](../../FX/2022.md#fx-2022q2-gbp) | $1.29T | +13.3% |
 | [2022 Q1](../../quarters/2022Q1.md) | 2022-03 | [1,046,184,000,000](2022.md#boe-lpmavaa--lpmbl22-2022-03-retrieved-2026-11-10) | as published | [1.316600](../../FX/2022.md#fx-2022q1-gbp) | $1.38T | +17.3% |
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12 | [1,066,714,000,000](2021.md#boe-lpmavaa--lpmbl22-2021-12-retrieved-2026-11-19) | as published | [1.331343](../../FX/2021.md#fx-2021q4-gbp) | $1.42T | +23.8% |
-| [2021 Q3](../../quarters/2021Q3.md) | 2021-09 | [949,345,000,000](2021.md#boe-lpmavaa--lpmbl22-2021-09-retrieved-2026-11-19) | as published | [1.372773](../../FX/2021.md#fx-2021q3-gbp) | $1.30T | —¹ |
+| [2021 Q3](../../quarters/2021Q3.md) | 2021-09 | [949,345,000,000](2021.md#boe-lpmavaa--lpmbl22-2021-09-retrieved-2026-11-19) | as published | [1.372773](../../FX/2021.md#fx-2021q3-gbp) | $1.30T | +16.5% |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06 | [923,473,000,000](2021.md#boe-lpmavaa--lpmbl22-2021-06-retrieved-2026-11-19) | as published | [1.401932](../../FX/2021.md#fx-2021q2-gbp) | $1.29T | —¹ |
 | [2021 Q1](../../quarters/2021Q1.md) | 2021-03 | [891,617,000,000](2021.md#boe-lpmavaa--lpmbl22-2021-03-retrieved-2026-11-19) | as published | [1.385991](../../FX/2021.md#fx-2021q1-gbp) | $1.24T | —¹ |
 | [2020 Q4](../../quarters/2020Q4.md) | 2020-12 | [861,624,000,000](2020.md#boe-lpmavaa--lpmbl22-2020-12-retrieved-2026-11-19) | as published | [1.345826](../../FX/2020.md#fx-2020q4-gbp) | $1.16T | —¹ |
+| [2020 Q3](../../quarters/2020Q3.md) | 2020-09 | [815,051,000,000](2020.md#boe-lpmavaa--lpmbl22-2020-09-retrieved-2026-11-20) | as published | [1.295591](../../FX/2020.md#fx-2020q3-gbp) | $1.06T | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q3, 2021 Q2, 2021 Q1, 2020 Q4.
+¹ No year-ago quarter yet: 2021 Q2, 2021 Q1, 2020 Q4, 2020 Q3.
 
 Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month.
 
