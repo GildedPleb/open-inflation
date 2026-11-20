@@ -378,6 +378,7 @@ describe("G7 YoY in the generated pages (2026Q3 and 2027Q3)", () => {
       ["BOJ", "month-end"],
       ["FED", "average"],
       ["PBOC", "month-end"],
+      ["RBA", "average"],
       ["RBI", "month-end"],
       ["SNB", "average"],
     ]);
