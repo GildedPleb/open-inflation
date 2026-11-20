@@ -31,12 +31,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2022 Q4](../../quarters/2022Q4.md) | 2022-12-30 | [1,916,172,000,000](2022.md#hkma-total-monetary-base-before-discount-window-2022-12-30-open-api-daily-figures-retrieved-2026-11-06) | as published | [7.8063](../../FX/2022.md#fx-2022q4-hkd) | $245.5B | -10.1% |
 | [2022 Q3](../../quarters/2022Q3.md) | 2022-09-30 | [1,931,566,000,000](2022.md#hkma-total-monetary-base-before-discount-window-2022-09-30-open-api-daily-figures-retrieved-2026-11-09) | as published | [7.8499](../../FX/2022.md#fx-2022q3-hkd) | $246.1B | -8.8% |
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06-30 | [2,048,462,000,000](2022.md#hkma-total-monetary-base-before-discount-window-2022-06-30-open-api-daily-figures-retrieved-2026-11-10) | as published | [7.8468](../../FX/2022.md#fx-2022q2-hkd) | $261.1B | -3.3% |
-| [2022 Q1](../../quarters/2022Q1.md) | 2022-03-31 | [2,147,536,000,000](2022.md#hkma-total-monetary-base-before-discount-window-2022-03-31-open-api-daily-figures-retrieved-2026-11-10) | as published | [7.8327](../../FX/2022.md#fx-2022q1-hkd) | $274.2B | —¹ |
+| [2022 Q1](../../quarters/2022Q1.md) | 2022-03-31 | [2,147,536,000,000](2022.md#hkma-total-monetary-base-before-discount-window-2022-03-31-open-api-daily-figures-retrieved-2026-11-10) | as published | [7.8327](../../FX/2022.md#fx-2022q1-hkd) | $274.2B | +1.8% |
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [2,132,278,000,000](2021.md#hkma-total-monetary-base-before-discount-window-2021-12-31-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7965](../../FX/2021.md#fx-2021q4-hkd) | $273.5B | —¹ |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09-30 | [2,118,665,000,000](2021.md#hkma-total-monetary-base-before-discount-window-2021-09-30-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7863](../../FX/2021.md#fx-2021q3-hkd) | $272.1B | —¹ |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06-30 | [2,119,114,000,000](2021.md#hkma-total-monetary-base-before-discount-window-2021-06-30-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7647](../../FX/2021.md#fx-2021q2-hkd) | $272.9B | —¹ |
+| [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [2,108,887,000,000](2021.md#hkma-total-monetary-base-before-discount-window-2021-03-31-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7739](../../FX/2021.md#fx-2021q1-hkd) | $271.3B | —¹ |
 
-¹ No year-ago quarter yet: 2022 Q1, 2021 Q4, 2021 Q3, 2021 Q2.
+¹ No year-ago quarter yet: 2021 Q4, 2021 Q3, 2021 Q2, 2021 Q1.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 

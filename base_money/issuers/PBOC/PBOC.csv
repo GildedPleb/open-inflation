@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2021-03-31,2021Q1,PBOC,2021-03-31,end-of-month stock,as published,CNY,32695616000000,0.15260884826102217407,4989640300945,base_money/issuers/PBOC/2021.md#pboc-reserve-money-2021-03-file-2025110510260596858
 2021-06-30,2021Q2,PBOC,2021-06-30,end-of-month stock,as published,CNY,32449414000000,0.15486588614260050796,5025307253918,base_money/issuers/PBOC/2021.md#pboc-reserve-money-2021-06-file-2025110510260596858
 2021-09-30,2021Q3,PBOC,2021-09-30,end-of-month stock (implied by the table being a balance sheet; the table does not label its convention),as published,CNY,32434124000000,0.15512774770023114034,5031432604750,base_money/issuers/PBOC/2021.md#pboc-reserve-money-2021-09-file-2025110510260596858
 2021-12-31,2021Q4,PBOC,2021-12-31,end-of-month stock (implied by the table being a balance sheet; the table does not label its convention),as published,CNY,32948734000000,0.15733413049292783083,5183960414733,base_money/issuers/PBOC/2021.md#pboc-reserve-money-2021-12-file-2025110510260596858

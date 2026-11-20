@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2021-03-31,2021Q1,BCB,2021-03,end-of-period stock,as published,BRL,405630283000,0.17710725757204369024,71840067010,base_money/issuers/BCB/2021.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2021-sgs-json-api-retrieved-2026-11-19
 2021-06-30,2021Q2,BCB,2021-06,end-of-period stock,as published,BRL,422212123000,0.19896213392459573879,84004224961,base_money/issuers/BCB/2021.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2021-sgs-json-api-retrieved-2026-11-19
 2021-09-30,2021Q3,BCB,2021-09,end-of-period stock,as published,BRL,403676335000,0.18949442886379140453,76494416547,base_money/issuers/BCB/2021.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2021-sgs-json-api-retrieved-2026-11-19
 2021-12-31,2021Q4,BCB,2021-12,end-of-period stock,as published,BRL,409183519000,0.17686308904472885208,72369461157,base_money/issuers/BCB/2021.md#bcb-sgs-1788-monetary-base-end-of-period-balance-dec2021-sgs-json-api-retrieved-2026-11-19
