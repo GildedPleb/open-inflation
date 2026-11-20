@@ -51,27 +51,28 @@ The line therefore follows each issuer's own definition, not an instrument test.
 
 ## Basket
 
-Basket v1 is thirteen issuers chosen 80/20: the smallest set of issuers that covers roughly 80% of global base money, extended for completeness and margin. The selection research, which ranks issuers against a reference global aggregate, is kept in box-side basket notes. It is used only to choose the basket (verification use), and none of its shares or totals is published here or anywhere in the repository. The basket's issuer ids are basket version 1 in the catalog's `baskets` (`catalog.json`, `{version: 1, issuers: [...], floor_pct: "94"}`), in this order: `PBOC`, `FED`, `ECB`, `BOJ`, `BOE`, `SNB`, `RBI`, `CBR`, `BCB`, `HKMA`, `CBUAE`, `CBC`, `BOK`.
+Basket v1 is fourteen issuers chosen 80/20: the smallest set of issuers that covers roughly 80% of global base money, extended for completeness and margin. The selection research, which ranks issuers against a reference global aggregate, is kept in box-side basket notes. It is used only to choose the basket (verification use), and none of its shares or totals is published here or anywhere in the repository. The basket's issuer ids are basket version 1 in the catalog's `baskets` (`catalog.json`, `{version: 1, issuers: [...], floor_pct: "94"}`), in this order: `PBOC`, `FED`, `ECB`, `BOJ`, `BOE`, `SNB`, `RBI`, `CBR`, `BCB`, `HKMA`, `CBUAE`, `CBC`, `BOK`, `RBA`.
 
 **The basket is a floor, not a ceiling.** We are actively adding issuers, so the basket grows over time (see [Basket changes](#basket-changes)).
 
 | Selection rank | Id     | Issuer                             | Share of the basket, 2026Q3 (our primary figures; display, rounded) |
 | -------------- | ------ | ---------------------------------- | ------------------------------------------------------------------- |
-| 1              | `PBOC` | People's Bank of China             | 26.70%                                                               |
-| 2              | `FED`  | Federal Reserve                    | 23.61%                                                               |
-| 3              | `ECB`  | Eurosystem (European Central Bank) | 19.37%                                                               |
-| 4              | `BOJ`  | Bank of Japan                      | 14.74%                                                               |
-| 5              | `BOE`  | Bank of England                    | 4.35%                                                                |
-| 6              | `SNB`  | Swiss National Bank                | 2.64%                                                                |
-| 7              | `RBI`  | Reserve Bank of India              | 2.39%                                                                |
-| 8              | `CBR`  | Bank of Russia                     | 1.72%                                                                |
-| 9              | `BCB`  | Banco Central do Brasil            | 0.37%                                                                |
-| 10             | `HKMA` | Hong Kong Monetary Authority       | 1.15%                                                                |
-| 11             | `CBUAE` | Central Bank of the UAE           | 0.95%                                                                |
-| 12             | `CBC` | Central Bank of the Republic of China (Taiwan) | 1.02%                                                       |
+| 1              | `PBOC` | People's Bank of China             | 26.47%                                                               |
+| 2              | `FED`  | Federal Reserve                    | 23.39%                                                               |
+| 3              | `ECB`  | Eurosystem (European Central Bank) | 19.20%                                                               |
+| 4              | `BOJ`  | Bank of Japan                      | 14.61%                                                               |
+| 5              | `BOE`  | Bank of England                    | 4.31%                                                                |
+| 6              | `SNB`  | Swiss National Bank                | 2.62%                                                                |
+| 7              | `RBI`  | Reserve Bank of India              | 2.36%                                                                |
+| 8              | `CBR`  | Bank of Russia                     | 1.71%                                                                |
+| 9              | `BCB`  | Banco Central do Brasil            | 0.36%                                                                |
+| 10             | `HKMA` | Hong Kong Monetary Authority       | 1.14%                                                                |
+| 11             | `CBUAE` | Central Bank of the UAE           | 0.94%                                                                |
+| 12             | `CBC` | Central Bank of the Republic of China (Taiwan) | 1.01%                                                       |
 | 13             | `BOK` | Bank of Korea                      | 0.99%                                                          |
+| 14             | `RBA` | Reserve Bank of Australia          | 0.89%                                                          |
 
-**Shares of the basket.** Each share is the issuer's USD value divided by the sum of the thirteen USD values, taken from the machine block of [2026Q3](../../base_money/quarters/2026Q3.md), whose thirteen components are converted under the [FX rule](#fx-rule). The shares are rounded to two decimals for display only, so the thirteen shown need not sum to exactly 100 (on 2026Q3 they sum to 100.00). Coverage is never computed from these rounded shares (see [Coverage](#coverage)).
+**Shares of the basket.** Each share is the issuer's USD value divided by the sum of the fourteen USD values, taken from the machine block of [2026Q3](../../base_money/quarters/2026Q3.md), whose fourteen components are converted under the [FX rule](#fx-rule). The shares are rounded to two decimals for display only, so the fourteen shown need not sum to exactly 100 (on 2026Q3 they sum to 100.00). Coverage is never computed from these rounded shares (see [Coverage](#coverage)).
 
 **Rank 9.** BCB stays in basket v1 by decision. On its adopted figure, the BCB's restricted monetary base (see the [BCB note](#per-issuer-definitions)), it is the smallest issuer in the basket.
 
@@ -81,7 +82,9 @@ Basket v1 is thirteen issuers chosen 80/20: the smallest set of issuers that cov
 
 **Rank 12.** The Central Bank of the Republic of China (Taiwan) (CBC) was the first entry in [Candidate issuers](#candidate-issuers) and was added on 2026-11-05 (see [Basket changes](#basket-changes)). Its selection rank is the order in which it was added, not its size: on its 2026Q2 figure it is larger than CBUAE and smaller than HKMA.
 
-**Rank 13.** The Bank of Korea (BOK) was the first entry in [Candidate issuers](#candidate-issuers) and was added on 2026-11-11 (see [Basket changes](#basket-changes)). Its selection rank is the order in which it was added, not its size: on its 2026Q2 figure it is larger than BCB and smaller than CBUAE. The Reserve Bank of Australia is now the first entry in [Candidate issuers](#candidate-issuers).
+**Rank 13.** The Bank of Korea (BOK) was the first entry in [Candidate issuers](#candidate-issuers) and was added on 2026-11-11 (see [Basket changes](#basket-changes)). Its selection rank is the order in which it was added, not its size: on its 2026Q2 figure it is larger than BCB and smaller than CBUAE.
+
+**Rank 14.** The Reserve Bank of Australia (RBA) was the first entry in [Candidate issuers](#candidate-issuers) and was added on 2026-11-20 (see [Basket changes](#basket-changes)). It was confirmed as the largest candidate by base money in US dollars at 2026Q3 from primary sources, ahead of Banco de México. Its selection rank is the order in which it was added, not its size: on its 2026Q3 figure it is larger than BCB and smaller than CBUAE. Banco de México is now the first entry in [Candidate issuers](#candidate-issuers).
 
 ### Global 80% basis
 
@@ -99,11 +102,11 @@ Basket v1 was chosen to cover at least 80% of global base money, checked against
   - **Record:** the figure is archived and quoted in that issuer's file, under the quarter heading, as a **reference-only extract** (`- Adopted: no (reference-only: coverage weight, never summed)`). It is never published as a value and never summed into `total_usd`.
   - **None inside the quarter:** if no figure inside the quarter exists, the quarter cannot state its coverage and does not enter the CSV (see [Gaps policy](#gaps-policy)).
 - **Coverage floor: 94% of the basket.** A quarter is never published below 80% of global base money. **90% of global is a goal for growing the basket, not a per-quarter gate.** The margin between 80% and 90% lets quarters keep being published while more banks are researched and added. The 94% floor is a policy number, set on 2026-10-22. We publish no global total, so the floor is set in basket terms: 94% is set so that, at the basket's share of global base money as reproduced from the linked global releases, 94% of the basket sits above 80% of global. The floor does not by itself guarantee 80% of global; that guarantee comes from the 80%-of-global review gate, which is checked every quarter (see below and the [Checklist](#checklist-before-a-commit)). One floor applies to every quarter of a basket version, backfilled quarters included. The floor is re-reviewed whenever the basket or its share of global changes: when a bank is added to or removed from the basket, and when the linked global releases show a changed basket share. Lint enforces the floor (L9): it is recorded per basket version as `floor_pct` in the catalog's `baskets` (`"94"` for basket 1). It is a true floor: L9 compares the exact coverage of the whole-dollar figures (the ratio itself, before display rounding) with `floor_pct`, so a true coverage of 93.995% fails a 94 floor although it displays as 94.00. `coverage_pct` is only the display value (two decimals, rounded once, half-to-even), and L9 fails a block whose `coverage_pct` differs from the recomputed coverage. `floor_pct` is the machine form of this basket-terms floor. The 80%-of-global check is the review gate that gives the guarantee; it is a review check, not a lint check. Its basis is link-only: the quarter file's Audit trail (`base_money/quarters/<YYYY>Q<n>.md`) links [Global 80% basis](#global-80-basis), which links the reference global releases, from which the basket's share can be reproduced, and no global figure or share is recorded in the repository.
-- On the 2026Q2 figures, excluding any one of BOE, SNB, RBI, CBR, BCB, HKMA, CBUAE, CBC or BOK keeps a quarter above the floor (excluding BOE, the largest of them, leaves 95.63%). The floor was re-reviewed when HKMA was added (2026-10-28), when CBUAE was added (2026-10-29), when CBC was added (2026-11-05) and again when BOK was added (2026-11-11), and stays 94: adding a bank raises the basket's share of global base money, so 94% of the basket still sits above 80% of global. Excluding any one of PBOC, FED, ECB or BOJ does not.
+- On the 2026Q2 figures, excluding any one of BOE, SNB, RBI, CBR, BCB, HKMA, CBUAE, CBC, BOK or RBA keeps a quarter above the floor (excluding BOE, the largest of them, leaves 95.66%). The floor was re-reviewed when HKMA was added (2026-10-28), when CBUAE was added (2026-10-29), when CBC was added (2026-11-05), when BOK was added (2026-11-11) and again when RBA was added (2026-11-20), and stays 94: adding a bank raises the basket's share of global base money, so 94% of the basket still sits above 80% of global. Excluding any one of PBOC, FED, ECB or BOJ does not.
 
 ### Basket changes
 
-- **Growth cadence.** For each calendar year of backfill completed, one bank is added, the largest candidate by size, and filled in for every published quarter before backfill continues into the next year back. Before v1 the single basket is widened in place, with no `basket_version` split (user rule, 2026-10-23). BCB was the first addition; HKMA, the first candidate once 2025 was complete, is the second (2026-10-28), filled in for every published quarter, 2024Q4 to 2026Q2; CBUAE, the first candidate once 2024 was complete, is the third (2026-10-29), filled in for every published quarter, 2024Q1 to 2026Q2; CBC, the first candidate once 2023 was complete, is the fourth (2026-11-05), filled in for every published quarter, 2023Q1 to 2026Q3; BOK, the first candidate once 2022 was complete, is the fifth (2026-11-11), filled in for every published quarter, 2022Q1 to 2026Q3. The next is due once 2021 is complete.
+- **Growth cadence.** For each calendar year of backfill completed, one bank is added, the largest candidate by size, and filled in for every published quarter before backfill continues into the next year back. Before v1 the single basket is widened in place, with no `basket_version` split (user rule, 2026-10-23). BCB was the first addition; HKMA, the first candidate once 2025 was complete, is the second (2026-10-28), filled in for every published quarter, 2024Q4 to 2026Q2; CBUAE, the first candidate once 2024 was complete, is the third (2026-10-29), filled in for every published quarter, 2024Q1 to 2026Q2; CBC, the first candidate once 2023 was complete, is the fourth (2026-11-05), filled in for every published quarter, 2023Q1 to 2026Q3; BOK, the first candidate once 2022 was complete, is the fifth (2026-11-11), filled in for every published quarter, 2022Q1 to 2026Q3; RBA, the first candidate once 2020 was complete, is the sixth (2026-11-20), filled in for every published quarter, 2020Q1 to 2026Q3. The next is due once 2019 is complete.
 - **Adding an issuer.** Each added issuer is a documented basket change. Before any of its data, the issuer gets its row in [Per-issuer definitions](#per-issuer-definitions) (series, components, convention, value used, source page type) and its row in [Status and vintages](#status-and-vintages). The floor is reviewed, and `catalog.json` `baskets` is updated in a commit that changes this file first: before v1 the issuer joins the current entry's list in place (see Growth cadence); from v1 it gets a new entry (the next `version`, the new issuer list and its `floor_pct`).
 - **Backfill.** An added issuer's history is backfilled quarter by quarter, as far back as its primary sources allow. Each backfilled quarter gets the issuer's extract and an updated roll-up (see [Revisions](#revisions)). A quarter the primaries do not reach keeps its row as computed under its basket version (see [Rows across basket versions](#rows-across-basket-versions)). Nothing is estimated.
 - **Losing an issuer permanently.** If an issuer stops publishing, or collapses, that is a basket change, documented here: a new `baskets` entry without the issuer is added, and the floor is reviewed. A temporary gap for one quarter is not a basket change; it is an exclusion (see [Quarter inclusion](#quarter-inclusion)).
@@ -122,8 +125,7 @@ Basket v1 was chosen to cover at least 80% of global base money, checked against
 ### Candidate issuers
 
 These issuers are **not in the basket**. Each is ordered by size from the 80/20 selection research. Ordering is the only information taken from that research; no figure is published. Any of them can enter only through a basket change.
-1. Reserve Bank of Australia (RBA), Australia. Not yet researched.
-2. Banco de México (Banxico), Mexico. Not yet researched.
+1. Banco de México (Banxico), Mexico. Researched only for the 2026Q3 size comparison that chose the RBA.
 
 ## Per-issuer definitions
 
@@ -226,7 +228,7 @@ Sources, each bank's own:
 - CBUAE: the [CBUAE README](../../base_money/issuers/CBUAE/README.md#what-we-measure), which quotes the Statistical Bulletin, and [Federal Decree-Law No. 6 of 2025](https://rulebook.centralbank.ae/en/rulebook/federal-decree-law-no-6-2025-regarding-central-bank-regulation-financial-institutions-and), Art. 1.
 - CBC: the [CBC README](../../base_money/issuers/CBC/README.md#what-we-measure), which quotes the CBC's explanatory notes on reserve money, and the [EF12M01en](../../base_money/issuers/CBC/2026.md#cbc-reserve-money-2026-06-30-ef12m01en-end-of-month-retrieved-2026-11-05) series.
 - BOK: the [BOK README](../../base_money/issuers/BOK/README.md#what-we-measure), which quotes the BOK's glossary entry for 본원통화, and the [Bank of Korea Act, Art. 47 and 53](https://elaw.klri.re.kr/eng_mobile/viewer.do?hseq=47917&key=23&type=part) ("The Bank of Korea shall have the exclusive right to issue currency"; "The Bank of Korea may mint coins").
-- RBA: the notes to [table D3](https://www.rba.gov.au/statistics/tables/csv/d3-data.csv), the [March 2019 Bulletin](https://www.rba.gov.au/publications/bulletin/2019/mar/updates-to-australias-financial-aggregates.html) (Table 2), and the RBA's [legal tender Q&A](https://www.banknotes.rba.gov.au/questions-and-answers/legal-tender/) ("The Royal Australian Mint in Canberra is responsible for the production of Australia's circulating coins.").
+- RBA: the [RBA README](../../base_money/issuers/RBA/README.md#what-we-measure), which quotes the notes to table D3 and the [March 2019 Bulletin](https://www.rba.gov.au/publications/bulletin/2019/mar/updates-to-australias-financial-aggregates.html) (Table 2), and the RBA's [legal tender Q&A](https://www.banknotes.rba.gov.au/questions-and-answers/legal-tender/) ("The Royal Australian Mint in Canberra is responsible for the production of Australia's circulating coins.").
 
 ## Status and vintages
 
@@ -353,7 +355,7 @@ FX is supporting data: it only translates each central bank's figure into US dol
 
 **Versioning starts at the v1 release** (data back to at least 2018). Until then there is no dataset version ceremony: no bumps and the catalog `version` stays `0.1.0`. Quarter preview and official names are defined in [Versions and releases](../releases.md); git tags and GitHub releases for them are held until the series reaches 2018. The semver rules are written here when v1 is cut.
 
-`catalog.json` lists every basket as `baskets: [{version, issuers, floor_pct}]`; today that is `{version: 1, issuers: [PBOC, FED, ECB, BOJ, BOE, SNB, RBI, CBR, BCB, HKMA, CBUAE, CBC, BOK], floor_pct: "94"}`. Each roll-up machine block is checked against the entry for its `basket_version` (L9). L11 checks the `baskets` schema: versions run 1..n in order, each basket's issuers are a non-empty list of unique upper-case ids, and `floor_pct` is a decimal string from "0" to "100" with at most 2 decimals. The catalog's optional `issuers` list can give an issuer `as_of_convention: "start_of_day"` (today only CBR), which requires its As of to be exactly the first day of the next quarter (L7; see [As of falls inside the quarter](#extract-template)).
+`catalog.json` lists every basket as `baskets: [{version, issuers, floor_pct}]`; today that is `{version: 1, issuers: [PBOC, FED, ECB, BOJ, BOE, SNB, RBI, CBR, BCB, HKMA, CBUAE, CBC, BOK, RBA], floor_pct: "94"}`. Each roll-up machine block is checked against the entry for its `basket_version` (L9). L11 checks the `baskets` schema: versions run 1..n in order, each basket's issuers are a non-empty list of unique upper-case ids, and `floor_pct` is a decimal string from "0" to "100" with at most 2 decimals. The catalog's optional `issuers` list can give an issuer `as_of_convention: "start_of_day"` (today only CBR), which requires its As of to be exactly the first day of the next quarter (L7; see [As of falls inside the quarter](#extract-template)).
 
 ## Update cadence
 
@@ -526,7 +528,7 @@ The template below shows a quarter with every basket issuer evidenced, as every 
 ````markdown
 # <YYYY>Q<n> base money
 
-On <D Month YYYY>, base money across the <thirteen> central banks in the basket came to **$<total_usd with thousands separators>** (about **$<T.TT> trillion**), covering <100>% of the basket by value.
+On <D Month YYYY>, base money across the <fourteen> central banks in the basket came to **$<total_usd with thousands separators>** (about **$<T.TT> trillion**), covering <100>% of the basket by value.
 
 | Issuer | What was measured | Local amount | FX rate (market close) | USD |
 | :----- | :---------------- | -----------: | -------------------: | --: |

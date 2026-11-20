@@ -742,7 +742,7 @@ export const QUARTER_READER_ALIGN = "| :----- | :---------------- | -----------:
 /** The note that closes the generated scope (Form's copy); its FX link names the quarter's FX table. */
 export const ROUNDING_LEAD = "Each USD figure is the local amount × the FX rate";
 const roundingNote = (fx: string, id: string) =>
-  `${ROUNDING_LEAD}, rounded to the nearest dollar (half-to-even); the total is their sum. Click an issuer for the bank's basic facts, a USD figure for the exact quote it comes from, and a rate for the exchange-rate source (each issuer extract carries the original and archived links). FX rates are market closes on or just before each report's count date (each FX row says which), or the mean of that month's weekday closes for a monthly figure (BOE, SNB, BCB); see [FX](${fx}#${id.toLowerCase()}).`;
+  `${ROUNDING_LEAD}, rounded to the nearest dollar (half-to-even); the total is their sum. Click an issuer for the bank's basic facts, a USD figure for the exact quote it comes from, and a rate for the exchange-rate source (each issuer extract carries the original and archived links). FX rates are market closes on or just before each report's count date (each FX row says which), or the mean of that month's weekday closes for a monthly figure (BOE, SNB, BCB, RBA); see [FX](${fx}#${id.toLowerCase()}).`;
 const LONG_MONTHS = [
   "January",
   "February",
@@ -945,6 +945,7 @@ export const MONTH_BASIS: Readonly<Record<string, MonthBasis>> = {
   SNB: "average", // "Monthly average (inferred; see below)": the methodology's SNB note gives the evidence
   RBI: "month-end", // "Stock outstanding on the last day of the month"
   BCB: "month-end", // "End-of-month stock" (SGS 1788 "saldo em final de período")
+  RBA: "average", // "Monthly average (inferred: the RBA does not say; see the RBA note)"
 };
 /**
  * A bank's own YYYY-MM sentence where it differs from MONTH_BASIS_TEXT, linking a methodology heading (`anchor`; the
@@ -957,6 +958,11 @@ export const MONTH_BASIS_OVERRIDE: Readonly<Record<string, { anchor: string; tex
     anchor: "per-issuer-definitions",
     text: (link) =>
       `YYYY-MM means the figure is the bank's average for that month (inferred; see [the SNB note in the methodology](${link})).`,
+  },
+  RBA: {
+    anchor: "per-issuer-definitions",
+    text: (link) =>
+      `YYYY-MM means the figure is the bank's average for that month (inferred; see [the RBA note in the methodology](${link})).`,
   },
 };
 /** The extract Conventions that name a monthly basis: a YYYY-MM row whose Convention contradicts MONTH_BASIS fails. */
