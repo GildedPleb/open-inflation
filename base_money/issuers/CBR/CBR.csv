@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2020-06-30,2020Q2,CBR,2020-07-01,start of day,as published,RUB,18265400000000,0.01403413025676531055,256339002792,base_money/issuers/CBR/2020.md#cbr-monetary-base-broad-definition-jun-2020-row-of-01072020-retrieved-2026-11-20
 2020-09-30,2020Q3,CBR,2020-10-01,start of day,as published,RUB,18524300000000,0.01284694045937704286,237980579152,base_money/issuers/CBR/2020.md#cbr-monetary-base-broad-definition-sep-2020-row-of-01102020-retrieved-2026-11-20
 2020-12-31,2020Q4,CBR,2021-01-01,start of day,as published,RUB,18472400000000,0.01339069220269527210,247358222645,base_money/issuers/CBR/2020.md#cbr-monetary-base-broad-definition-dec-2020-row-of-01012021-retrieved-2026-11-19
 2021-03-31,2021Q1,CBR,2021-04-01,start of day,as published,RUB,19415900000000,0.01322433693769689550,256762403549,base_money/issuers/CBR/2021.md#cbr-monetary-base-broad-definition-mar-2021-row-of-01042021-retrieved-2026-11-19

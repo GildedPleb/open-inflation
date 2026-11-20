@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2020-06-30,2020Q2,SNB,2020-06,month average,as published,CHF,684039000000,1.05065634501873320263,718689915590,base_money/issuers/SNB/2020.md#snb-snbmoba-n2-monetary-base-2020-06-retrieved-2026-11-20
 2020-09-30,2020Q3,SNB,2020-09,month average,as published,CHF,719313000000,1.09264659766239186896,785954902104,base_money/issuers/SNB/2020.md#snb-snbmoba-n2-monetary-base-2020-09-retrieved-2026-11-20
 2020-12-31,2020Q4,SNB,2020-12,month average,as published,CHF,721260000000,1.12563049378032870662,811872249944,base_money/issuers/SNB/2020.md#snb-snbmoba-n2-monetary-base-2020-12-retrieved-2026-11-19
 2021-03-31,2021Q1,SNB,2021-03,month average,as published,CHF,718098000000,1.07551051795511034200,772321951923,base_money/issuers/SNB/2021.md#snb-snbmoba-n2-monetary-base-2021-03-retrieved-2026-11-19

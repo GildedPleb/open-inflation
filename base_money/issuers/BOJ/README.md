@@ -34,12 +34,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2022 Q1](../../quarters/2022Q1.md) | 2022-03-31 | [688,032,700,000,000](2022.md#boj-monetary-base-end-of-period-2022-03-mblongxlsx-retrieved-2026-11-10) | as published | [121.70](../../FX/2022.md#fx-2022q1-jpy) | $5.65T | +6.9% |
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [670,067,400,000,000](2021.md#boj-monetary-base-end-of-period-2021-12-mblongxlsx-retrieved-2026-11-19) | as published | [115.06](../../FX/2021.md#fx-2021q4-jpy) | $5.82T | +8.5% |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09-30 | [663,486,900,000,000](2021.md#boj-monetary-base-end-of-period-2021-09-mblongxlsx-retrieved-2026-11-19) | as published | [111.28](../../FX/2021.md#fx-2021q3-jpy) | $5.96T | +9.5% |
-| [2021 Q2](../../quarters/2021Q2.md) | 2021-06-30 | [659,533,900,000,000](2021.md#boj-monetary-base-end-of-period-2021-06-mblongxlsx-retrieved-2026-11-19) | as published | [111.11](../../FX/2021.md#fx-2021q2-jpy) | $5.94T | —¹ |
+| [2021 Q2](../../quarters/2021Q2.md) | 2021-06-30 | [659,533,900,000,000](2021.md#boj-monetary-base-end-of-period-2021-06-mblongxlsx-retrieved-2026-11-19) | as published | [111.11](../../FX/2021.md#fx-2021q2-jpy) | $5.94T | +16.7% |
 | [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [643,609,600,000,000](2021.md#boj-monetary-base-end-of-period-2021-03-mblongxlsx-retrieved-2026-11-19) | as published | [110.72](../../FX/2021.md#fx-2021q1-jpy) | $5.81T | —¹ |
 | [2020 Q4](../../quarters/2020Q4.md) | 2020-12-31 | [617,608,300,000,000](2020.md#boj-monetary-base-end-of-period-2020-12-mblongxlsx-retrieved-2026-11-19) | as published | [103.21](../../FX/2020.md#fx-2020q4-jpy) | $5.98T | —¹ |
 | [2020 Q3](../../quarters/2020Q3.md) | 2020-09-30 | [606,031,000,000,000](2020.md#boj-monetary-base-end-of-period-2020-09-mblongxlsx-retrieved-2026-11-20) | as published | [105.44](../../FX/2020.md#fx-2020q3-jpy) | $5.75T | —¹ |
+| [2020 Q2](../../quarters/2020Q2.md) | 2020-06-30 | [565,233,900,000,000](2020.md#boj-monetary-base-end-of-period-2020-06-mblongxlsx-retrieved-2026-11-20) | as published | [107.93](../../FX/2020.md#fx-2020q2-jpy) | $5.24T | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q2, 2021 Q1, 2020 Q4, 2020 Q3.
+¹ No year-ago quarter yet: 2021 Q1, 2020 Q4, 2020 Q3, 2020 Q2.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
