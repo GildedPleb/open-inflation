@@ -32,12 +32,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2022 Q3](../../quarters/2022Q3.md) | 2022-09-30 | [6,262,472,000,000](2022.md#ecb-liability-items-1--21--22-statement-2022-09-30-published-2022-10-05) | as published | [0.9802](../../FX/2022.md#fx-2022q3-eur) | $6.14T | +4.8% |
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06-24 | [6,241,105,000,000](2022.md#ecb-liability-items-1--21--22-statement-2022-06-24-published-2022-06-28) | as published | [1.0558](../../FX/2022.md#fx-2022q2-eur) | $6.59T | +6.6% |
 | [2022 Q1](../../quarters/2022Q1.md) | 2022-03-25 | [6,174,505,000,000](2022.md#ecb-liability-items-1--21--22-statement-2022-03-25-published-2022-03-29) | as published | [1.0982](../../FX/2022.md#fx-2022q1-eur) | $6.78T | +11.6% |
-| [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [5,836,135,000,000](2021.md#ecb-liability-items-1--21--22-statement-2021-12-31-published-2022-01-05) | as published | [1.1373](../../FX/2021.md#fx-2021q4-eur) | $6.64T | —¹ |
+| [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [5,836,135,000,000](2021.md#ecb-liability-items-1--21--22-statement-2021-12-31-published-2022-01-05) | as published | [1.1373](../../FX/2021.md#fx-2021q4-eur) | $6.64T | +16.6% |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09-24 | [5,978,261,000,000](2021.md#ecb-liability-items-1--21--22-statement-2021-09-24-published-2021-09-28) | as published | [1.1721](../../FX/2021.md#fx-2021q3-eur) | $7.01T | —¹ |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06-25 | [5,855,659,000,000](2021.md#ecb-liability-items-1--21--22-statement-2021-06-25-published-2021-06-29) | as published | [1.1938](../../FX/2021.md#fx-2021q2-eur) | $6.99T | —¹ |
 | [2021 Q1](../../quarters/2021Q1.md) | 2021-03-26 | [5,533,008,000,000](2021.md#ecb-liability-items-1--21--22-statement-2021-03-26-published-2021-03-30) | as published | [1.1796](../../FX/2021.md#fx-2021q1-eur) | $6.53T | —¹ |
+| [2020 Q4](../../quarters/2020Q4.md) | 2020-12-25 | [5,004,427,000,000](2020.md#ecb-liability-items-1--21--22-statement-2020-12-25-published-2020-12-29) | as published | [1.2187](../../FX/2020.md#fx-2020q4-eur) | $6.10T | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q4, 2021 Q3, 2021 Q2, 2021 Q1.
+¹ No year-ago quarter yet: 2021 Q3, 2021 Q2, 2021 Q1, 2020 Q4.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
@@ -63,3 +64,4 @@ See [Where the banks' definitions differ](../../../docs/methodology/base_money.m
 - [2023](2023.md)
 - [2022](2022.md)
 - [2021](2021.md)
+- [2020](2020.md)
