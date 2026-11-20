@@ -12,7 +12,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ],
@@ -30,7 +45,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -47,7 +77,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -64,7 +109,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -81,7 +141,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -98,7 +173,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -115,7 +205,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -132,7 +237,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -149,7 +269,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -166,7 +301,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -183,7 +333,54 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
+          "floor_pct": "94"
+        }
+      ]
+    },
+    {
+      "id": "base_money_rba",
+      "path": "base_money/issuers/RBA/RBA.csv",
+      "unit": "local currency (see local_currency column)",
+      "frequency": "quarterly",
+      "methodology": "docs/methodology/base_money.md",
+      "last_updated": "2026-11-20",
+      "version": "0.1.0",
+      "license": "CC-BY-4.0",
+      "baskets": [
+        {
+          "version": 1,
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -200,7 +397,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -217,7 +429,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -234,7 +461,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]
@@ -251,7 +493,22 @@
       "baskets": [
         {
           "version": 1,
-          "issuers": ["PBOC", "FED", "ECB", "BOJ", "BOE", "SNB", "RBI", "CBR", "BCB", "HKMA", "CBUAE", "CBC", "BOK"],
+          "issuers": [
+            "PBOC",
+            "FED",
+            "ECB",
+            "BOJ",
+            "BOE",
+            "SNB",
+            "RBI",
+            "CBR",
+            "BCB",
+            "HKMA",
+            "CBUAE",
+            "CBC",
+            "BOK",
+            "RBA"
+          ],
           "floor_pct": "94"
         }
       ]

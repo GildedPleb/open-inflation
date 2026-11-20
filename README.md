@@ -4,7 +4,7 @@ Quarterly base money of the world's largest central banks, summed in US dollars,
 
 <!-- BEGIN GENERATED latest -->
 
-**Latest: $23.09 trillion at 30 Sep 2026 (2026 Q3).** Covers 100.00% of the basket.
+**Latest: $23.30 trillion at 30 Sep 2026 (2026 Q3).** Covers 100.00% of the basket.
 
 Updated 20 Nov 2026 · dataset version 0.1.0 · next quarter: 2026 Q4
 
@@ -42,33 +42,33 @@ US dollars, trillions (T), converted at the market close on each report's count 
 
 | Quarter | Base money | YoY | Evidence |
 | :------ | ---------: | --: | :------- |
-| 2026 Q3 | $23.09T | -3.1%ᵖ | [Sources](base_money/quarters/2026Q3.md) |
-| 2026 Q2 | $23.04T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
-| 2026 Q1 | $23.40T | -1.3% | [Sources](base_money/quarters/2026Q1.md) |
-| 2025 Q4 | $23.51T | +1.9% | [Sources](base_money/quarters/2025Q4.md) |
-| 2025 Q3 | $23.82T | -2.7% | [Sources](base_money/quarters/2025Q3.md) |
-| 2025 Q2 | $24.39T | +3.1% | [Sources](base_money/quarters/2025Q2.md) |
-| 2025 Q1 | $23.71T | -2.7% | [Sources](base_money/quarters/2025Q1.md) |
-| 2024 Q4 | $23.07T | -8.4% | [Sources](base_money/quarters/2024Q4.md) |
-| 2024 Q3 | $24.49T | +2.3% | [Sources](base_money/quarters/2024Q3.md) |
-| 2024 Q2 | $23.65T | -4.0% | [Sources](base_money/quarters/2024Q2.md) |
-| 2024 Q1 | $24.37T | -4.8% | [Sources](base_money/quarters/2024Q1.md) |
-| 2023 Q4 | $25.18T | +0.5% | [Sources](base_money/quarters/2023Q4.md) |
-| 2023 Q3 | $23.93T | -1.1% | [Sources](base_money/quarters/2023Q3.md) |
-| 2023 Q2 | $24.65T | -4.8% | [Sources](base_money/quarters/2023Q2.md) |
-| 2023 Q1 | $25.60T | -7.6% | [Sources](base_money/quarters/2023Q1.md) |
-| 2022 Q4 | $25.05T | -10.4% | [Sources](base_money/quarters/2022Q4.md) |
-| 2022 Q3 | $24.20T | -13.9% | [Sources](base_money/quarters/2022Q3.md) |
-| 2022 Q2 | $25.89T | -6.5% | [Sources](base_money/quarters/2022Q2.md) |
-| 2022 Q1 | $27.70T | +3.5% | [Sources](base_money/quarters/2022Q1.md) |
-| 2021 Q4 | $27.94T | +8.0% | [Sources](base_money/quarters/2021Q4.md) |
-| 2021 Q3 | $28.11T | +18.4% | [Sources](base_money/quarters/2021Q3.md) |
-| 2021 Q2 | $27.70T | +23.6% | [Sources](base_money/quarters/2021Q2.md) |
-| 2021 Q1 | $26.77T | +37.6% | [Sources](base_money/quarters/2021Q1.md) |
-| 2020 Q4 | $25.86T | —¹ | [Sources](base_money/quarters/2020Q4.md) |
-| 2020 Q3 | $23.74T | —¹ | [Sources](base_money/quarters/2020Q3.md) |
-| 2020 Q2 | $22.41T | —¹ | [Sources](base_money/quarters/2020Q2.md) |
-| 2020 Q1 | $19.46T | —¹ | [Sources](base_money/quarters/2020Q1.md) |
+| 2026 Q3 | $23.30T | -3.0%ᵖ | [Sources](base_money/quarters/2026Q3.md) |
+| 2026 Q2 | $23.23T | -5.5%ᵖ | [Sources](base_money/quarters/2026Q2.md) |
+| 2026 Q1 | $23.60T | -1.3% | [Sources](base_money/quarters/2026Q1.md) |
+| 2025 Q4 | $23.72T | +1.8% | [Sources](base_money/quarters/2025Q4.md) |
+| 2025 Q3 | $24.03T | -2.8% | [Sources](base_money/quarters/2025Q3.md) |
+| 2025 Q2 | $24.60T | +2.9% | [Sources](base_money/quarters/2025Q2.md) |
+| 2025 Q1 | $23.92T | -3.0% | [Sources](base_money/quarters/2025Q1.md) |
+| 2024 Q4 | $23.29T | -8.6% | [Sources](base_money/quarters/2024Q4.md) |
+| 2024 Q3 | $24.71T | +1.9% | [Sources](base_money/quarters/2024Q3.md) |
+| 2024 Q2 | $23.89T | -4.4% | [Sources](base_money/quarters/2024Q2.md) |
+| 2024 Q1 | $24.66T | -5.0% | [Sources](base_money/quarters/2024Q1.md) |
+| 2023 Q4 | $25.48T | +0.2% | [Sources](base_money/quarters/2023Q4.md) |
+| 2023 Q3 | $24.24T | -1.3% | [Sources](base_money/quarters/2023Q3.md) |
+| 2023 Q2 | $24.99T | -4.8% | [Sources](base_money/quarters/2023Q2.md) |
+| 2023 Q1 | $25.97T | -7.6% | [Sources](base_money/quarters/2023Q1.md) |
+| 2022 Q4 | $25.43T | -10.2% | [Sources](base_money/quarters/2022Q4.md) |
+| 2022 Q3 | $24.57T | -13.7% | [Sources](base_money/quarters/2022Q3.md) |
+| 2022 Q2 | $26.26T | -6.2% | [Sources](base_money/quarters/2022Q2.md) |
+| 2022 Q1 | $28.10T | +4.1% | [Sources](base_money/quarters/2022Q1.md) |
+| 2021 Q4 | $28.31T | +8.8% | [Sources](base_money/quarters/2021Q4.md) |
+| 2021 Q3 | $28.47T | +19.3% | [Sources](base_money/quarters/2021Q3.md) |
+| 2021 Q2 | $28.00T | +24.3% | [Sources](base_money/quarters/2021Q2.md) |
+| 2021 Q1 | $27.00T | +38.2% | [Sources](base_money/quarters/2021Q1.md) |
+| 2020 Q4 | $26.02T | —¹ | [Sources](base_money/quarters/2020Q4.md) |
+| 2020 Q3 | $23.86T | —¹ | [Sources](base_money/quarters/2020Q3.md) |
+| 2020 Q2 | $22.52T | —¹ | [Sources](base_money/quarters/2020Q2.md) |
+| 2020 Q1 | $19.54T | —¹ | [Sources](base_money/quarters/2020Q1.md) |
 
 <!-- END GENERATED table -->
 
@@ -94,7 +94,7 @@ Base money is the money a central bank issues directly: the currency in circulat
 
 ### Which central banks
 
-The basket is thirteen of the largest central banks. Together they cover most of the world's base money, but this is not a global total.
+The basket is fourteen of the largest central banks. Together they cover most of the world's base money, but this is not a global total.
 
 - **[PBOC](base_money/issuers/PBOC/README.md)**: People's Bank of China
 - **[FED](base_money/issuers/FED/README.md)**: Federal Reserve (United States)
@@ -109,8 +109,9 @@ The basket is thirteen of the largest central banks. Together they cover most of
 - **[CBUAE](base_money/issuers/CBUAE/README.md)**: Central Bank of the UAE
 - **[CBC](base_money/issuers/CBC/README.md)**: Central Bank of the Republic of China (Taiwan)
 - **[BOK](base_money/issuers/BOK/README.md)**: Bank of Korea
+- **[RBA](base_money/issuers/RBA/README.md)**: Reserve Bank of Australia
 
-More banks will be added over time, one for each year of history filled in. Until v1, an added bank is filled in for every published quarter, so earlier totals are revised when it joins: HKMA joined on 28 October 2026, which raised each total then published (2024 Q4 on) by about $0.26 trillion; it is counted in every quarter from 2024 Q1 on, about $0.25–0.27 trillion each. CBUAE joined on 29 October 2026, which raised each total then published (2024 Q1 on) by about $0.19–0.24 trillion. CBC joined on 5 November 2026, which raised each total then published (2023 Q1 on) by about $0.19–0.24 trillion.
+More banks will be added over time, one for each year of history filled in. Until v1, an added bank is filled in for every published quarter, so earlier totals are revised when it joins: HKMA joined on 28 October 2026, which raised each total then published (2024 Q4 on) by about $0.26 trillion; it is counted in every quarter from 2024 Q1 on, about $0.25–0.27 trillion each. CBUAE joined on 29 October 2026, which raised each total then published (2024 Q1 on) by about $0.19–0.24 trillion. CBC joined on 5 November 2026, which raised each total then published (2023 Q1 on) by about $0.19–0.24 trillion. RBA joined on 20 November 2026, which raised each total then published (2020 Q1 on) by about $0.09–0.40 trillion.
 
 ### Caveats
 
