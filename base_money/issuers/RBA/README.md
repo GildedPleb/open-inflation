@@ -53,7 +53,7 @@ Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM mea
 
 D3 series `DMAMMB` "Money base" ($ billion, monthly, Original, not seasonally adjusted), the row for the quarter-end month, used as published. The notes to table D3 ([d03hist.xlsx](https://www.rba.gov.au/statistics/tables/xls/d03hist.xlsx), sheet Notes, archived: [Wayback](https://web.archive.org/web/20261120161526/https://www.rba.gov.au/statistics/tables/xls/d03hist.xlsx)) define it:
 
-- "'Money base' is defined as holdings of notes and coins by the private sector plus deposits of banks with the Reserve Bank and other Reserve Bank liabilities to the private non-bank sector."
+- "‘Money base’ is defined as holdings of notes and coins by the private sector plus deposits of banks with the Reserve Bank and other Reserve Bank liabilities to the private non-bank sector."
 
 The RBA's March 2019 Bulletin article "Updates to Australia's Financial Aggregates" ([Table 2](https://www.rba.gov.au/publications/bulletin/2019/mar/updates-to-australias-financial-aggregates.html), archived: [Wayback](https://web.archive.org/web/20261120161640/https://www.rba.gov.au/publications/bulletin/2019/mar/updates-to-australias-financial-aggregates.html)) gives the same measure as "Currency + banks' holdings of notes and coins + deposits of banks with the RBA + other RBA liabilities to the private non-bank sector", where currency is "Holdings of notes and coins by the private non-bank sector".
 
