@@ -35,12 +35,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [38,026,500,000,000](2021.md#rbi-reserve-money-2021-12-31-wss-2022-01-07) | final | [74.51](../../FX/2021.md#fx-2021q4-inr) | $510.4B | +14.7% |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09-24 | [36,592,990,000,000](2021.md#rbi-reserve-money-2021-09-24-wss-2021-10-01) | final | [74.05](../../FX/2021.md#fx-2021q3-inr) | $494.2B | +14.7% |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06-25 | [36,989,300,000,000](2021.md#rbi-reserve-money-2021-06-25-wss-2021-07-02) | final | [74.29](../../FX/2021.md#fx-2021q2-inr) | $497.9B | +16.9% |
-| [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [35,999,810,000,000](2021.md#rbi-reserve-money-2021-03-31-wss-2021-07-02) | final | [73.20](../../FX/2021.md#fx-2021q1-inr) | $491.8B | —¹ |
+| [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [35,999,810,000,000](2021.md#rbi-reserve-money-2021-03-31-wss-2021-07-02) | final | [73.20](../../FX/2021.md#fx-2021q1-inr) | $491.8B | +18.8% |
 | [2020 Q4](../../quarters/2020Q4.md) | 2020-12-25 | [33,141,050,000,000](2020.md#rbi-reserve-money-2020-12-25-wss-2021-01-01) | final | [73.56](../../FX/2020.md#fx-2020q4-inr) | $450.5B | —¹ |
 | [2020 Q3](../../quarters/2020Q3.md) | 2020-09-25 | [31,893,580,000,000](2020.md#rbi-reserve-money-2020-09-25-wss-2020-10-02) | final | [73.69](../../FX/2020.md#fx-2020q3-inr) | $432.8B | —¹ |
 | [2020 Q2](../../quarters/2020Q2.md) | 2020-06-26 | [31,635,780,000,000](2020.md#rbi-reserve-money-2020-06-26-wss-2020-07-03) | final | [75.62](../../FX/2020.md#fx-2020q2-inr) | $418.4B | —¹ |
+| [2020 Q1](../../quarters/2020Q1.md) | 2020-03-31 | [30,297,070,000,000](2020.md#rbi-reserve-money-2020-03-31-wss-2020-10-02) | final | [75.34](../../FX/2020.md#fx-2020q1-inr) | $402.1B | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q1, 2020 Q4, 2020 Q3, 2020 Q2.
+¹ No year-ago quarter yet: 2020 Q4, 2020 Q3, 2020 Q2, 2020 Q1.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `final`: the bank marks it final. Later changes are added as revisions, never overwritten.
 

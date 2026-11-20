@@ -1,4 +1,5 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2020-03-31,2020Q1,RBI,2020-03-31,stock on 31 March (fiscal year-end; quarter-end count date per the RBI rule),final,INR,30297070000000,0.01327316166710910539,402137908150,base_money/issuers/RBI/2020.md#rbi-reserve-money-2020-03-31-wss-2020-10-02
 2020-06-30,2020Q2,RBI,2020-06-26,weekly stock (Friday); count date per the RBI last-Friday rule,final,INR,31635780000000,0.01322401481089658820,418352023274,base_money/issuers/RBI/2020.md#rbi-reserve-money-2020-06-26-wss-2020-07-03
 2020-09-30,2020Q3,RBI,2020-09-25,weekly stock (Friday); count date per the RBI last-Friday rule,final,INR,31893580000000,0.01357036232867417560,432807436559,base_money/issuers/RBI/2020.md#rbi-reserve-money-2020-09-25-wss-2020-10-02
 2020-12-31,2020Q4,RBI,2020-12-25,weekly stock (Friday); count date per the RBI last-Friday rule,final,INR,33141050000000,0.01359434475258292550,450530859163,base_money/issuers/RBI/2020.md#rbi-reserve-money-2020-12-25-wss-2021-01-01

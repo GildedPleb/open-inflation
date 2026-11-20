@@ -35,12 +35,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [484,025,000,000](2021.md#cbuae-monetary-base-dec-2021-statistical-bulletin-may-2024-table-4-retrieved-2026-11-19) | as published | [3.6730](../../FX/2021.md#fx-2021q4-aed) | $131.8B | +13.2% |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09-30 | [449,110,000,000](2021.md#cbuae-monetary-base-sep-2021-statistical-bulletin-november-2023-table-4-retrieved-2026-11-19) | as published | [3.6732](../../FX/2021.md#fx-2021q3-aed) | $122.3B | +7.7% |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06-30 | [443,115,000,000](2021.md#cbuae-monetary-base-jun-2021-statistical-bulletin-august-2023-table-4-retrieved-2026-11-19) | as published | [3.6731](../../FX/2021.md#fx-2021q2-aed) | $120.6B | +8.5% |
-| [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [437,104,000,000](2021.md#cbuae-monetary-base-mar-2021-statistical-bulletin-march-2023-table-4-retrieved-2026-11-19) | as published | [3.6731](../../FX/2021.md#fx-2021q1-aed) | $119.0B | —¹ |
+| [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [437,104,000,000](2021.md#cbuae-monetary-base-mar-2021-statistical-bulletin-march-2023-table-4-retrieved-2026-11-19) | as published | [3.6731](../../FX/2021.md#fx-2021q1-aed) | $119.0B | +5.3% |
 | [2020 Q4](../../quarters/2020Q4.md) | 2020-12-31 | [427,445,000,000](2020.md#cbuae-monetary-base-dec-2020-statistical-bulletin-may-2024-table-4-retrieved-2026-11-19) | as published | [3.6732](../../FX/2020.md#fx-2020q4-aed) | $116.4B | —¹ |
 | [2020 Q3](../../quarters/2020Q3.md) | 2020-09-30 | [416,816,000,000](2020.md#cbuae-monetary-base-sep-2020-statistical-bulletin-november-2022-table-4-retrieved-2026-11-20) | as published | [3.6732](../../FX/2020.md#fx-2020q3-aed) | $113.5B | —¹ |
 | [2020 Q2](../../quarters/2020Q2.md) | 2020-06-30 | [408,230,000,000](2020.md#cbuae-monetary-base-jun-2020-statistical-bulletin-august-2022-table-4-retrieved-2026-11-20) | as published | [3.6732](../../FX/2020.md#fx-2020q2-aed) | $111.1B | —¹ |
+| [2020 Q1](../../quarters/2020Q1.md) | 2020-03-31 | [415,177,000,000](2020.md#cbuae-monetary-base-mar-2020-statistical-bulletin-may-2022-table-4-retrieved-2026-11-20) | as published | [3.6732](../../FX/2020.md#fx-2020q1-aed) | $113.0B | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q1, 2020 Q4, 2020 Q3, 2020 Q2.
+¹ No year-ago quarter yet: 2020 Q4, 2020 Q3, 2020 Q2, 2020 Q1.
 
 ᵖ This quarter's or the year-ago figure is provisional, so the bank may revise it.
 
