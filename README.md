@@ -104,6 +104,7 @@ The basket is thirteen of the largest central banks. Together they cover most of
 - **[HKMA](base_money/issuers/HKMA/README.md)**: Hong Kong Monetary Authority
 - **[CBUAE](base_money/issuers/CBUAE/README.md)**: Central Bank of the UAE
 - **[CBC](base_money/issuers/CBC/README.md)**: Central Bank of the Republic of China (Taiwan)
+- **[BOK](base_money/issuers/BOK/README.md)**: Bank of Korea
 
 More banks will be added over time, one for each year of history filled in. Until v1, an added bank is filled in for every published quarter, so earlier totals are revised when it joins: HKMA joined on 28 October 2026, which raised each total then published (2024 Q4 on) by about $0.26 trillion; it is counted in every quarter from 2024 Q1 on, about $0.25–0.27 trillion each. CBUAE joined on 29 October 2026, which raised each total then published (2024 Q1 on) by about $0.19–0.24 trillion. CBC joined on 5 November 2026, which raised each total then published (2023 Q1 on) by about $0.19–0.24 trillion.
 
