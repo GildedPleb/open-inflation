@@ -35,12 +35,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12 | [736,944,000,000](2021.md#snb-snbmoba-n2-monetary-base-2021-12-retrieved-2026-11-19) | as published | [0.920326](../../FX/2021.md#fx-2021q4-chf) | $800.7B | +2.2% |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09 | [723,908,000,000](2021.md#snb-snbmoba-n2-monetary-base-2021-09-retrieved-2026-11-19) | as published | [0.922936](../../FX/2021.md#fx-2021q3-chf) | $784.4B | +0.6% |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06 | [719,539,000,000](2021.md#snb-snbmoba-n2-monetary-base-2021-06-retrieved-2026-11-19) | as published | [0.908291](../../FX/2021.md#fx-2021q2-chf) | $792.2B | +5.2% |
-| [2021 Q1](../../quarters/2021Q1.md) | 2021-03 | [718,098,000,000](2021.md#snb-snbmoba-n2-monetary-base-2021-03-retrieved-2026-11-19) | as published | [0.929791](../../FX/2021.md#fx-2021q1-chf) | $772.3B | —¹ |
+| [2021 Q1](../../quarters/2021Q1.md) | 2021-03 | [718,098,000,000](2021.md#snb-snbmoba-n2-monetary-base-2021-03-retrieved-2026-11-19) | as published | [0.929791](../../FX/2021.md#fx-2021q1-chf) | $772.3B | +20.0% |
 | [2020 Q4](../../quarters/2020Q4.md) | 2020-12 | [721,260,000,000](2020.md#snb-snbmoba-n2-monetary-base-2020-12-retrieved-2026-11-19) | as published | [0.888391](../../FX/2020.md#fx-2020q4-chf) | $811.9B | —¹ |
 | [2020 Q3](../../quarters/2020Q3.md) | 2020-09 | [719,313,000,000](2020.md#snb-snbmoba-n2-monetary-base-2020-09-retrieved-2026-11-20) | as published | [0.915209](../../FX/2020.md#fx-2020q3-chf) | $786.0B | —¹ |
 | [2020 Q2](../../quarters/2020Q2.md) | 2020-06 | [684,039,000,000](2020.md#snb-snbmoba-n2-monetary-base-2020-06-retrieved-2026-11-20) | as published | [0.951786](../../FX/2020.md#fx-2020q2-chf) | $718.7B | —¹ |
+| [2020 Q1](../../quarters/2020Q1.md) | 2020-03 | [598,423,000,000](2020.md#snb-snbmoba-n2-monetary-base-2020-03-retrieved-2026-11-20) | as published | [0.958055](../../FX/2020.md#fx-2020q1-chf) | $624.6B | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q1, 2020 Q4, 2020 Q3, 2020 Q2.
+¹ No year-ago quarter yet: 2020 Q4, 2020 Q3, 2020 Q2, 2020 Q1.
 
 Count date: the date the bank's figure counts, as the bank gives it. YYYY-MM means the figure is the bank's average for that month (inferred; see [the SNB note in the methodology](../../../docs/methodology/base_money.md#per-issuer-definitions)).
 

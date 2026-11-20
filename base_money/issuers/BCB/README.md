@@ -35,12 +35,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12 | [409,183,519,000](2021.md#bcb-sgs-1788-monetary-base-end-of-period-balance-dec2021-sgs-json-api-retrieved-2026-11-19) | as published | [5.654091](../../FX/2021.md#fx-2021q4-brl) | $72.4B | -5.2% |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09 | [403,676,335,000](2021.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2021-sgs-json-api-retrieved-2026-11-19) | as published | [5.277200](../../FX/2021.md#fx-2021q3-brl) | $76.5B | -1.2% |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06 | [422,212,123,000](2021.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2021-sgs-json-api-retrieved-2026-11-19) | as published | [5.026082](../../FX/2021.md#fx-2021q2-brl) | $84.0B | +10.6% |
-| [2021 Q1](../../quarters/2021Q1.md) | 2021-03 | [405,630,283,000](2021.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2021-sgs-json-api-retrieved-2026-11-19) | as published | [5.646296](../../FX/2021.md#fx-2021q1-brl) | $71.8B | —¹ |
+| [2021 Q1](../../quarters/2021Q1.md) | 2021-03 | [405,630,283,000](2021.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2021-sgs-json-api-retrieved-2026-11-19) | as published | [5.646296](../../FX/2021.md#fx-2021q1-brl) | $71.8B | +31.9% |
 | [2020 Q4](../../quarters/2020Q4.md) | 2020-12 | [431,536,653,000](2020.md#bcb-sgs-1788-monetary-base-end-of-period-balance-dec2020-sgs-json-api-retrieved-2026-11-19) | as published | [5.149657](../../FX/2020.md#fx-2020q4-brl) | $83.8B | —¹ |
 | [2020 Q3](../../quarters/2020Q3.md) | 2020-09 | [408,736,990,000](2020.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2020-sgs-json-api-retrieved-2026-11-20) | as published | [5.400900](../../FX/2020.md#fx-2020q3-brl) | $75.7B | —¹ |
 | [2020 Q2](../../quarters/2020Q2.md) | 2020-06 | [381,679,997,000](2020.md#bcb-sgs-1788-monetary-base-end-of-period-balance-jun2020-sgs-json-api-retrieved-2026-11-20) | as published | [5.191573](../../FX/2020.md#fx-2020q2-brl) | $73.5B | —¹ |
+| [2020 Q1](../../quarters/2020Q1.md) | 2020-03 | [307,560,246,000](2020.md#bcb-sgs-1788-monetary-base-end-of-period-balance-mar2020-sgs-json-api-retrieved-2026-11-20) | as published | [4.896327](../../FX/2020.md#fx-2020q1-brl) | $62.8B | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q1, 2020 Q4, 2020 Q3, 2020 Q2.
+¹ No year-ago quarter yet: 2020 Q4, 2020 Q3, 2020 Q2, 2020 Q1.
 
 ᵖ This quarter's or the year-ago figure is provisional, so the bank may revise it.
 

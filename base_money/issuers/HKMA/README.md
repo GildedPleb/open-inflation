@@ -35,12 +35,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [2,132,278,000,000](2021.md#hkma-total-monetary-base-before-discount-window-2021-12-31-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7965](../../FX/2021.md#fx-2021q4-hkd) | $273.5B | +1.6% |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09-30 | [2,118,665,000,000](2021.md#hkma-total-monetary-base-before-discount-window-2021-09-30-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7863](../../FX/2021.md#fx-2021q3-hkd) | $272.1B | +11.7% |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06-30 | [2,119,114,000,000](2021.md#hkma-total-monetary-base-before-discount-window-2021-06-30-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7647](../../FX/2021.md#fx-2021q2-hkd) | $272.9B | +21.1% |
-| [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [2,108,887,000,000](2021.md#hkma-total-monetary-base-before-discount-window-2021-03-31-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7739](../../FX/2021.md#fx-2021q1-hkd) | $271.3B | —¹ |
+| [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [2,108,887,000,000](2021.md#hkma-total-monetary-base-before-discount-window-2021-03-31-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7739](../../FX/2021.md#fx-2021q1-hkd) | $271.3B | +25.4% |
 | [2020 Q4](../../quarters/2020Q4.md) | 2020-12-31 | [2,099,308,000,000](2020.md#hkma-total-monetary-base-before-discount-window-2020-12-31-open-api-daily-figures-retrieved-2026-11-19) | as published | [7.7529](../../FX/2020.md#fx-2020q4-hkd) | $270.8B | —¹ |
 | [2020 Q3](../../quarters/2020Q3.md) | 2020-09-30 | [1,897,536,000,000](2020.md#hkma-total-monetary-base-before-discount-window-2020-09-30-open-api-daily-figures-retrieved-2026-11-20) | as published | [7.7503](../../FX/2020.md#fx-2020q3-hkd) | $244.8B | —¹ |
 | [2020 Q2](../../quarters/2020Q2.md) | 2020-06-30 | [1,750,023,000,000](2020.md#hkma-total-monetary-base-before-discount-window-2020-06-30-open-api-daily-figures-retrieved-2026-11-20) | as published | [7.7506](../../FX/2020.md#fx-2020q2-hkd) | $225.8B | —¹ |
+| [2020 Q1](../../quarters/2020Q1.md) | 2020-03-31 | [1,681,059,000,000](2020.md#hkma-total-monetary-base-before-discount-window-2020-03-31-open-api-daily-figures-retrieved-2026-11-20) | as published | [7.7507](../../FX/2020.md#fx-2020q1-hkd) | $216.9B | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q1, 2020 Q4, 2020 Q3, 2020 Q2.
+¹ No year-ago quarter yet: 2020 Q4, 2020 Q3, 2020 Q2, 2020 Q1.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 

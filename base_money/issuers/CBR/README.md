@@ -35,12 +35,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2021 Q4](../../quarters/2021Q4.md) | 2022-01-01 | [20,338,900,000,000](2021.md#cbr-monetary-base-broad-definition-dec-2021-row-of-01012022-retrieved-2026-11-19) | as published | [74.67445575](../../FX/2021.md#fx-2021q4-rub) | $272.4B | +10.1% |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-10-01 | [19,492,700,000,000](2021.md#cbr-monetary-base-broad-definition-sep-2021-row-of-01102021-retrieved-2026-11-19) | as published | [72.8302974](../../FX/2021.md#fx-2021q3-rub) | $267.6B | +5.2% |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-07-01 | [19,298,100,000,000](2021.md#cbr-monetary-base-broad-definition-jun-2021-row-of-01072021-retrieved-2026-11-19) | as published | [73.13360148](../../FX/2021.md#fx-2021q2-rub) | $263.9B | +5.7% |
-| [2021 Q1](../../quarters/2021Q1.md) | 2021-04-01 | [19,415,900,000,000](2021.md#cbr-monetary-base-broad-definition-mar-2021-row-of-01042021-retrieved-2026-11-19) | as published | [75.618158](../../FX/2021.md#fx-2021q1-rub) | $256.8B | —¹ |
+| [2021 Q1](../../quarters/2021Q1.md) | 2021-04-01 | [19,415,900,000,000](2021.md#cbr-monetary-base-broad-definition-mar-2021-row-of-01042021-retrieved-2026-11-19) | as published | [75.618158](../../FX/2021.md#fx-2021q1-rub) | $256.8B | +9.3% |
 | [2020 Q4](../../quarters/2020Q4.md) | 2021-01-01 | [18,472,400,000,000](2020.md#cbr-monetary-base-broad-definition-dec-2020-row-of-01012021-retrieved-2026-11-19) | as published | [74.6787384](../../FX/2020.md#fx-2020q4-rub) | $247.4B | —¹ |
 | [2020 Q3](../../quarters/2020Q3.md) | 2020-10-01 | [18,524,300,000,000](2020.md#cbr-monetary-base-broad-definition-sep-2020-row-of-01102020-retrieved-2026-11-20) | as published | [77.839545](../../FX/2020.md#fx-2020q3-rub) | $238.0B | —¹ |
 | [2020 Q2](../../quarters/2020Q2.md) | 2020-07-01 | [18,265,400,000,000](2020.md#cbr-monetary-base-broad-definition-jun-2020-row-of-01072020-retrieved-2026-11-20) | as published | [71.25486095](../../FX/2020.md#fx-2020q2-rub) | $256.3B | —¹ |
+| [2020 Q1](../../quarters/2020Q1.md) | 2020-04-01 | [17,771,100,000,000](2020.md#cbr-monetary-base-broad-definition-mar-2020-row-of-01042020-retrieved-2026-11-20) | as published | [78.2817672](../../FX/2020.md#fx-2020q1-rub) | $227.0B | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q1, 2020 Q4, 2020 Q3, 2020 Q2.
+¹ No year-ago quarter yet: 2020 Q4, 2020 Q3, 2020 Q2, 2020 Q1.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
