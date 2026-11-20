@@ -6,7 +6,7 @@ Quarterly base money of the world's largest central banks, summed in US dollars,
 
 **Latest: $23.09 trillion at 30 Sep 2026 (2026 Q3).** Covers 100.00% of the basket.
 
-Updated 19 Nov 2026 · dataset version 0.1.0 · next quarter: 2026 Q4
+Updated 20 Nov 2026 · dataset version 0.1.0 · next quarter: 2026 Q4
 
 <!-- END GENERATED latest -->
 
@@ -63,16 +63,17 @@ US dollars, trillions (T), converted at the market close on each report's count 
 | 2022 Q1 | $27.70T | +3.5% | [Sources](base_money/quarters/2022Q1.md) |
 | 2021 Q4 | $27.94T | +8.0% | [Sources](base_money/quarters/2021Q4.md) |
 | 2021 Q3 | $28.11T | +18.4% | [Sources](base_money/quarters/2021Q3.md) |
-| 2021 Q2 | $27.70T | —¹ | [Sources](base_money/quarters/2021Q2.md) |
+| 2021 Q2 | $27.70T | +23.6% | [Sources](base_money/quarters/2021Q2.md) |
 | 2021 Q1 | $26.77T | —¹ | [Sources](base_money/quarters/2021Q1.md) |
 | 2020 Q4 | $25.86T | —¹ | [Sources](base_money/quarters/2020Q4.md) |
 | 2020 Q3 | $23.74T | —¹ | [Sources](base_money/quarters/2020Q3.md) |
+| 2020 Q2 | $22.41T | —¹ | [Sources](base_money/quarters/2020Q2.md) |
 
 <!-- END GENERATED table -->
 
 <!-- BEGIN GENERATED yoy-notes -->
 
-¹ No year-ago quarter yet: 2021 Q2, 2021 Q1, 2020 Q4, 2020 Q3.
+¹ No year-ago quarter yet: 2021 Q1, 2020 Q4, 2020 Q3, 2020 Q2.
 
 ᵖ Uses a provisional bank figure that may be revised: 2026 Q3, 2026 Q2.
 
