@@ -59,7 +59,7 @@ The RBA's March 2019 Bulletin article "Updates to Australia's Financial Aggregat
 
 **Monthly average (inferred).** The RBA does not say whether money base is an end-of-month stock or an average over the month. Table A1 ([a1-data.csv](https://www.rba.gov.au/statistics/tables/csv/a1-data.csv), archived: [Wayback](https://web.archive.org/web/20261120161505/https://www.rba.gov.au/statistics/tables/csv/a1-data.csv)), the RBA's weekly balance sheet, fits an average: in every quarter-end month from March 2020 to September 2026, money base less the mean of the month's Wednesday figures for notes on issue plus exchange settlement balances is 3.3 to 5.1 billion, while money base less the last Wednesday's figures ranges from -46.3 to +40.8 billion. See [Per-issuer definitions](../../../docs/methodology/base_money.md#per-issuer-definitions).
 
-**Not used.** The other D3 series (currency, M1, M3, broad money and their seasonally adjusted forms) are not base money. Table A1 is evidence for the averaging only and is never summed.
+**Not used.** The other D3 series (currency, M1, M3, broad money and their seasonally adjusted forms) are not base money. Table A1 is evidence for the averaging only and is never summed. Table D11 "Monetary Statistics (IMF Framework) – Central Bank Survey", series `DCBMB` "Monetary base: Total", is the RBA's other official monetary-base series: it is last-business-day and currency only, so it is narrower than the RBA's money-base headline and is not used. Its notes say "From March 2010, data are for the last business day of every month," which is further evidence that D3 is not an end-of-month stock.
 
 ## What's in, what's out
 
