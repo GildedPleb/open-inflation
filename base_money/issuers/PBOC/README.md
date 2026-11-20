@@ -32,12 +32,13 @@ Amounts are as the bank publishes them, in its own currency. YoY compares the sa
 | [2022 Q3](../../quarters/2022Q3.md) | 2022-09-30 | [34,183,163,000,000](2022.md#pboc-reserve-money-2022-09-file-2025110417075439576) | as published | [7.1160](../../FX/2022.md#fx-2022q3-cny) | $4.80T | +5.4% |
 | [2022 Q2](../../quarters/2022Q2.md) | 2022-06-30 | [33,425,189,000,000](2022.md#pboc-reserve-money-2022-06-file-2025110417075439576) | as published | [6.6995](../../FX/2022.md#fx-2022q2-cny) | $4.99T | +3.0% |
 | [2022 Q1](../../quarters/2022Q1.md) | 2022-03-31 | [33,545,834,000,000](2022.md#pboc-reserve-money-2022-03-file-2025110417075439576) | as published | [6.3400](../../FX/2022.md#fx-2022q1-cny) | $5.29T | +2.6% |
-| [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [32,948,734,000,000](2021.md#pboc-reserve-money-2021-12-file-2025110510260596858) | as published | [6.3559](../../FX/2021.md#fx-2021q4-cny) | $5.18T | —¹ |
+| [2021 Q4](../../quarters/2021Q4.md) | 2021-12-31 | [32,948,734,000,000](2021.md#pboc-reserve-money-2021-12-file-2025110510260596858) | as published | [6.3559](../../FX/2021.md#fx-2021q4-cny) | $5.18T | -0.3% |
 | [2021 Q3](../../quarters/2021Q3.md) | 2021-09-30 | [32,434,124,000,000](2021.md#pboc-reserve-money-2021-09-file-2025110510260596858) | as published | [6.4463](../../FX/2021.md#fx-2021q3-cny) | $5.03T | —¹ |
 | [2021 Q2](../../quarters/2021Q2.md) | 2021-06-30 | [32,449,414,000,000](2021.md#pboc-reserve-money-2021-06-file-2025110510260596858) | as published | [6.4572](../../FX/2021.md#fx-2021q2-cny) | $5.03T | —¹ |
 | [2021 Q1](../../quarters/2021Q1.md) | 2021-03-31 | [32,695,616,000,000](2021.md#pboc-reserve-money-2021-03-file-2025110510260596858) | as published | [6.5527](../../FX/2021.md#fx-2021q1-cny) | $4.99T | —¹ |
+| [2020 Q4](../../quarters/2020Q4.md) | 2020-12-31 | [33,042,814,000,000](2020.md#pboc-reserve-money-2020-12-file-2025110510251391352) | as published | [6.5327](../../FX/2020.md#fx-2020q4-cny) | $5.06T | —¹ |
 
-¹ No year-ago quarter yet: 2021 Q4, 2021 Q3, 2021 Q2, 2021 Q1.
+¹ No year-ago quarter yet: 2021 Q3, 2021 Q2, 2021 Q1, 2020 Q4.
 
 [Status](../../../docs/methodology/base_money.md#status-and-vintages): the bank's own label. `as published`: the bank gives no status label, so the figure is the vintage shown on its release or publication date, or on the retrieval date when the page shows none. Later changes are added as revisions, never overwritten.
 
@@ -63,3 +64,4 @@ See [Where the banks' definitions differ](../../../docs/methodology/base_money.m
 - [2023](2023.md)
 - [2022](2022.md)
 - [2021](2021.md)
+- [2020](2020.md)
