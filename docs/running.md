@@ -98,7 +98,7 @@ bun run readme
 - It rewrites the YoY column of each quarter file's table, and the `YoY:` line and footnotes under that table.
 - It rewrites the `## Quarters` section in each issuer README (right after the facts list, before `## What we measure`) and the `## Years` list in each issuer and FX folder README.
 - It writes `base_money/components.csv` and each `base_money/issuers/<ISS>/<ISS>.csv` (columns and units: [Components CSV](methodology/base_money.md#components-csv)).
-- It reads `base_money/base_money.csv`, each quarter file's last machine block, the adopted extract each component's anchor names (its `- As of:`, `- Convention:` and `- Status:` lines) and `catalog.json`. It never writes `base_money/base_money.csv`.
+- It reads `base_money/base_money.csv`, each quarter file's last machine block, the adopted extract each component's anchor names (its `- As of:`, `- Convention:` and `- Status:` lines) and `catalog.json`. It never writes `base_money/base_money.csv`. The front page's "Updated …" line is the catalog's `last_updated` value, the retrieval date of the series, not the date of the latest commit.
 - Run it after adding or changing a quarter: a CSV row, its quarter file and its issuer files.
 - Lint checks L13 and L17 fail when any of these differs from what `bun run readme` would write.
 
@@ -323,7 +323,7 @@ Code lives in `tools/` (`tools/scripts/`, `tools/test/`, `tools/tsconfig.json`).
 - `.gitignore`: it covers the whole tree.
 - `package.json` and `bun.lock`: CI runs `bun install --frozen-lockfile` and the `bun run` scripts from the root.
 - `package.json` also holds Biome's options and the TypeScript project path. So there is no `biome.json`, `bunfig.toml` or root `tsconfig.json`.
-- `catalog.json`: the data catalog.
+- `catalog.json`: the data catalog. Its `last_updated` field is the retrieval date of the series (`YYYY-MM-DD`), not the date of a later data or notes commit. `bun run readme` prints that date as "Updated …" on the front page.
 - `base_money/`: the series CSV, the quarter list, one file per quarter, the quoted sources per central bank, and the exchange-rate sources.
 
 The `base_money/` paths are `base_money/base_money.csv`, `base_money/components.csv`, `base_money/README.md`, `base_money/quarters/YYYYQn.md`, `base_money/issuers/<ISS>/README.md`, `base_money/issuers/<ISS>/<YYYY>.md`, `base_money/issuers/<ISS>/<ISS>.csv`, `base_money/FX/README.md` and `base_money/FX/<YYYY>.md`.
