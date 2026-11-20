@@ -1,4 +1,17 @@
 date,quarter,issuer,as_of,convention,status,local_currency,local_value,fx_rate,usd_value,evidence_id
+2020-09-30,2020Q3,PBOC,2020-09-30,end-of-month stock,as published,CNY,31564328000000,0.14725805501560935383,4648101549155,base_money/issuers/PBOC/2020.md#pboc-reserve-money-2020-09-file-2025110510251391352
+2020-09-30,2020Q3,FED,2020-09,month average,revised,USD,4880300000000,1,4880300000000,base_money/issuers/FED/2020.md#fed-h6-monetary-base-2020-09-release-2022-02-22
+2020-09-30,2020Q3,ECB,2020-09-25,weekly stock (statement date),as published,EUR,4442135000000,1.1632,5167091432000,base_money/issuers/ECB/2020.md#ecb-liability-items-1--21--22-statement-2020-09-25-published-2020-09-29
+2020-09-30,2020Q3,BOJ,2020-09-30,end-of-period stock,as published,JPY,606031000000000,0.00948406676783004552,5747638467375,base_money/issuers/BOJ/2020.md#boj-monetary-base-end-of-period-2020-09-mblongxlsx-retrieved-2026-11-20
+2020-09-30,2020Q3,BOE,2020-09,month average,as published,GBP,815051000000,1.295591,1055972740141,base_money/issuers/BOE/2020.md#boe-lpmavaa--lpmbl22-2020-09-retrieved-2026-11-20
+2020-09-30,2020Q3,SNB,2020-09,month average,as published,CHF,719313000000,1.09264659766239186896,785954902104,base_money/issuers/SNB/2020.md#snb-snbmoba-n2-monetary-base-2020-09-retrieved-2026-11-20
+2020-09-30,2020Q3,RBI,2020-09-25,weekly stock (Friday); count date per the RBI last-Friday rule,final,INR,31893580000000,0.01357036232867417560,432807436559,base_money/issuers/RBI/2020.md#rbi-reserve-money-2020-09-25-wss-2020-10-02
+2020-09-30,2020Q3,CBR,2020-10-01,start of day,as published,RUB,18524300000000,0.01284694045937704286,237980579152,base_money/issuers/CBR/2020.md#cbr-monetary-base-broad-definition-sep-2020-row-of-01102020-retrieved-2026-11-20
+2020-09-30,2020Q3,BCB,2020-09,end-of-period stock,as published,BRL,408736990000,0.18515432613083004684,75679421948,base_money/issuers/BCB/2020.md#bcb-sgs-1788-monetary-base-end-of-period-balance-sep2020-sgs-json-api-retrieved-2026-11-20
+2020-09-30,2020Q3,HKMA,2020-09-30,end-of-day stock,as published,HKD,1897536000000,0.12902726346076926054,244833877398,base_money/issuers/HKMA/2020.md#hkma-total-monetary-base-before-discount-window-2020-09-30-open-api-daily-figures-retrieved-2026-11-20
+2020-09-30,2020Q3,CBUAE,2020-09-30,end-of-month stock,as published,AED,416816000000,0.27224218664924316672,113474899270,base_money/issuers/CBUAE/2020.md#cbuae-monetary-base-sep-2020-statistical-bulletin-november-2022-table-4-retrieved-2026-11-20
+2020-09-30,2020Q3,CBC,2020-09-30,end of month,as published,TWD,4678165000000,0.03456655271226455857,161708037069,base_money/issuers/CBC/2020.md#cbc-reserve-money-2020-09-30-ef12m01en-end-of-month-retrieved-2026-11-20
+2020-09-30,2020Q3,BOK,2020-09-30,end of month,as published,KRW,216881000000000,0.00085554909140686493,185552342493,base_money/issuers/BOK/2020.md#bok-monetary-base-2020-09-30-ecos-102y001-end-of-month-retrieved-2026-11-20
 2020-12-31,2020Q4,PBOC,2020-12-31,end-of-month stock,as published,CNY,33042814000000,0.15307606349595113812,5058063893949,base_money/issuers/PBOC/2020.md#pboc-reserve-money-2020-12-file-2025110510251391352
 2020-12-31,2020Q4,FED,2020-12,month average,revised,USD,5206500000000,1,5206500000000,base_money/issuers/FED/2020.md#fed-h6-monetary-base-2020-12-release-2022-05-24
 2020-12-31,2020Q4,ECB,2020-12-25,weekly stock (statement date),as published,EUR,5004427000000,1.2187,6098895184900,base_money/issuers/ECB/2020.md#ecb-liability-items-1--21--22-statement-2020-12-25-published-2020-12-29
